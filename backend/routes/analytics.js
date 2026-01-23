@@ -208,6 +208,7 @@ router.get('/summary-table', async (req, res) => {
     const pool = db.getPool();
     const [rows] = await pool.query(`
       SELECT 
+        id,
         website_app_name,
         investment_type,
         sub_type_name,
@@ -220,6 +221,30 @@ router.get('/summary-table', async (req, res) => {
     res.json({ success: true, data: rows });
   } catch (error) {
     console.error('Error fetching summary table:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get investment history by investment ID
+router.get('/investment-history/:id', async (req, res) => {
+  try {
+    const pool = db.getPool();
+    const investmentId = req.params.id;
+    const [rows] = await pool.query(`
+      SELECT 
+        id,
+        investment_id,
+        change_type,
+        amount,
+        change_date,
+        notes
+      FROM investment_history
+      WHERE investment_id = ?
+      ORDER BY change_date DESC
+    `, [investmentId]);
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Error fetching investment history:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

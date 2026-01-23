@@ -58,6 +58,7 @@ const createTables = async () => {
         sub_type_category VARCHAR(255),
         amount DECIMAL(15, 2) NOT NULL,
         investment_date DATE NOT NULL,
+        notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_investment_type (investment_type),

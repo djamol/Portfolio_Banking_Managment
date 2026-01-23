@@ -40,7 +40,7 @@ router.get('/:id', async (req, res) => {
 // Create new investment
 router.post('/', async (req, res) => {
   try {
-    const { website_app_name, investment_type, sub_type_name, sub_type_category, amount, investment_date } = req.body;
+    const { website_app_name, investment_type, sub_type_name, sub_type_category, amount, investment_date, notes } = req.body;
     
     if (!website_app_name || !investment_type || !amount || !investment_date) {
       return res.status(400).json({ 
@@ -51,16 +51,16 @@ router.post('/', async (req, res) => {
 
     const pool = db.getPool();
     const [result] = await pool.query(
-      `INSERT INTO investments (website_app_name, investment_type, sub_type_name, sub_type_category, amount, investment_date)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [website_app_name, investment_type, sub_type_name || null, sub_type_category || null, amount, investment_date]
+      `INSERT INTO investments (website_app_name, investment_type, sub_type_name, sub_type_category, amount, investment_date, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [website_app_name, investment_type, sub_type_name || null, sub_type_category || null, amount, investment_date, notes || null]
     );
 
     // Add to history
     await pool.query(
-      `INSERT INTO investment_history (investment_id, amount, change_date, change_type)
-       VALUES (?, ?, ?, 'added')`,
-      [result.insertId, amount, investment_date]
+      `INSERT INTO investment_history (investment_id, amount, change_date, change_type, notes)
+       VALUES (?, ?, ?, 'added', ?)`,
+      [result.insertId, amount, investment_date, notes || null]
     );
 
     const [newInvestment] = await pool.query(
@@ -78,7 +78,7 @@ router.post('/', async (req, res) => {
 // Update investment
 router.put('/:id', async (req, res) => {
   try {
-    const { website_app_name, investment_type, sub_type_name, sub_type_category, amount, investment_date } = req.body;
+    const { website_app_name, investment_type, sub_type_name, sub_type_category, amount, investment_date, notes } = req.body;
     
     const pool = db.getPool();
     
@@ -95,18 +95,18 @@ router.put('/:id', async (req, res) => {
     await pool.query(
       `UPDATE investments 
        SET website_app_name = ?, investment_type = ?, sub_type_name = ?, 
-           sub_type_category = ?, amount = ?, investment_date = ?
+           sub_type_category = ?, amount = ?, investment_date = ?, notes = ?
        WHERE id = ?`,
       [website_app_name, investment_type, sub_type_name || null, sub_type_category || null, 
-       amount, investment_date, req.params.id]
+       amount, investment_date, notes || null, req.params.id]
     );
 
     // Add to history if amount changed
     if (oldInvestment[0].amount !== amount) {
       await pool.query(
-        `INSERT INTO investment_history (investment_id, amount, change_date, change_type)
-         VALUES (?, ?, ?, 'updated')`,
-        [req.params.id, amount, investment_date || new Date().toISOString().split('T')[0]]
+        `INSERT INTO investment_history (investment_id, amount, change_date, change_type, notes)
+         VALUES (?, ?, ?, 'updated', ?)`,
+        [req.params.id, amount, investment_date || new Date().toISOString().split('T')[0], notes || null]
       );
     }
 
@@ -139,9 +139,9 @@ router.delete('/:id', async (req, res) => {
 
     // Add to history
     await pool.query(
-      `INSERT INTO investment_history (investment_id, amount, change_date, change_type)
-       VALUES (?, ?, ?, 'removed')`,
-      [req.params.id, investment[0].amount, new Date().toISOString().split('T')[0]]
+      `INSERT INTO investment_history (investment_id, amount, change_date, change_type, notes)
+       VALUES (?, ?, ?, 'removed', ?)`,
+      [req.params.id, investment[0].amount, new Date().toISOString().split('T')[0], investment[0].notes || null]
     );
 
     // Delete investment

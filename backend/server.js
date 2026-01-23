@@ -1,40 +1,33 @@
 const express = require('express');
 const cors = require('cors');
-const bodyParser = require('body-parser');
-require('dotenv').config();
 const db = require('./config/database');
 const investmentRoutes = require('./routes/investments');
 const analyticsRoutes = require('./routes/analytics');
-const categoryRoutes = require('./routes/categories');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000; // Changed back to 3000
 
-// Middleware
 app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.json());
 
 // Routes
 app.use('/api/investments', investmentRoutes);
 app.use('/api/analytics', analyticsRoutes);
-app.use('/api/categories', categoryRoutes);
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Portfolio API is running' });
+// Root endpoint
+app.get('/', (req, res) => {
+  res.send('Portfolio Management Backend API');
 });
 
-// Initialize database
+// Initialize database and start server
 db.initializeDatabase()
   .then(() => {
     app.listen(PORT, () => {
+      console.log(`Tables created successfully`);
+      console.log(`Database initialized successfully`);
       console.log(`Server is running on port ${PORT}`);
     });
   })
-  .catch((error) => {
-    console.error('Failed to initialize database:', error);
-    process.exit(1);
+  .catch(err => {
+    console.error('Failed to initialize database:', err);
   });
-
-module.exports = app;
