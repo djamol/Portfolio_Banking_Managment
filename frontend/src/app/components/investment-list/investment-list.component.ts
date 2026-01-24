@@ -269,7 +269,11 @@ export class InvestmentListComponent implements OnInit {
     
     // Load sub-types and categories for the selected investment type
     if (investment.investment_type) {
-      this.onInvestmentTypeChange();
+      this.onInvestmentTypeChange().then(() => {
+        // After options are loaded, set the selected values
+        this.currentInvestment.sub_type_name = investment.sub_type_name;
+        this.currentInvestment.sub_type_category = investment.sub_type_category;
+      });
     }
   }
 
@@ -277,45 +281,50 @@ export class InvestmentListComponent implements OnInit {
     const selectedType = this.currentInvestment.investment_type;
     if (selectedType) {
       // Load sub-type names for this investment type from DB
-      this.categoryService.getSubTypeNamesByInvestmentType(selectedType).subscribe({
-        next: (response) => {
-          if (response.success) {
-            this.dbSubTypeNames = [
-              ...this.dbSubTypeNames.filter(stn => stn.investment_type !== selectedType),
-              ...response.data
-            ];
-            this.updateSubTypeOptions();
+      return new Promise<void>((resolve) => {
+        this.categoryService.getSubTypeNamesByInvestmentType(selectedType).subscribe({
+          next: (response) => {
+            if (response.success) {
+              this.dbSubTypeNames = [
+                ...this.dbSubTypeNames.filter(stn => stn.investment_type !== selectedType),
+                ...response.data
+              ];
+              this.updateSubTypeOptions();
+            }
+            resolve();
+          },
+          error: (error) => {
+            console.error('Error loading sub-type names:', error);
+            resolve();
           }
-        },
-        error: (error) => {
-          console.error('Error loading sub-type names:', error);
+        });
+
+        // Load categories for this investment type from DB
+        this.categoryService.getCategories(selectedType).subscribe({
+          next: (response) => {
+            if (response.success) {
+              this.dbCategories = [
+                ...this.dbCategories.filter(cat => cat.investment_type !== selectedType),
+                ...response.data
+              ];
+              this.updateCategoryOptions();
+            }
+          },
+          error: (error) => {
+            console.error('Error loading categories:', error);
+          }
+        });
+
+        // Also include predefined options
+        if (INVESTMENT_SUB_TYPES[selectedType]) {
+          this.investmentSubTypes = [...INVESTMENT_SUB_TYPES[selectedType].subTypes];
+          this.investmentCategories = [...INVESTMENT_SUB_TYPES[selectedType].categories];
         }
       });
-
-      // Load categories for this investment type from DB
-      this.categoryService.getCategories(selectedType).subscribe({
-        next: (response) => {
-          if (response.success) {
-            this.dbCategories = [
-              ...this.dbCategories.filter(cat => cat.investment_type !== selectedType),
-              ...response.data
-            ];
-            this.updateCategoryOptions();
-          }
-        },
-        error: (error) => {
-          console.error('Error loading categories:', error);
-        }
-      });
-
-      // Also include predefined options
-      if (INVESTMENT_SUB_TYPES[selectedType]) {
-        this.investmentSubTypes = [...INVESTMENT_SUB_TYPES[selectedType].subTypes];
-        this.investmentCategories = [...INVESTMENT_SUB_TYPES[selectedType].categories];
-      }
     } else {
       this.investmentSubTypes = [];
       this.investmentCategories = [];
+      return Promise.resolve();
     }
     
     // Reset sub-type and category when investment type changes
@@ -323,6 +332,8 @@ export class InvestmentListComponent implements OnInit {
     this.currentInvestment.sub_type_category = '';
     this.showNewSubTypeInput = false;
     this.showNewCategoryInput = false;
+    
+    return Promise.resolve();
   }
 
   updateSubTypeOptions() {
