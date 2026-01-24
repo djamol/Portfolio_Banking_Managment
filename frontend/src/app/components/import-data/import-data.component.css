@@ -219,3 +219,16 @@
 .preview-actions .btn {
   margin: 0 10px;
 }
+
+/* New Indicator Styles */
+.new-indicator {
+  color: #dc3545;
+  font-weight: bold;
+  margin-left: 5px;
+}
+
+.new-indicator-cell {
+  margin-left: 5px;
+  font-size: 28px;
+  color: green;
+}

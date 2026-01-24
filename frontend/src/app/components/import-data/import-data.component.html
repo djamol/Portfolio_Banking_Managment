@@ -102,8 +102,14 @@
           <tr>
             <th>Folio No</th>
             <th>Original Scheme Name</th>
-            <th>Extracted AMC (Sub Type)</th>
-            <th>Extracted Scheme (Category)</th>
+            <th>
+              Extracted AMC (Sub Type)
+              <span *ngIf="hasNewAMC" class="new-indicator" title="New AMC not in existing data">*</span>
+            </th>
+            <th>
+              Extracted Scheme (Category)
+              <span *ngIf="hasNewScheme" class="new-indicator" title="New scheme category not in existing data">*</span>
+            </th>
             <th>Present Value</th>
           </tr>
         </thead>
@@ -111,8 +117,14 @@
           <tr *ngFor="let record of previewData; let i = index">
             <td>{{ record.folioNo || 'N/A' }}</td>
             <td>{{ record.originalSchemeName }}</td>
-            <td>{{ record.extractedAMC }}</td>
-            <td>{{ record.extractedScheme }}</td>
+            <td>
+              {{ record.extractedAMC }}
+              <span *ngIf="record.isNewAMC" class="new-indicator-cell" title="New AMC not in existing data">🆕</span>
+            </td>
+            <td>
+              {{ record.extractedScheme }}
+              <span *ngIf="record.isNewScheme" class="new-indicator-cell" title="New scheme category not in existing data">🆕</span>
+            </td>
             <td>₹{{ record.presentValue | number:'1.2-2' }}</td>
           </tr>
         </tbody>
@@ -145,6 +157,7 @@
       <li>If an investment with the same Platform, Sub Type Name, and Sub Type Category already exists, its value will be updated</li>
       <li>Comprehensive AMC recognition including: Aditya Birla, Axis, HDFC, ICICI Prudential, SBI, Kotak, Nippon India, UTI, and many more</li>
       <li>Properly handles complex scheme names like "HSBC Multi Cap Fund" (extracts HSBC as AMC and Multi Cap Fund as scheme)</li>
+      <li>New AMCs or scheme categories not in existing data will be marked with 🆕</li>
     </ul>
   </div>
 </div>

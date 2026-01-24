@@ -21,6 +21,10 @@ export class ImportDataComponent implements OnInit {
   originalRecordCount = 0; // Track original count
   showPreview = false;
   previewData: any[] = [];
+  existingAMCs: Set<string> = new Set();
+  existingSchemeCategories: Set<string> = new Set();
+  hasNewAMC = false; // Flag to indicate if there are new AMCs
+  hasNewScheme = false; // Flag to indicate if there are new schemes
 
   // Comprehensive list of AMC names - Order matters: longer names first
   private amcs = [
@@ -89,7 +93,28 @@ export class ImportDataComponent implements OnInit {
 
   constructor(private investmentService: InvestmentService) {}
 
-  ngOnInit() {
+  async ngOnInit() {
+    await this.loadExistingData();
+  }
+
+  async loadExistingData() {
+    try {
+      const existingInvestments = await this.investmentService.getAll().toPromise();
+      if (existingInvestments) {
+        // Populate existing AMCs and scheme categories
+        existingInvestments.forEach(investment => {
+          if (investment.sub_type_name) {
+            this.existingAMCs.add(investment.sub_type_name);
+          }
+          if (investment.sub_type_category) {
+            this.existingSchemeCategories.add(investment.sub_type_category);
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error loading existing data:', error);
+      // Continue without existing data if there's an error
+    }
   }
 
   onFileSelected(event: any) {
@@ -139,8 +164,14 @@ export class ImportDataComponent implements OnInit {
           originalSchemeName: record.originalSchemeName || record.schemeName,
           extractedAMC: record.subTypeName,
           extractedScheme: record.subTypeCategory,
-          presentValue: record.presentValue
+          presentValue: record.presentValue,
+          isNewAMC: !this.existingAMCs.has(record.subTypeName),
+          isNewScheme: !this.existingSchemeCategories.has(record.subTypeCategory)
         }));
+        
+        // Set flags for new indicators in headers
+        this.hasNewAMC = this.previewData.some(record => record.isNewAMC);
+        this.hasNewScheme = this.previewData.some(record => record.isNewScheme);
         
         this.showPreview = true;
         this.message = `Preview ready. ${this.parsedData.length} unique records found (${this.originalRecordCount} total entries in file).`;
@@ -189,7 +220,7 @@ export class ImportDataComponent implements OnInit {
     }
 
     if (!this.platform.trim()) {
-      this.showMessage('Please enter a platform/website/app name.', 'error');
+      this.showMessage('Please select a platform/website/app name.', 'error');
       return;
     }
 
@@ -208,6 +239,8 @@ export class ImportDataComponent implements OnInit {
 
     try {
       await this.processParsedData();
+      // Refresh existing data after import
+      await this.loadExistingData();
       this.showMessage(`${this.parsedData.length} unique records processed successfully (${this.originalRecordCount} total entries in file).`, 'success');
       // Reset after successful import
       this.resetForm();
@@ -229,6 +262,8 @@ export class ImportDataComponent implements OnInit {
     this.uploadProgress = 0;
     this.isUploading = false;
     this.message = '';
+    this.hasNewAMC = false;
+    this.hasNewScheme = false;
   }
 
   private readFileAsText(file: File): Promise<string> {
