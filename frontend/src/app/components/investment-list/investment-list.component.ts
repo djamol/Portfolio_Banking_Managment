@@ -77,7 +77,34 @@ export class InvestmentListComponent implements OnInit {
   ) {}
 
   ngOnInit() {
+    this.loadDatabaseOptions();
     this.loadInvestments();
+  }
+
+  loadDatabaseOptions() {
+    // Load all sub-type names from database
+    this.categoryService.getSubTypeNames().subscribe({
+      next: (response) => {
+        if (response.success) {
+          this.dbSubTypeNames = response.data;
+        }
+      },
+      error: (error) => {
+        console.error('Error loading sub-type names:', error);
+      }
+    });
+
+    // Load all categories from database
+    this.categoryService.getAllCategories().subscribe({
+      next: (response) => {
+        if (response.success) {
+          this.dbCategories = response.data;
+        }
+      },
+      error: (error) => {
+        console.error('Error loading categories:', error);
+      }
+    });
   }
 
   loadInvestments() {

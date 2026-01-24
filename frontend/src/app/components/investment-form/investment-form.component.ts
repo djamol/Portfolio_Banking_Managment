@@ -74,18 +74,16 @@ export class InvestmentFormComponent implements OnInit {
       }
     });
 
-    // Initially load categories for all investment types
-    this.investmentTypes.forEach(type => {
-      this.categoryService.getCategories(type).subscribe({
-        next: (response) => {
-          if (response.success) {
-            this.dbCategories = [...this.dbCategories, ...response.data];
-          }
-        },
-        error: (error) => {
-          console.error(`Error loading categories for ${type}:`, error);
+    // Load all categories from database
+    this.categoryService.getAllCategories().subscribe({
+      next: (response) => {
+        if (response.success) {
+          this.dbCategories = response.data;
         }
-      });
+      },
+      error: (error) => {
+        console.error('Error loading categories:', error);
+      }
     });
   }
 

@@ -42,7 +42,15 @@ export class CategoryService {
   }
 
   // Categories APIs
+  getAllCategories(): Observable<{ success: boolean; data: Category[] }> {
+    return this.http.get<{ success: boolean; data: Category[] }>(`${this.apiUrl}/categories`);
+  }
+
   getCategories(investmentType: string, subTypeNameId?: number): Observable<{ success: boolean; data: Category[] }> {
+    if (investmentType === 'all') {
+      // Return all categories regardless of investment type
+      return this.getAllCategories();
+    }
     const url = subTypeNameId 
       ? `${this.apiUrl}/categories/${investmentType}/${subTypeNameId}`
       : `${this.apiUrl}/categories/${investmentType}`;
