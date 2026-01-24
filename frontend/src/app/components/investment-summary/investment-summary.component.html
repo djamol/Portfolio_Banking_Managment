@@ -6,6 +6,7 @@
     <small>Make sure the backend server is running on http://localhost:3000</small>
   </div>
 
+  <!-- Controls Section -->
   <div class="controls-section">
     <!-- Search Input -->
     <div class="search-box">
@@ -17,7 +18,7 @@
         class="search-input">
     </div>
 
-    <!-- Filters -->
+    <!-- Filters Row -->
     <div class="filters-row">
       <select [(ngModel)]="selectedType" (change)="onFilterChange()" class="filter-select">
         <option value="">All Types</option>
@@ -36,6 +37,18 @@
 
       <button (click)="clearFilters()" class="clear-btn">Clear Filters</button>
     </div>
+
+    <!-- Items Per Page Selector -->
+    <div class="items-per-page">
+      <label>Show 
+        <select [(ngModel)]="itemsPerPage" (change)="onItemsPerPageChange()" class="items-select">
+          <option [value]="5">5</option>
+          <option [value]="10">10</option>
+          <option [value]="20">20</option>
+          <option [value]="50">50</option>
+        </select>
+      </label>
+    </div>
   </div>
 
   <!-- Loading indicator -->
@@ -43,13 +56,15 @@
     Loading investment summary...
   </div>
 
-  <!-- Results Info -->
+  <!-- Results Info and Pagination -->
   <div class="results-info" *ngIf="!loading">
-    Showing {{ filteredData.length }} of {{ summaryData.length }} investments
+    Showing {{ (currentPage - 1) * itemsPerPage + 1 }} to 
+    {{ getMin(currentPage * itemsPerPage, filteredData.length) }} of 
+    {{ filteredData.length }} investments
   </div>
 
   <!-- Table -->
-  <div class="table-container" *ngIf="!loading && filteredData.length > 0">
+  <div class="table-container" *ngIf="!loading && paginatedData.length > 0">
     <table class="investment-table">
       <thead>
         <tr>
@@ -71,23 +86,88 @@
           <th (click)="onSort('investment_date')" class="sortable">
             Date <span class="sort-icon">{{ getSortIcon('investment_date') }}</span>
           </th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
-        <tr *ngFor="let item of filteredData; let i = index" [class.even-row]="i % 2 === 0" [class.odd-row]="i % 2 !== 0">
+        <tr *ngFor="let item of paginatedData; let i = index" [class.even-row]="i % 2 === 0" [class.odd-row]="i % 2 !== 0">
           <td>{{ item.website_app_name }}</td>
           <td>{{ item.investment_type }}</td>
           <td>{{ item.sub_type_name || '-' }}</td>
           <td>{{ item.sub_type_category || '-' }}</td>
           <td>{{ item.amount | number:'1.2-2' }}</td>
           <td>{{ formatDate(item.investment_date) }}</td>
+          <td>
+            <button class="history-btn" (click)="showInvestmentHistory(item)" title="View History">
+              📜
+            </button>
+          </td>
         </tr>
       </tbody>
     </table>
   </div>
 
+  <!-- Pagination Controls -->
+  <div class="pagination-controls" *ngIf="!loading && paginatedData.length > 0">
+    <button 
+      (click)="onPageChange(currentPage - 1)" 
+      [disabled]="currentPage === 1"
+      class="pagination-btn">
+      Previous
+    </button>
+    
+    <span class="page-info">Page {{ currentPage }} of {{ totalPages }}</span>
+    
+    <button 
+      (click)="onPageChange(currentPage + 1)" 
+      [disabled]="currentPage === totalPages"
+      class="pagination-btn">
+      Next
+    </button>
+  </div>
+
   <!-- Empty State -->
-  <div class="empty-state" *ngIf="!loading && filteredData.length === 0">
+  <div class="empty-state" *ngIf="!loading && paginatedData.length === 0">
     <p>No investments found matching your criteria.</p>
+  </div>
+
+  <!-- History Modal -->
+  <div class="history-modal" *ngIf="showHistory">
+    <div class="history-overlay" (click)="closeHistory()"></div>
+    <div class="history-content">
+      <div class="history-header">
+        <h3>History for {{ selectedInvestmentName }}</h3>
+        <button class="close-btn" (click)="closeHistory()">×</button>
+      </div>
+      <div class="history-body">
+        <div *ngIf="historyLoading" class="history-loading">
+          Loading history...
+        </div>
+        <table class="history-table" *ngIf="!historyLoading">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Change Type</th>
+              <th>Amount (₹)</th>
+              <th>Change</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let history of selectedInvestmentHistory; let i = index">
+              <td>{{ formatDate(history.change_date) }}</td>
+              <td>{{ history.change_type | titlecase }}</td>
+              <td>{{ history.amount | number:'1.2-2' }}</td>
+              <td>
+                <span *ngIf="history.isIncrease" class="change-up">▲ {{ history.difference | number:'1.2-2' }} ({{ history.differencePercentage | number:'1.2-2' }}%)</span>
+                <span *ngIf="history.isDecrease" class="change-down">▼ {{ (-history.difference) | number:'1.2-2' }} ({{ history.differencePercentage | number:'1.2-2' }}%)</span>
+                <span *ngIf="!history.isIncrease && !history.isDecrease" class="change-neutral">—</span>
+              </td>
+              <td>{{ history.notes || '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </div>

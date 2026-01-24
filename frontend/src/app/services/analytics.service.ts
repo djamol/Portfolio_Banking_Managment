@@ -53,4 +53,8 @@ export class AnalyticsService {
   getSummaryTable(): Observable<{ success: boolean; data: any[] }> {
     return this.http.get<{ success: boolean; data: any[] }>(`${API_URL}/analytics/summary-table`);
   }
+
+  getInvestmentHistory(id: number): Observable<{ success: boolean; data: any[] }> {
+    return this.http.get<{ success: boolean; data: any[] }>(`${API_URL}/analytics/investment-history/${id}`);
+  }
 }

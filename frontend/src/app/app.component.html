@@ -1,7 +1,8 @@
-<div class="container">
-  <header style="text-align: center; margin-bottom: 30px; color: white;">
-    <h1 style="font-size: 2.5rem; margin-bottom: 10px;">💰 Portfolio Financial Management</h1>
-    <p style="font-size: 1.1rem; opacity: 0.9;">Track and analyze your investments</p>
-  </header>
-  <router-outlet></router-outlet>
-</div>
+<nav>
+  <ul>
+    <li><a routerLink="/investments" routerLinkActive="active">Investments</a></li>
+    <li><a routerLink="/analytics" routerLinkActive="active">Analytics</a></li>
+    <li><a routerLink="/investment-summary" routerLinkActive="active">Investment Summary</a></li>
+  </ul>
+</nav>
+<router-outlet />

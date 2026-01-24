@@ -23,6 +23,18 @@ export class InvestmentSummaryComponent implements OnInit {
   sortBy: string = 'amount';
   sortDirection: 'asc' | 'desc' = 'desc';
 
+  // Pagination properties
+  currentPage: number = 1;
+  itemsPerPage: number = 10;
+  totalPages: number = 0;
+  paginatedData: any[] = [];
+
+  // History properties
+  showHistory: boolean = false;
+  selectedInvestmentHistory: any[] = [];
+  selectedInvestmentName: string = '';
+  historyLoading: boolean = false;
+
   // Unique values for filters
   investmentTypes: string[] = [];
   platforms: string[] = [];
@@ -129,13 +141,43 @@ export class InvestmentSummaryComponent implements OnInit {
     });
 
     this.filteredData = result;
+    this.calculatePagination();
+    this.updatePaginatedData();
+  }
+
+  calculatePagination() {
+    this.totalPages = Math.ceil(this.filteredData.length / this.itemsPerPage);
+    if (this.currentPage > this.totalPages && this.totalPages > 0) {
+      this.currentPage = this.totalPages;
+    }
+  }
+
+  updatePaginatedData() {
+    const startIndex = (this.currentPage - 1) * this.itemsPerPage;
+    const endIndex = startIndex + this.itemsPerPage;
+    this.paginatedData = this.filteredData.slice(startIndex, endIndex);
+  }
+
+  onPageChange(page: number) {
+    if (page >= 1 && page <= this.totalPages) {
+      this.currentPage = page;
+      this.updatePaginatedData();
+    }
+  }
+
+  onItemsPerPageChange() {
+    this.currentPage = 1; // Reset to first page when changing items per page
+    this.calculatePagination();
+    this.updatePaginatedData();
   }
 
   onSearchChange() {
+    this.currentPage = 1; // Reset to first page when searching
     this.applyFilters();
   }
 
   onFilterChange() {
+    this.currentPage = 1; // Reset to first page when filtering
     this.applyFilters();
   }
 
@@ -163,6 +205,7 @@ export class InvestmentSummaryComponent implements OnInit {
     this.selectedCategory = '';
     this.sortBy = 'amount';
     this.sortDirection = 'desc';
+    this.currentPage = 1;
     this.applyFilters();
   }
 
@@ -172,5 +215,93 @@ export class InvestmentSummaryComponent implements OnInit {
       month: 'short',
       day: 'numeric'
     });
+  }
+
+  // Helper method for calculating min value in template
+  getMin(a: number, b: number): number {
+    return Math.min(a, b);
+  }
+
+  // Method to show history for an investment
+  showInvestmentHistory(item: any) {
+    this.historyLoading = true;
+    this.selectedInvestmentName = `${item.website_app_name} - ${item.investment_type}`;
+    
+    // Call the API to get the actual history
+    this.analyticsService.getInvestmentHistory(item.id).subscribe({
+      next: (response) => {
+        if (response.data && response.data.length > 0) {
+          // Sort by date descending (most recent first)
+          const sortedHistory = response.data.sort((a, b) => new Date(b.change_date).getTime() - new Date(a.change_date).getTime());
+          
+          // Calculate differences between consecutive records
+          const enhancedHistory = sortedHistory.map((record, index) => {
+            const currentAmount = parseFloat(record.amount) || 0;
+            
+            // Calculate difference compared to previous record (older date)
+            let previousAmount = 0;
+            let difference = 0;
+            
+            // Look for the next record in the sorted list (which is older)
+            if (index < sortedHistory.length - 1) {
+              const previousRecord = sortedHistory[index + 1];
+              previousAmount = parseFloat(previousRecord.amount) || 0;
+              difference = currentAmount - previousAmount;
+            }
+            
+            return {
+              ...record,
+              change_date: new Date(record.change_date),
+              amount: currentAmount,
+              difference: difference,
+              differencePercentage: previousAmount !== 0 ? ((Math.abs(difference) / previousAmount) * 100) : 0,
+              isIncrease: difference > 0,
+              isDecrease: difference < 0
+            };
+          });
+          
+          this.selectedInvestmentHistory = enhancedHistory;
+        } else {
+          // If no history found, show a message
+          this.selectedInvestmentHistory = [{
+            id: 0,
+            change_type: 'info',
+            amount: item.amount,
+            change_date: item.investment_date,
+            notes: 'No history records found for this investment.',
+            difference: 0,
+            differencePercentage: 0,
+            isIncrease: false,
+            isDecrease: false
+          }];
+        }
+        this.showHistory = true;
+        this.historyLoading = false;
+      },
+      error: (error) => {
+        console.error('Error loading investment history:', error);
+        // Show a fallback message
+        this.selectedInvestmentHistory = [{
+          id: 0,
+          change_type: 'error',
+          amount: item.amount,
+          change_date: item.investment_date,
+          notes: 'Failed to load history data. Please try again later.',
+          difference: 0,
+          differencePercentage: 0,
+          isIncrease: false,
+          isDecrease: false
+        }];
+        this.showHistory = true;
+        this.historyLoading = false;
+      }
+    });
+  }
+
+  closeHistory() {
+    this.showHistory = false;
+    this.selectedInvestmentHistory = [];
+    this.selectedInvestmentName = '';
+    this.historyLoading = false;
   }
 }

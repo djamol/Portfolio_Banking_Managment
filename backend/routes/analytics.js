@@ -202,21 +202,30 @@ router.get('/by-sub-type-category', async (req, res) => {
   }
 });
 
-// Get investment summary table
+// Get investment summary table with history record counts
 router.get('/summary-table', async (req, res) => {
   try {
     const pool = db.getPool();
     const [rows] = await pool.query(`
       SELECT 
-        id,
-        website_app_name,
-        investment_type,
-        sub_type_name,
-        sub_type_category,
-        amount,
-        investment_date
-      FROM investments
-      ORDER BY amount DESC
+        i.id,
+        i.website_app_name,
+        i.investment_type,
+        i.sub_type_name,
+        i.sub_type_category,
+        i.amount,
+        i.investment_date,
+        i.notes,
+        COALESCE(h.history_count, 0) as history_count
+      FROM investments i
+      LEFT JOIN (
+        SELECT 
+          investment_id,
+          COUNT(*) as history_count
+        FROM investment_history
+        GROUP BY investment_id
+      ) h ON i.id = h.investment_id
+      ORDER BY i.amount DESC
     `);
     res.json({ success: true, data: rows });
   } catch (error) {

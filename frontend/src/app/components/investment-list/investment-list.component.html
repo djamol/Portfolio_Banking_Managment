@@ -1,191 +1,280 @@
-<div class="card">
+<div class="investment-list-container">
   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
     <h2 style="margin: 0;">Investment Portfolio</h2>
-    <div>
-      <button class="btn btn-primary" (click)="openModal()" style="margin-right: 10px;">+ Add Investment</button>
-      <a routerLink="/analytics" class="btn btn-secondary">View Analytics</a>
+    <button (click)="openAddModal()" class="btn btn-primary">Add Investment</button>
+  </div>
+
+  <div *ngIf="errorMessage" style="background: #fee; color: #c33; padding: 12px; border-radius: 6px; margin-bottom: 20px;">
+    <strong>Error:</strong> {{ errorMessage }}<br>
+    <small>Make sure the backend server is running on http://localhost:3000</small>
+  </div>
+
+  <!-- Controls Section -->
+  <div class="controls-section">
+    <!-- Search Input -->
+    <div class="search-box">
+      <input 
+        type="text" 
+        placeholder="Search investments..." 
+        [(ngModel)]="searchTerm" 
+        (input)="onSearchChange()"
+        class="search-input">
+    </div>
+
+    <!-- Filters Row -->
+    <div class="filters-row">
+      <select [(ngModel)]="selectedType" (change)="onFilterChange()" class="filter-select">
+        <option value="">All Types</option>
+        <option *ngFor="let type of investmentTypes" [value]="type">{{ type }}</option>
+      </select>
+
+      <select [(ngModel)]="selectedPlatform" (change)="onFilterChange()" class="filter-select">
+        <option value="">All Platforms</option>
+        <option *ngFor="let platform of platforms" [value]="platform">{{ platform }}</option>
+      </select>
+
+      <button (click)="clearFilters()" class="clear-btn">Clear Filters</button>
+    </div>
+
+    <!-- Items Per Page Selector -->
+    <div class="items-per-page">
+      <label>Show 
+        <select [(ngModel)]="itemsPerPage" (change)="onItemsPerPageChange()" class="items-select">
+          <option [value]="5">5</option>
+          <option [value]="10">10</option>
+          <option [value]="20">20</option>
+          <option [value]="50">50</option>
+        </select>
+      </label>
     </div>
   </div>
 
-  <table class="table" *ngIf="investments.length > 0">
-    <thead>
-      <tr>
-        <th>Platform</th>
-        <th>Type</th>
-        <th>Sub Type</th>
-        <th>Category</th>
-        <th>Amount</th>
-        <th>Date</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr *ngFor="let investment of investments">
-        <td>{{ investment.website_app_name }}</td>
-        <td><span class="badge badge-primary">{{ investment.investment_type }}</span></td>
-        <td>{{ investment.sub_type_name || '-' }}</td>
-        <td>{{ investment.sub_type_category || '-' }}</td>
-        <td><strong>₹{{ investment.amount | number:'1.2-2' }}</strong></td>
-        <td>{{ investment.investment_date | date:'shortDate' }}</td>
-        <td>
-          <button class="btn btn-secondary" (click)="editInvestment(investment)" style="margin-right: 5px; padding: 5px 10px; font-size: 12px;">Edit</button>
-          <button class="btn btn-danger" (click)="deleteInvestment(investment.id!)" style="padding: 5px 10px; font-size: 12px;">Delete</button>
-        </td>
-      </tr>
-    </tbody>
-  </table>
-
-  <div *ngIf="investments.length === 0 && !loading" style="text-align: center; padding: 40px; color: #6b7280;">
-    <p>No investments found. Click "Add Investment" to get started.</p>
-  </div>
-
+  <!-- Loading indicator -->
   <div *ngIf="loading" style="text-align: center; padding: 40px;">
-    <p>Loading...</p>
+    <p>Loading investments...</p>
   </div>
-</div>
 
-<!-- Investment Modal -->
-<div class="modal" [class.show]="showModal" (click)="closeModalOnBackdrop($event)">
-  <div class="modal-content" (click)="$event.stopPropagation()" style="max-width: 600px;">
-    <div class="modal-header">
-      <h2>{{ editingInvestment ? 'Edit Investment' : 'Add New Investment' }}</h2>
-      <button class="close" (click)="closeModal()">&times;</button>
-    </div>
-    <form (ngSubmit)="saveInvestment()">
-      <div class="form-group">
-        <label>Platform/Website/App Name *</label>
-        <input type="text" [(ngModel)]="currentInvestment.website_app_name" name="website_app_name" required>
-      </div>
-      <div class="form-group">
-        <label>Investment Type *</label>
-        <select [(ngModel)]="currentInvestment.investment_type" name="investment_type" 
-                (change)="onInvestmentTypeChange()" required>
-          <option value="">Select Type</option>
-          <option value="FD">Fixed Deposit (FD)</option>
-          <option value="Stock">Stock</option>
-          <option value="ETF">ETF</option>
-          <option value="Bond">Bond</option>
-          <option value="Mutual Fund">Mutual Fund</option>
-          <option value="Crypto">Crypto</option>
-          <option value="PPF">PPF</option>
-          <option value="Saving Bank Balance">Saving Bank Balance</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Sub Type Name (e.g., MF House Name)</label>
-        <div style="display: flex; gap: 8px;">
-          <select [(ngModel)]="selectedSubTypeNameId" name="sub_type_name" 
-                  (change)="onSubTypeNameChange()" 
-                  style="flex: 1;">
-            <option [value]="null">Select or Add New</option>
-            <option *ngFor="let subType of subTypeNames" [value]="subType.id">
-              {{ subType.name }}
-            </option>
-            <option value="__NEW__">+ Add New Sub Type</option>
-          </select>
-        </div>
-        <input *ngIf="showNewSubTypeInput" type="text" 
-               [(ngModel)]="newSubTypeName" 
-               name="new_sub_type_name"
-               placeholder="Enter new sub type name"
-               style="margin-top: 8px;">
-      </div>
-      <div class="form-group">
-        <label>Sub Type Category (e.g., MF Type)</label>
-        <div style="display: flex; gap: 8px;">
-          <select [(ngModel)]="selectedCategoryId" name="sub_type_category" 
-                  (change)="onCategoryChange()"
-                  style="flex: 1;">
-            <option [value]="null">Select or Add New</option>
-            <option *ngFor="let category of categories" [value]="category.id">
-              {{ category.category }}
-            </option>
-            <option value="__NEW__">+ Add New Category</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-group">
-        <label>Amount (₹) *</label>
-        <input type="number" step="0.01" [(ngModel)]="currentInvestment.amount" name="amount" required min="0">
-      </div>
-      <div class="form-group">
-        <label>Investment Date *</label>
-        <input type="date" [(ngModel)]="currentInvestment.investment_date" name="investment_date" required>
-      </div>
-      <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
-        <button type="button" class="btn btn-secondary" (click)="closeModal()">Cancel</button>
-        <button type="submit" class="btn btn-primary">Save</button>
-      </div>
-    </form>
+  <!-- Results Info and Pagination -->
+  <div class="results-info" *ngIf="!loading">
+    Showing {{ (currentPage - 1) * itemsPerPage + 1 }} to 
+    {{ getMin(currentPage * itemsPerPage, filteredInvestments.length) }} of 
+    {{ filteredInvestments.length }} investments
   </div>
-</div>
 
-<!-- Add New Sub Type Modal -->
-<div class="modal" [class.show]="showSubTypeModal" (click)="closeSubTypeModalOnBackdrop($event)">
-  <div class="modal-content" (click)="$event.stopPropagation()" style="max-width: 400px;">
-    <div class="modal-header">
-      <h2>Add New Sub Type</h2>
-      <button class="close" (click)="closeSubTypeModal()">&times;</button>
-    </div>
-    <form (ngSubmit)="saveNewSubType()">
-      <div class="form-group">
-        <label>Sub Type Name *</label>
-        <input type="text" [(ngModel)]="newSubTypeName" name="new_sub_type_name" required>
-      </div>
-      <div class="form-group">
-        <label>Investment Type *</label>
-        <select [(ngModel)]="currentInvestment.investment_type" name="investment_type" required>
-          <option value="">Select Type</option>
-          <option value="FD">Fixed Deposit (FD)</option>
-          <option value="Stock">Stock</option>
-          <option value="ETF">ETF</option>
-          <option value="Bond">Bond</option>
-          <option value="Mutual Fund">Mutual Fund</option>
-          <option value="Crypto">Crypto</option>
-          <option value="PPF">PPF</option>
-          <option value="Saving Bank Balance">Saving Bank Balance</option>
-        </select>
-      </div>
-      <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
-        <button type="button" class="btn btn-secondary" (click)="closeSubTypeModal()">Cancel</button>
-        <button type="submit" class="btn btn-primary">Save</button>
-      </div>
-    </form>
+  <!-- Table -->
+  <div class="table-container" *ngIf="!loading && paginatedData.length > 0">
+    <table class="investment-table">
+      <thead>
+        <tr>
+          <th (click)="onSort('website_app_name')" class="sortable">
+            Platform <span class="sort-icon">{{ getSortIcon('website_app_name') }}</span>
+          </th>
+          <th (click)="onSort('investment_type')" class="sortable">
+            Type <span class="sort-icon">{{ getSortIcon('investment_type') }}</span>
+          </th>
+          <th (click)="onSort('sub_type_name')" class="sortable">
+            Sub Type <span class="sort-icon">{{ getSortIcon('sub_type_name') }}</span>
+          </th>
+          <th (click)="onSort('sub_type_category')" class="sortable">
+            Category <span class="sort-icon">{{ getSortIcon('sub_type_category') }}</span>
+          </th>
+          <th (click)="onSort('amount')" class="sortable">
+            Amount (₹) <span class="sort-icon">{{ getSortIcon('amount') }}</span>
+          </th>
+          <th (click)="onSort('investment_date')" class="sortable">
+            Date <span class="sort-icon">{{ getSortIcon('investment_date') }}</span>
+          </th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let investment of paginatedData; let i = index" [class.even-row]="i % 2 === 0" [class.odd-row]="i % 2 !== 0">
+          <td>{{ investment.website_app_name }}</td>
+          <td>{{ investment.investment_type }}</td>
+          <td>{{ investment.sub_type_name || '-' }}</td>
+          <td>{{ investment.sub_type_category || '-' }}</td>
+          <td>{{ investment.amount | number:'1.2-2' }}</td>
+          <td>{{ formatDate(investment.investment_date) }}</td>
+          <td>
+            <button (click)="openEditModal(investment)" class="btn btn-sm btn-outline-primary">Edit</button>
+            <button (click)="deleteInvestment(investment.id)" class="btn btn-sm btn-outline-danger" style="margin-left: 5px;">Delete</button>
+            <button 
+              (click)="viewHistory(investment)" 
+              [ngClass]="getHistoryButtonClass(investment)"
+              [title]="'View History'"
+              style="margin-left: 5px;"
+              [disabled]="historyLoading">
+              {{ getHistoryButtonText(investment) }}
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </div>
-</div>
 
-<!-- Add New Category Modal -->
-<div class="modal" [class.show]="showCategoryModal" (click)="closeCategoryModalOnBackdrop($event)">
-  <div class="modal-content" (click)="$event.stopPropagation()" style="max-width: 400px;">
-    <div class="modal-header">
-      <h2>Add New Category</h2>
-      <button class="close" (click)="closeCategoryModal()">&times;</button>
-    </div>
-    <form (ngSubmit)="saveNewCategory()">
-      <div class="form-group">
-        <label>Category Name *</label>
-        <input type="text" [(ngModel)]="newCategory" name="new_category" required>
+  <!-- Pagination Controls -->
+  <div class="pagination-controls" *ngIf="!loading && paginatedData.length > 0">
+    <button 
+      (click)="onPageChange(currentPage - 1)" 
+      [disabled]="currentPage === 1"
+      class="pagination-btn">
+      Previous
+    </button>
+    
+    <span class="page-info">Page {{ currentPage }} of {{ totalPages }}</span>
+    
+    <button 
+      (click)="onPageChange(currentPage + 1)" 
+      [disabled]="currentPage === totalPages"
+      class="pagination-btn">
+      Next
+    </button>
+  </div>
+
+  <!-- Empty State -->
+  <div *ngIf="!loading && paginatedData.length === 0" style="text-align: center; padding: 40px; color: #6b7280;">
+    <p>No investments found matching your criteria.</p>
+    <button (click)="openAddModal()" class="btn btn-primary">Add Your First Investment</button>
+  </div>
+
+  <!-- Modal Popup -->
+  <div *ngIf="showModal" class="modal-overlay" (click)="closePopup()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>{{ isEditing ? 'Edit Investment' : 'Add New Investment' }}</h3>
+        <button class="close-btn" (click)="closePopup()">×</button>
       </div>
-      <div class="form-group">
-        <label>Investment Type *</label>
-        <div class="form-group">
-          <select [(ngModel)]="currentInvestment.investment_type" name="investment_type" required>
-            <option value="">Select Type</option>
-            <option value="FD">Fixed Deposit (FD)</option>
-            <option value="Stock">Stock</option>
-            <option value="ETF">ETF</option>
-            <option value="Bond">Bond</option>
-            <option value="Mutual Fund">Mutual Fund</option>
-            <option value="Crypto">Crypto</option>
-            <option value="PPF">PPF</option>
-            <option value="Saving Bank Balance">Saving Bank Balance</option>
-          </select>
+      
+      <form (ngSubmit)="onSubmit()" #investmentForm="ngForm">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="website_app_name">Platform/Website/App *</label>
+            <input
+              type="text"
+              id="website_app_name"
+              name="website_app_name"
+              [(ngModel)]="currentInvestment.website_app_name"
+              class="form-control"
+              required
+              placeholder="e.g., HDFC Bank, Groww, Zerodha">
+          </div>
+
+          <div class="form-group">
+            <label for="investment_type">Investment Type *</label>
+            <select
+              id="investment_type"
+              name="investment_type"
+              [(ngModel)]="currentInvestment.investment_type"
+              class="form-control"
+              required>
+              <option value="">Select Investment Type</option>
+              <option *ngFor="let type of investmentTypes" [value]="type">{{ type }}</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="sub_type_name">Sub Type Name</label>
+            <input
+              type="text"
+              id="sub_type_name"
+              name="sub_type_name"
+              [(ngModel)]="currentInvestment.sub_type_name"
+              class="form-control"
+              placeholder="e.g., SBI Bluechip Fund, Reliance ETF">
+          </div>
+
+          <div class="form-group">
+            <label for="sub_type_category">Sub Type Category</label>
+            <input
+              type="text"
+              id="sub_type_category"
+              name="sub_type_category"
+              [(ngModel)]="currentInvestment.sub_type_category"
+              class="form-control"
+              placeholder="e.g., Large Cap, Nifty 50, Banking Sector">
+          </div>
+
+          <div class="form-group">
+            <label for="amount">Amount (₹) *</label>
+            <input
+              type="number"
+              id="amount"
+              name="amount"
+              [(ngModel)]="currentInvestment.amount"
+              class="form-control"
+              required
+              min="0"
+              step="0.01"
+              placeholder="Enter amount">
+          </div>
+
+          <div class="form-group">
+            <label for="investment_date">Investment Date *</label>
+            <input
+              type="date"
+              id="investment_date"
+              name="investment_date"
+              [(ngModel)]="currentInvestment.investment_date"
+              class="form-control"
+              required>
+          </div>
+
+          <div class="form-group">
+            <label for="notes">Notes *</label>
+            <textarea
+              id="notes"
+              name="notes"
+              [(ngModel)]="currentInvestment.notes"
+              class="form-control"
+              required
+              placeholder="Enter notes about this investment"></textarea>
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary" [disabled]="!investmentForm.form.valid">
+            {{ isEditing ? 'Update Investment' : 'Add Investment' }}
+          </button>
+          <button type="button" class="btn btn-secondary" (click)="closePopup()">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- History Modal -->
+  <div *ngIf="showHistoryModal" class="modal-overlay" (click)="closeHistoryModal()">
+    <div class="modal-content history-modal" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>History for {{ currentInvestmentName }}</h3>
+        <button class="close-btn" (click)="closeHistoryModal()">×</button>
+      </div>
+      
+      <div class="modal-body">
+        <div *ngIf="historyLoading" class="loading-history">
+          <p>Loading history...</p>
+        </div>
+        
+        <div *ngIf="!historyLoading && historyData.length === 0" class="no-history">
+          No history records found.
+        </div>
+        
+        <div *ngIf="!historyLoading && historyData.length > 0" class="history-list">
+          <div *ngFor="let record of historyData; let i = index" class="history-record">
+            <div class="history-date">{{ record.change_date | date:'medium' }}</div>
+            <div class="history-details">
+              <span class="history-amount">₹{{ record.amount | number:'1.2-2' }}</span>
+              <span *ngIf="record.difference !== 0" class="history-change" [class.positive]="record.isIncrease" [class.negative]="record.isDecrease">
+                {{ record.isIncrease ? '▲' : '▼' }} {{ (record.isIncrease ? record.difference : -record.difference) | number:'1.2-2' }} ({{ record.differencePercentage | number:'1.2-2' }}%)
+              </span>
+              <span *ngIf="record.notes" class="history-notes">{{ record.notes }}</span>
+            </div>
+          </div>
         </div>
       </div>
-      <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
-        <button type="button" class="btn btn-secondary" (click)="closeCategoryModal()">Cancel</button>
-        <button type="submit" class="btn btn-primary">Save</button>
+      
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" (click)="closeHistoryModal()" [disabled]="historyLoading">Close</button>
       </div>
-    </form>
+    </div>
   </div>
 </div>

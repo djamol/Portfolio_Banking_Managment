@@ -10,6 +10,7 @@ import { AppComponent } from './app.component';
 import { AnalyticsComponent } from './components/analytics/analytics.component';
 import { InvestmentListComponent } from './components/investment-list/investment-list.component';
 import { InvestmentSummaryComponent } from './components/investment-summary/investment-summary.component';
+import { InvestmentFormComponent } from './components/investment-form/investment-form.component';
 import { routes } from './app.routes';
 
 @NgModule({
@@ -17,7 +18,8 @@ import { routes } from './app.routes';
     AppComponent,
     AnalyticsComponent,
     InvestmentListComponent,
-    InvestmentSummaryComponent
+    InvestmentSummaryComponent,
+    InvestmentFormComponent
   ],
   imports: [
     BrowserModule,

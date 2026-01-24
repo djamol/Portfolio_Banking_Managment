@@ -206,6 +206,16 @@ export class AnalyticsComponent implements OnInit {
         fill: true,
         pointRadius: 4,
         pointHoverRadius: 6
+      },
+      {
+        label: 'Updated',
+        data: [],
+        borderColor: 'rgba(59, 130, 246, 1)',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        tension: 0.4,
+        fill: true,
+        pointRadius: 4,
+        pointHoverRadius: 6
       }
     ]
   };
@@ -262,6 +272,10 @@ export class AnalyticsComponent implements OnInit {
       completedRequests++;
       if (completedRequests >= totalRequests) {
         this.loading = false;
+        // Initialize the dynamic charts with default selections after all data is loaded
+        setTimeout(() => {
+          this.initializeDynamicCharts();
+        }, 100);
       }
     };
 
@@ -452,6 +466,16 @@ export class AnalyticsComponent implements OnInit {
                 fill: true,
                 pointRadius: 4,
                 pointHoverRadius: 6
+              },
+              {
+                label: 'Updated',
+                data: response.data.map((item: any) => parseFloat(item.updated || 0)),
+                borderColor: 'rgba(59, 130, 246, 1)',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                tension: 0.4,
+                fill: true,
+                pointRadius: 4,
+                pointHoverRadius: 6
               }
             ]
           };
@@ -539,6 +563,135 @@ export class AnalyticsComponent implements OnInit {
         checkComplete();
       }
     });
+  }
+
+  // Initialize the dynamic charts with default selections
+  initializeDynamicCharts() {
+    // Set the time chart based on the default selection
+    if (this.selectedTimeChartOption === 'month') {
+      this.timeChartData = this.byMonthChartData;
+    } else {
+      // Create new data array to avoid type conflicts
+      const newData: number[] = [];
+      if (this.byYearChartData.datasets[0].data) {
+        newData.push(...this.byYearChartData.datasets[0].data as number[]);
+      }
+      
+      this.timeChartData = {
+        labels: this.byYearChartData.labels,
+        datasets: [{
+          label: this.byYearChartData.datasets[0].label,
+          data: newData,
+          borderColor: 'rgba(118, 75, 162, 1)',
+          backgroundColor: 'rgba(118, 75, 162, 0.1)',
+          tension: 0.4,
+          fill: true,
+          pointRadius: 4,
+          pointHoverRadius: 6
+        }]
+      };
+    }
+
+    // Set the pie chart based on the default selection
+    switch (this.selectedPieChartOption) {
+      case 'platform':
+        this.pieChartData = this.byPlatformChartData;
+        break;
+      case 'type':
+        // Create new data array to avoid type conflicts
+        const newData: number[] = [];
+        if (this.byTypeChartData.datasets[0].data) {
+          newData.push(...this.byTypeChartData.datasets[0].data as number[]);
+        }
+        
+        this.pieChartData = {
+          labels: this.byTypeChartData.labels,
+          datasets: [{
+            data: newData,
+            backgroundColor: [
+              'rgba(102, 126, 234, 0.8)',
+              'rgba(118, 75, 162, 0.8)',
+              'rgba(239, 68, 68, 0.8)',
+              'rgba(16, 185, 129, 0.8)',
+              'rgba(245, 158, 11, 0.8)',
+              'rgba(59, 130, 246, 0.8)',
+              'rgba(139, 92, 246, 0.8)',
+              'rgba(236, 72, 153, 0.8)'
+            ]
+          }]
+        };
+        break;
+      case 'subcategory':
+        // Load subcategory data if not already loaded
+        this.analyticsService.getBySubTypeName().subscribe({
+          next: (response) => {
+            if (response.data && response.data.length > 0) {
+              // Sort by amount in descending order
+              const sortedData = [...response.data].sort((a, b) => parseFloat(b.total_amount) - parseFloat(a.total_amount));
+              
+              const colors = [
+                'rgba(102, 126, 234, 0.8)',
+                'rgba(118, 75, 162, 0.8)',
+                'rgba(239, 68, 68, 0.8)',
+                'rgba(16, 185, 129, 0.8)',
+                'rgba(245, 158, 11, 0.8)',
+                'rgba(59, 130, 246, 0.8)',
+                'rgba(139, 92, 246, 0.8)',
+                'rgba(236, 72, 153, 0.8)',
+                'rgba(14, 165, 233, 0.8)',
+                'rgba(34, 197, 94, 0.8)'
+              ];
+              
+              this.pieChartData = {
+                labels: sortedData.map((item: any) => item.sub_type_name),
+                datasets: [{
+                  data: sortedData.map((item: any) => parseFloat(item.total_amount || 0)),
+                  backgroundColor: colors.slice(0, sortedData.length)
+                }]
+              };
+            }
+          },
+          error: (error) => {
+            console.error('Error loading by sub type name:', error);
+          }
+        });
+        break;
+      case 'category':
+        // Load category data if not already loaded
+        this.analyticsService.getBySubTypeCategory().subscribe({
+          next: (response) => {
+            if (response.data && response.data.length > 0) {
+              // Sort by amount in descending order
+              const sortedData = [...response.data].sort((a, b) => parseFloat(b.total_amount) - parseFloat(a.total_amount));
+              
+              const colors = [
+                'rgba(102, 126, 234, 0.8)',
+                'rgba(118, 75, 162, 0.8)',
+                'rgba(239, 68, 68, 0.8)',
+                'rgba(16, 185, 129, 0.8)',
+                'rgba(245, 158, 11, 0.8)',
+                'rgba(59, 130, 246, 0.8)',
+                'rgba(139, 92, 246, 0.8)',
+                'rgba(236, 72, 153, 0.8)',
+                'rgba(14, 165, 233, 0.8)',
+                'rgba(34, 197, 94, 0.8)'
+              ];
+              
+              this.pieChartData = {
+                labels: sortedData.map((item: any) => item.sub_type_category),
+                datasets: [{
+                  data: sortedData.map((item: any) => parseFloat(item.total_amount || 0)),
+                  backgroundColor: colors.slice(0, sortedData.length)
+                }]
+              };
+            }
+          },
+          error: (error) => {
+            console.error('Error loading by sub type category:', error);
+          }
+        });
+        break;
+    }
   }
 
   onTimeChartOptionChange() {

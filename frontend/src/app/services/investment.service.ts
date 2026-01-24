@@ -1,19 +1,14 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 
 const API_URL = 'http://localhost:3000/api';
 
-export interface Investment {
-  id?: number;
-  website_app_name: string;
-  investment_type: string;
-  sub_type_name?: string;
-  sub_type_category?: string;
-  amount: number;
-  investment_date: string;
-  created_at?: string;
-  updated_at?: string;
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  message?: string;
+  error?: string;
 }
 
 @Injectable({
@@ -22,23 +17,33 @@ export interface Investment {
 export class InvestmentService {
   constructor(private http: HttpClient) {}
 
-  getInvestments(): Observable<{ success: boolean; data: Investment[] }> {
-    return this.http.get<{ success: boolean; data: Investment[] }>(`${API_URL}/investments`);
+  getAll(): Observable<any[]> {
+    return this.http.get<ApiResponse<any[]>>(`${API_URL}/investments`).pipe(
+      map(response => response.success ? response.data : [])
+    );
   }
 
-  getInvestment(id: number): Observable<{ success: boolean; data: Investment }> {
-    return this.http.get<{ success: boolean; data: Investment }>(`${API_URL}/investments/${id}`);
+  getById(id: number): Observable<any> {
+    return this.http.get<ApiResponse<any>>(`${API_URL}/investments/${id}`).pipe(
+      map(response => response.success ? response.data : null)
+    );
   }
 
-  createInvestment(investment: Investment): Observable<{ success: boolean; data: Investment }> {
-    return this.http.post<{ success: boolean; data: Investment }>(`${API_URL}/investments`, investment);
+  create(data: any): Observable<any> {
+    return this.http.post<ApiResponse<any>>(`${API_URL}/investments`, data).pipe(
+      map(response => response.success ? response.data : null)
+    );
   }
 
-  updateInvestment(id: number, investment: Investment): Observable<{ success: boolean; data: Investment }> {
-    return this.http.put<{ success: boolean; data: Investment }>(`${API_URL}/investments/${id}`, investment);
+  update(id: number, data: any): Observable<any> {
+    return this.http.put<ApiResponse<any>>(`${API_URL}/investments/${id}`, data).pipe(
+      map(response => response.success ? response.data : null)
+    );
   }
 
-  deleteInvestment(id: number): Observable<{ success: boolean; message: string }> {
-    return this.http.delete<{ success: boolean; message: string }>(`${API_URL}/investments/${id}`);
+  delete(id: number): Observable<any> {
+    return this.http.delete<ApiResponse<any>>(`${API_URL}/investments/${id}`).pipe(
+      map(response => response.success ? response.data : null)
+    );
   }
 }
