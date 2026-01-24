@@ -293,6 +293,71 @@ export class ImportDataComponent implements OnInit {
     const lines = csvText.split('\n');
     this.parsedData = [];
 
+    // Check if this is the new MFPorfolioData.csv format by looking for header keywords
+    const isMfPortfolioFormat = csvText.toLowerCase().includes('fund') && 
+                                csvText.toLowerCase().includes('scheme') && 
+                                csvText.toLowerCase().includes('value at cost');
+    
+    if (isMfPortfolioFormat) {
+      // Parse MFPorfolioData.csv format
+      this.parseMfPortfolioFormat(lines);
+    } else {
+      // Parse the original format
+      this.parseOriginalFormat(lines);
+    }
+  }
+
+  private parseMfPortfolioFormat(lines: string[]) {
+    // Find the header line (first line typically contains the headers)
+    const headerLine = lines[0];
+    const headers = this.parseCSVLine(headerLine);
+    
+    // Identify column indices
+    const fundColIndex = headers.findIndex(h => h.toLowerCase().includes('fund'));
+    const schemeColIndex = headers.findIndex(h => h.toLowerCase().includes('scheme'));
+    const valueAtCostColIndex = headers.findIndex(h => h.toLowerCase().includes('value at cost'));
+    const categoryColIndex = headers.findIndex(h => h.toLowerCase().includes('category'));
+    const subCategoryColIndex = headers.findIndex(h => h.toLowerCase().includes('sub category'));
+    
+    // Parse data rows starting from line 1 (skip header)
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      const fields = this.parseCSVLine(line);
+      
+      // Check if we have enough fields and the required fields exist
+      if (fields.length > Math.max(fundColIndex, schemeColIndex, valueAtCostColIndex) &&
+          fields[schemeColIndex] && 
+          fields[valueAtCostColIndex]) {
+        
+        const schemeName = fields[schemeColIndex]?.trim();
+        const valueAtCost = fields[valueAtCostColIndex]?.trim();
+        const fundHouse = fundColIndex >= 0 ? fields[fundColIndex]?.trim() : '';
+        const category = categoryColIndex >= 0 ? fields[categoryColIndex]?.trim() : '';
+        const subCategory = subCategoryColIndex >= 0 ? fields[subCategoryColIndex]?.trim() : '';
+
+        // Skip if value at cost is not a number or if scheme name is empty
+        if (!schemeName || !valueAtCost || isNaN(parseFloat(valueAtCost))) {
+          continue;
+        }
+
+        // Clean up the scheme name to extract AMC and actual scheme name
+        const { amcName, schemeNameWithoutAMC } = this.extractAMCAndScheme(schemeName);
+
+        this.parsedData.push({
+          folioNo: '', // No folio number in this format
+          originalSchemeName: schemeName,
+          schemeName: schemeName,
+          presentValue: parseFloat(valueAtCost),
+          subTypeName: amcName || fundHouse || 'Unknown AMC', // Use fund house if AMC not found
+          subTypeCategory: schemeNameWithoutAMC || subCategory || category || 'Uncategorized' // Prioritize extracted scheme name
+        });
+      }
+    }
+  }
+
+  private parseOriginalFormat(lines: string[]) {
     // Find the header line containing "Folio No", "Scheme Name", "Invested Amt.", "Present Value"
     let headerIndex = -1;
     for (let i = 0; i < lines.length; i++) {
