@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { InvestmentService } from '../../services/investment.service';
+import { CategoryService, SubTypeName, Category } from '../../services/category.service';
 
 @Component({
   selector: 'app-import-data',
@@ -100,7 +101,10 @@ export class ImportDataComponent implements OnInit {
     'JM' // This is kept but will only match if "JM Financial" doesn't match first
   ];
 
-  constructor(private investmentService: InvestmentService) {}
+  constructor(
+    private investmentService: InvestmentService,
+    private categoryService: CategoryService
+  ) {}
 
   async ngOnInit() {
     await this.loadExistingData();
@@ -433,6 +437,59 @@ export class ImportDataComponent implements OnInit {
   }
 
   private async processParsedData() {
+    // First, collect all unique sub-type names and categories
+    const uniqueSubTypeNames = new Map<string, string>(); // name -> investment_type
+    const uniqueCategories = new Map<string, {category: string, investment_type: string}>(); // category -> {category, investment_type}
+    
+    // Collect unique values from parsed data
+    for (const record of this.parsedData) {
+      if (record.subTypeName && !uniqueSubTypeNames.has(record.subTypeName)) {
+        uniqueSubTypeNames.set(record.subTypeName, this.investmentType);
+      }
+      if (record.subTypeCategory && !uniqueCategories.has(record.subTypeCategory)) {
+        uniqueCategories.set(record.subTypeCategory, {
+          category: record.subTypeCategory,
+          investment_type: this.investmentType
+        });
+      }
+    }
+    
+    // Create sub-type names in database
+    for (const [name, investmentType] of uniqueSubTypeNames.entries()) {
+      try {
+        const subTypeName: SubTypeName = {
+          name: name,
+          investment_type: investmentType
+        };
+        await this.categoryService.createSubTypeName(subTypeName).toPromise();
+        console.log(`Created sub-type name: ${name}`);
+      } catch (error: any) {
+        // Handle duplicate entry error gracefully
+        if (error.status !== 409) { // 409 is conflict/duplicate
+          console.error(`Error creating sub-type name ${name}:`, error);
+        }
+      }
+    }
+    
+    // Create categories in database
+    for (const categoryData of uniqueCategories.values()) {
+      try {
+        const category: Category = {
+          category: categoryData.category,
+          investment_type: categoryData.investment_type,
+          sub_type_name_id: null
+        };
+        await this.categoryService.createCategory(category).toPromise();
+        console.log(`Created category: ${categoryData.category}`);
+      } catch (error: any) {
+        // Handle duplicate entry error gracefully
+        if (error.status !== 409) { // 409 is conflict/duplicate
+          console.error(`Error creating category ${categoryData.category}:`, error);
+        }
+      }
+    }
+    
+    // Process investments
     for (let i = 0; i < this.parsedData.length; i++) {
       const record = this.parsedData[i];
       this.uploadProgress = Math.floor(((i + 1) / this.parsedData.length) * 100);
