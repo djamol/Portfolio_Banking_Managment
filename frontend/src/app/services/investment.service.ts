@@ -23,6 +23,18 @@ export class InvestmentService {
     );
   }
 
+  getByCriteria(platform: string, subTypeName: string, subTypeCategory: string): Observable<any[]> {
+    return this.http.get<ApiResponse<any[]>>(`${API_URL}/investments/search`, {
+      params: {
+        website_app_name: platform,
+        sub_type_name: subTypeName,
+        sub_type_category: subTypeCategory
+      }
+    }).pipe(
+      map(response => response.success ? response.data : [])
+    );
+  }
+
   getById(id: number): Observable<any> {
     return this.http.get<ApiResponse<any>>(`${API_URL}/investments/${id}`).pipe(
       map(response => response.success ? response.data : null)

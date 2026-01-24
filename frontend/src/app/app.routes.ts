@@ -3,6 +3,7 @@ import { InvestmentListComponent } from './components/investment-list/investment
 import { AnalyticsComponent } from './components/analytics/analytics.component';
 import { InvestmentSummaryComponent } from './components/investment-summary/investment-summary.component';
 import { InvestmentFormComponent } from './components/investment-form/investment-form.component';
+import { ImportDataComponent } from './components/import-data/import-data.component';
 
 export const routes: Routes = [
   { path: '', redirectTo: '/investments', pathMatch: 'full' },
@@ -10,5 +11,6 @@ export const routes: Routes = [
   { path: 'investments/new', component: InvestmentFormComponent },
   { path: 'investments/edit/:id', component: InvestmentFormComponent },
   { path: 'analytics', component: AnalyticsComponent },
-  { path: 'investment-summary', component: InvestmentSummaryComponent }
+  { path: 'investment-summary', component: InvestmentSummaryComponent },
+  { path: 'import-data', component: ImportDataComponent }
 ];

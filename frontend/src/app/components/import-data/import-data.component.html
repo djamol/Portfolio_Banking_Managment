@@ -1,1 +1,150 @@
-<p>import-data works!</p>
+<div class="import-container">
+  <h2>Import Investment Data</h2>
+  
+  <div class="import-form">
+    <div class="form-group">
+      <label for="platform">Platform/Website/App *</label>
+      <input 
+        type="text" 
+        id="platform" 
+        [(ngModel)]="platform" 
+        placeholder="e.g., Groww, Kuvera, Zerodha Coin"
+        class="form-control">
+    </div>
+    
+    <div class="form-group">
+      <label for="investmentType">Investment Type *</label>
+      <select 
+        id="investmentType" 
+        [(ngModel)]="investmentType" 
+        class="form-control">
+        <option value="">Select Investment Type</option>
+        <option value="Mutual Fund">Mutual Fund</option>
+        <option value="Stock">Stock</option>
+        <option value="ETF">ETF</option>
+        <option value="Bond">Bond</option>
+        <option value="FD">FD</option>
+        <option value="Crypto">Crypto</option>
+        <option value="PPF">PPF</option>
+        <option value="Saving Bank Balance">Saving Bank Balance</option>
+      </select>
+    </div>
+    
+    <div class="form-group" *ngIf="investmentType === 'Mutual Fund'">
+      <label for="csvFile">Upload Mutual Fund Statement (CSV) *</label>
+      <input 
+        type="file" 
+        id="csvFile" 
+        (change)="onFileSelected($event)"
+        accept=".csv"
+        class="form-control">
+      <small class="form-text">Only CSV files are supported for Mutual Funds</small>
+    </div>
+    
+    <div class="form-group" *ngIf="investmentType !== 'Mutual Fund'">
+      <label for="genericFile">Upload File *</label>
+      <input 
+        type="file" 
+        id="genericFile" 
+        (change)="onFileSelected($event)"
+        accept=".csv,.pdf"
+        class="form-control">
+      <small class="form-text">Supports CSV and PDF files</small>
+    </div>
+    
+    <div class="form-group" *ngIf="selectedFile">
+      <p class="file-info">Selected file: {{ selectedFile.name }}</p>
+    </div>
+    
+    <div class="form-actions">
+      <button 
+        type="button" 
+        (click)="previewDataImport()" 
+        [disabled]="!platform || !investmentType || !selectedFile || isUploading"
+        class="btn btn-secondary"
+        style="margin-right: 10px;">
+        Preview Data
+      </button>
+      <button 
+        type="button" 
+        (click)="importData()" 
+        [disabled]="!platform || !investmentType || !selectedFile || isUploading || !showPreview"
+        class="btn btn-primary">
+        <span *ngIf="!isUploading">Import Data</span>
+        <span *ngIf="isUploading">Importing... {{ uploadProgress }}%</span>
+      </button>
+    </div>
+    
+    <div class="progress-bar" *ngIf="isUploading">
+      <div 
+        class="progress-fill" 
+        [style.width.%]="uploadProgress"
+        [style.backgroundColor]="uploadProgress === 100 ? '#28a745' : '#007bff'">
+      </div>
+    </div>
+  </div>
+  
+  <div 
+    class="alert" 
+    [class.alert-success]="messageType === 'success'"
+    [class.alert-error]="messageType === 'error'"
+    [class.alert-info]="messageType === 'info'"
+    *ngIf="message">
+    {{ message }}
+  </div>
+  
+  <!-- Preview Table -->
+  <div class="preview-section" *ngIf="showPreview && previewData.length > 0">
+    <h3>Data Preview ({{ previewData.length }} records)</h3>
+    <div class="table-container">
+      <table class="preview-table">
+        <thead>
+          <tr>
+            <th>Folio No</th>
+            <th>Original Scheme Name</th>
+            <th>Extracted AMC (Sub Type)</th>
+            <th>Extracted Scheme (Category)</th>
+            <th>Present Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let record of previewData; let i = index">
+            <td>{{ record.folioNo || 'N/A' }}</td>
+            <td>{{ record.originalSchemeName }}</td>
+            <td>{{ record.extractedAMC }}</td>
+            <td>{{ record.extractedScheme }}</td>
+            <td>₹{{ record.presentValue | number:'1.2-2' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="preview-actions">
+      <button 
+        type="button" 
+        (click)="showPreview = false; previewData = [];" 
+        class="btn btn-outline">
+        Cancel & Edit
+      </button>
+      <button 
+        type="button" 
+        (click)="importData()" 
+        [disabled]="isUploading"
+        class="btn btn-primary">
+        Confirm & Import All
+      </button>
+    </div>
+  </div>
+  
+  <div class="instructions" *ngIf="investmentType === 'Mutual Fund'">
+    <h3>Instructions for Mutual Fund Imports:</h3>
+    <ul>
+      <li>Only CSV files are supported for mutual fund imports</li>
+      <li>The CSV should contain columns like "Folio No", "Scheme Name", "Present Value"</li>
+      <li>The system will automatically extract the AMC name as "Sub Type Name"</li>
+      <li>The scheme name (without AMC) will be set as "Sub Type Category"</li>
+      <li>If an investment with the same Platform, Sub Type Name, and Sub Type Category already exists, its value will be updated</li>
+      <li>Comprehensive AMC recognition including: Aditya Birla, Axis, HDFC, ICICI Prudential, SBI, Kotak, Nippon India, UTI, and many more</li>
+      <li>Properly handles complex scheme names like "HSBC Multi Cap Fund" (extracts HSBC as AMC and Multi Cap Fund as scheme)</li>
+    </ul>
+  </div>
+</div>

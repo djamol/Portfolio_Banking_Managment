@@ -17,6 +17,40 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Search investments by criteria
+router.get('/search', async (req, res) => {
+  try {
+    const { website_app_name, sub_type_name, sub_type_category } = req.query;
+    const pool = db.getPool();
+    
+    let query = 'SELECT * FROM investments WHERE 1=1';
+    const params = [];
+    
+    if (website_app_name) {
+      query += ' AND website_app_name = ?';
+      params.push(website_app_name);
+    }
+    
+    if (sub_type_name) {
+      query += ' AND sub_type_name = ?';
+      params.push(sub_type_name);
+    }
+    
+    if (sub_type_category) {
+      query += ' AND sub_type_category = ?';
+      params.push(sub_type_category);
+    }
+    
+    query += ' ORDER BY investment_date DESC, created_at DESC';
+    
+    const [rows] = await pool.query(query, params);
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Error searching investments:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Get investment by ID
 router.get('/:id', async (req, res) => {
   try {
