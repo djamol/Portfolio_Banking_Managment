@@ -54,6 +54,8 @@ export class ImportDataComponent implements OnInit {
     'BOI AXA', 
     'BNP Paribas', 
     'SBI Life',
+    'Jio BlackRock',
+    'JioBlackRock',
     'DSP BlackRock',
     
     // Medium length names
