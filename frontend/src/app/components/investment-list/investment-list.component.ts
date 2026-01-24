@@ -289,7 +289,7 @@ export class InvestmentListComponent implements OnInit {
   openEditModal(investment: any) {
     this.currentInvestment = {
       ...investment,
-      investment_date: new Date(investment.investment_date).toISOString().split('T')[0]
+      investment_date: new Date().toISOString().split('T')[0]  // Auto-set to current date when editing
     };
     this.isEditing = true;
     this.showModal = true;

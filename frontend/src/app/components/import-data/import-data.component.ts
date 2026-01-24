@@ -303,12 +303,78 @@ export class ImportDataComponent implements OnInit {
                                 csvText.toLowerCase().includes('scheme') && 
                                 csvText.toLowerCase().includes('value at cost');
     
-    if (isMfPortfolioFormat) {
+    // Check if this is the Dhan App format by looking for header keywords
+    const isDhanAppFormat = csvText.toLowerCase().includes('name') && 
+                            csvText.toLowerCase().includes('current value') &&
+                            !csvText.toLowerCase().includes('folio no'); // Exclude if it has folio no (would be original format)
+    
+    if (isDhanAppFormat) {
+      // Parse Dhan App format
+      this.parseDhanAppFormat(lines);
+    } else if (isMfPortfolioFormat) {
       // Parse MFPorfolioData.csv format
       this.parseMfPortfolioFormat(lines);
     } else {
       // Parse the original format
       this.parseOriginalFormat(lines);
+    }
+  }
+
+  private parseDhanAppFormat(lines: string[]) {
+    // Find the header line (first line typically contains the headers)
+    const headerLine = lines[0];
+    const headers = this.parseCSVLine(headerLine);
+    
+    // Identify column indices
+    const nameColIndex = headers.findIndex(h => h.toLowerCase().includes('name'));
+    const currentValueColIndex = headers.findIndex(h => h.toLowerCase().includes('current value'));
+    const navColIndex = headers.findIndex(h => h.toLowerCase().includes('nav'));
+    const investmentColIndex = headers.findIndex(h => h.toLowerCase().includes('investment'));
+    const plColIndex = headers.findIndex(h => h.toLowerCase().includes('p&l'));
+    
+    // Parse data rows starting from line 1 (skip header)
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      const fields = this.parseCSVLine(line);
+      
+      // Check if we have enough fields and the required fields exist
+      if (fields.length > Math.max(nameColIndex, currentValueColIndex) &&
+          fields[nameColIndex] && 
+          fields[currentValueColIndex]) {
+        
+        const schemeName = fields[nameColIndex]?.trim();
+        const currentValue = fields[currentValueColIndex]?.trim();
+        const navValue = navColIndex >= 0 ? fields[navColIndex]?.trim() : '';
+        const investmentValue = investmentColIndex >= 0 ? fields[investmentColIndex]?.trim() : '';
+        const plValue = plColIndex >= 0 ? fields[plColIndex]?.trim() : '';
+
+        // Skip if current value is not a number or if scheme name is empty
+        if (!schemeName || !currentValue) {
+          continue;
+        }
+
+        // Remove commas and convert to number for currentValue
+        const currentValueNum = parseFloat(currentValue.replace(/,/g, ''));
+        
+        // Skip if current value is not a valid number
+        if (isNaN(currentValueNum) || currentValueNum <= 0) {
+          continue;
+        }
+
+        // Clean up the scheme name to extract AMC and actual scheme name
+        const { amcName, schemeNameWithoutAMC } = this.extractAMCAndScheme(schemeName);
+
+        this.parsedData.push({
+          folioNo: '', // No folio number in this format
+          originalSchemeName: schemeName,
+          schemeName: schemeName,
+          presentValue: currentValueNum,
+          subTypeName: amcName || 'Unknown AMC', // Use extracted AMC or default
+          subTypeCategory: schemeNameWithoutAMC || 'Uncategorized' // Use extracted scheme name or default
+        });
+      }
     }
   }
 
