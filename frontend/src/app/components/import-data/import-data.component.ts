@@ -411,9 +411,12 @@ export class ImportDataComponent implements OnInit {
       schemeWithoutAMC = schemeWithoutAMC.replace(/\s+[-–—]+$/, '').trim(); // Remove any trailing dashes
       schemeWithoutAMC = schemeWithoutAMC.replace(/\s+$/, '').trim(); // Remove trailing spaces
       
+      // Normalize the scheme category to group similar fund types
+      const normalizedScheme = this.normalizeFundCategory(schemeWithoutAMC);
+      
       return {
         amcName: foundAMC,
-        schemeNameWithoutAMC: schemeWithoutAMC
+        schemeNameWithoutAMC: normalizedScheme
       };
     } else {
       // If no known AMC found, try to extract the first few words as potential AMC
@@ -422,18 +425,171 @@ export class ImportDataComponent implements OnInit {
         // Take the first two words as potential AMC name
         const potentialAMC = parts.slice(0, 2).join(' ');
         const remainingScheme = parts.slice(2).join(' ');
+        // Normalize the remaining scheme name
+        const normalizedScheme = this.normalizeFundCategory(remainingScheme.trim());
         return {
           amcName: potentialAMC,
-          schemeNameWithoutAMC: remainingScheme.trim()
+          schemeNameWithoutAMC: normalizedScheme
         };
       } else {
         // If only one word, treat it as the scheme name and use a generic placeholder for AMC
+        // Normalize the scheme name
+        const normalizedScheme = this.normalizeFundCategory(cleanedSchemeName);
         return {
           amcName: 'Unknown AMC',
-          schemeNameWithoutAMC: cleanedSchemeName
+          schemeNameWithoutAMC: normalizedScheme
         };
       }
     }
+  }
+  
+  /**
+   * Normalize fund categories to group similar fund types
+   * This helps in consolidating similar funds like "Mid Cap Fund", "Midcap Fund", "Mid Cap Fund - Regular Plan", etc.
+   */
+  private normalizeFundCategory(schemeName: string): string {
+    if (!schemeName) return schemeName;
+    
+    // Convert to lowercase for comparison
+    const lowerSchemeName = schemeName.toLowerCase().trim();
+    
+    // Define patterns and their normalized equivalents
+    const normalizationPatterns: { [key: string]: string } = {
+      // Mid Cap variations
+      'mid cap fund': 'Mid Cap Fund',
+      'midcap fund': 'Mid Cap Fund',
+      'mid cap fund - regular plan': 'Mid Cap Fund',
+      'midcap fund - regular plan': 'Mid Cap Fund',
+      'mid cap fund - growth': 'Mid Cap Fund',
+      'midcap fund - growth': 'Mid Cap Fund',
+      
+      // Large Cap variations
+      'large cap fund': 'Large Cap Fund',
+      'largecap fund': 'Large Cap Fund',
+      'large cap fund - regular plan': 'Large Cap Fund',
+      'largecap fund - regular plan': 'Large Cap Fund',
+      'large cap fund - growth': 'Large Cap Fund',
+      'largecap fund - growth': 'Large Cap Fund',
+      
+      // Small Cap variations
+      'small cap fund': 'Small Cap Fund',
+      'smallcap fund': 'Small Cap Fund',
+      'small cap fund - regular plan': 'Small Cap Fund',
+      'smallcap fund - regular plan': 'Small Cap Fund',
+      'small cap fund - growth': 'Small Cap Fund',
+      'smallcap fund - growth': 'Small Cap Fund',
+      
+      // Nifty 50 variations
+      'nifty 50 index fund': 'Nifty 50 Index Fund',
+      'nifty50 index fund': 'Nifty 50 Index Fund',
+      'nifty fifty index fund': 'Nifty 50 Index Fund',
+      
+      // Flexi Cap variations
+      'flexi cap fund': 'Flexi Cap Fund',
+      'flexicap fund': 'Flexi Cap Fund',
+      'flexi cap fund - regular plan': 'Flexi Cap Fund',
+      'flexicap fund - regular plan': 'Flexi Cap Fund',
+      
+      // Multi Cap variations
+      'multi cap fund': 'Multi Cap Fund',
+      'multicap fund': 'Multi Cap Fund',
+      'multi cap fund - regular plan': 'Multi Cap Fund',
+      'multicap fund - regular plan': 'Multi Cap Fund',
+      
+      // Aggressive Hybrid variations
+      'aggressive hybrid fund': 'Aggressive Hybrid Fund',
+      'aggressive hybrid fund - growth': 'Aggressive Hybrid Fund',
+      
+      // Dividend Yield variations
+      'dividend yield fund': 'Dividend Yield Fund',
+      
+      // Focused Fund variations
+      'focused fund': 'Focused Fund',
+      'focused fund - growth': 'Focused Fund',
+      
+      // Power & Infrastructure variations
+      'power & infra fund': 'Power & Infrastructure Fund',
+      'power & infrastructure fund': 'Power & Infrastructure Fund',
+      'power and infra fund': 'Power & Infrastructure Fund',
+      'power infrastructure fund': 'Power & Infrastructure Fund',
+      
+      // Next 50 variations
+      'nifty next 50 index fund': 'Nifty Next 50 Index Fund',
+      'nifty next50 index fund': 'Nifty Next 50 Index Fund',
+      
+      // Sectoral variations
+      'banking fund': 'Banking Fund',
+      'technology fund': 'Technology Fund',
+      'healthcare fund': 'Healthcare Fund',
+      
+      // Tax Saving variations
+      'tax saving fund': 'Tax Saving Fund',
+      'elss fund': 'Tax Saving Fund',
+      
+      // Liquid variations
+      'liquid fund': 'Liquid Fund',
+      'liquid fund - regular plan': 'Liquid Fund',
+      
+      // Equity variations
+      'equity fund': 'Equity Fund',
+      'equity fund - regular plan': 'Equity Fund',
+      
+      // Debt variations
+      'debt fund': 'Debt Fund',
+      'debt fund - regular plan': 'Debt Fund',
+      
+      // Balanced/Hybrid variations
+      'balanced fund': 'Balanced Fund',
+      'balanced advantage fund': 'Balanced Advantage Fund',
+      'hybrid fund': 'Hybrid Fund',
+      
+      // Index variations
+      'index fund': 'Index Fund',
+      
+      // International variations
+      'international fund': 'International Fund',
+      'global fund': 'International Fund',
+      'world fund': 'International Fund',
+      
+      // Commodity variations
+      'gold fund': 'Commodity Fund',
+      'commodity fund': 'Commodity Fund',
+      'metal fund': 'Commodity Fund',
+      'silver fund': 'Commodity Fund',
+    };
+    
+    // Check for exact matches first
+    if (normalizationPatterns[lowerSchemeName]) {
+      return normalizationPatterns[lowerSchemeName];
+    }
+    
+    // Check for partial matches within the scheme name
+    for (const [pattern, normalized] of Object.entries(normalizationPatterns)) {
+      if (lowerSchemeName.includes(pattern)) {
+        // Return the normalized version of the matched pattern
+        return normalized;
+      }
+    }
+    
+    // If no specific pattern matched, try to normalize based on common endings
+    if (lowerSchemeName.endsWith(' - regular plan') || lowerSchemeName.endsWith(' - direct plan') ||
+        lowerSchemeName.endsWith(' - growth') || lowerSchemeName.endsWith(' - dividend')) {
+      // Remove common endings that don't affect the fund category
+      const cleaned = lowerSchemeName
+        .replace(/\s*-\s*regular\s*plan\s*$/i, '')
+        .replace(/\s*-\s*direct\s*plan\s*$/i, '')
+        .replace(/\s*-\s*growth\s*$/i, '')
+        .replace(/\s*-\s*dividend\s*$/i, '')
+        .replace(/\s*-\s*income\s*option\s*$/i, '')
+        .replace(/\s*-\s*wealth\s*option\s*$/i, '')
+        .trim();
+      
+      // Recursively normalize the cleaned version
+      return this.normalizeFundCategory(cleaned);
+    }
+    
+    // If still no match, return the original name capitalized appropriately
+    return schemeName.charAt(0).toUpperCase() + schemeName.slice(1);
   }
 
   private async processParsedData() {
