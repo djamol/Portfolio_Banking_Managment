@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
-import { AnalyticsService, DeltaRow } from '../../services/analytics.service';
+import { AnalyticsService, DeltaRow, InsightsResponse } from '../../services/analytics.service';
 import { ChartConfiguration, ChartOptions, ChartType } from 'chart.js';
 import { BaseChartDirective } from 'ng2-charts';
 
@@ -318,6 +318,20 @@ export class AnalyticsComponent implements OnInit {
   topGainers: DeltaRow[] = [];
   topLosers: DeltaRow[] = [];
 
+  // Filters (UX)
+  filterPlatform = '';
+  filterType = '';
+  filterFrom = '';
+  filterTo = '';
+  applyingFilters = false;
+
+  // Insights + Planning
+  insightsLoading = false;
+  insights: InsightsResponse | null = null;
+
+  targetAllocationPct: Record<string, number> = {};
+  rebalanceRows: Array<{ investment_type: string; currentValue: number; currentPct: number; targetPct: number; targetValue: number; suggestion: number }> = [];
+
   constructor(private analyticsService: AnalyticsService) {}
 
   ngOnInit() {
@@ -628,7 +642,7 @@ export class AnalyticsComponent implements OnInit {
     });
 
     // Advance: Portfolio value series from snapshots (line chart)
-    this.analyticsService.getValueSeries().subscribe({
+    this.analyticsService.getValueSeriesFiltered({ from: this.filterFrom || undefined, to: this.filterTo || undefined, platform: this.filterPlatform || undefined, type: this.filterType || undefined }).subscribe({
       next: (response) => {
         if (response.data && response.data.length > 0) {
           this.valueSeriesChartData = {
@@ -661,7 +675,7 @@ export class AnalyticsComponent implements OnInit {
     });
 
     // Advance: Latest allocation by type (doughnut chart)
-    this.analyticsService.getAllocationLatest().subscribe({
+    this.analyticsService.getAllocationLatestFiltered({ platform: this.filterPlatform || undefined }).subscribe({
       next: (response) => {
         if (response.data && response.data.length > 0) {
           const sortedData = [...response.data].sort((a, b) => parseFloat(String(b.value)) - parseFloat(String(a.value)));
@@ -672,12 +686,33 @@ export class AnalyticsComponent implements OnInit {
               data: sortedData.map((r) => typeof r.value === 'string' ? parseFloat(r.value) : Number(r.value) || 0)
             }]
           };
+
+          // refresh rebalance planner from latest allocation
+          this.ensureTargetsInitialized();
+          this.computeRebalanceRows();
         }
         checkComplete();
       },
       error: (error) => {
         console.error('Error loading allocation latest:', error);
         this.advanceErrorMessage = this.advanceErrorMessage || 'Advance analytics: failed to load latest allocation.';
+        checkComplete();
+      }
+    });
+
+    // Insights panel (hygiene + risk)
+    this.insightsLoading = true;
+    this.analyticsService.getInsights().subscribe({
+      next: (response) => {
+        this.insights = response.data;
+        this.insightsLoading = false;
+        checkComplete();
+      },
+      error: (error) => {
+        console.error('Error loading insights:', error);
+        this.insightsLoading = false;
+        // Don't fail whole page; show in advanceErrorMessage
+        this.advanceErrorMessage = this.advanceErrorMessage || 'Insights: failed to load.';
         checkComplete();
       }
     });
@@ -970,5 +1005,56 @@ export class AnalyticsComponent implements OnInit {
       return Number.isFinite(n) ? n : 0;
     }
     return 0;
+  }
+
+  applyFilters() {
+    this.applyingFilters = true;
+    // Reload all analytics using the same method (keeps existing behavior consistent)
+    this.loadAnalytics();
+    setTimeout(() => {
+      this.applyingFilters = false;
+    }, 300);
+  }
+
+  private ensureTargetsInitialized() {
+    // Initialize targets from localStorage or defaults (equal-weight)
+    const saved = localStorage.getItem('targetAllocationPct');
+    if (saved) {
+      try {
+        this.targetAllocationPct = JSON.parse(saved) || {};
+      } catch {
+        this.targetAllocationPct = {};
+      }
+    }
+
+    const labels = (this.allocationLatestChartData.labels || []) as string[];
+    if (labels.length === 0) return;
+
+    const missing = labels.filter((t) => typeof this.targetAllocationPct[t] !== 'number');
+    if (missing.length) {
+      const even = Math.floor((100 / labels.length) * 10) / 10;
+      for (const t of missing) this.targetAllocationPct[t] = even;
+    }
+    this.persistTargets();
+  }
+
+  persistTargets() {
+    localStorage.setItem('targetAllocationPct', JSON.stringify(this.targetAllocationPct));
+    this.computeRebalanceRows();
+  }
+
+  computeRebalanceRows() {
+    const labels = (this.allocationLatestChartData.labels || []) as string[];
+    const values = (this.allocationLatestChartData.datasets?.[0]?.data || []) as number[];
+    const total = values.reduce((a, b) => a + (Number(b) || 0), 0) || 0;
+
+    this.rebalanceRows = labels.map((t, idx) => {
+      const currentValue = Number(values[idx]) || 0;
+      const currentPct = total > 0 ? (currentValue / total) * 100 : 0;
+      const targetPct = Number(this.targetAllocationPct[t]) || 0;
+      const targetValue = (targetPct / 100) * total;
+      const suggestion = targetValue - currentValue;
+      return { investment_type: t, currentValue, currentPct, targetPct, targetValue, suggestion };
+    }).sort((a, b) => Math.abs(b.suggestion) - Math.abs(a.suggestion));
   }
 }

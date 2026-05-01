@@ -97,6 +97,29 @@
       <strong>Note:</strong> {{ advanceErrorMessage }}
     </div>
 
+    <div class="filters-bar">
+      <div class="filters-title">Filters</div>
+      <label>
+        Platform
+        <input [(ngModel)]="filterPlatform" placeholder="e.g. ICICI Direct" class="filter-input">
+      </label>
+      <label>
+        Type
+        <input [(ngModel)]="filterType" placeholder="e.g. Mutual Fund" class="filter-input">
+      </label>
+      <label>
+        From
+        <input type="date" [(ngModel)]="filterFrom" class="date-input">
+      </label>
+      <label>
+        To
+        <input type="date" [(ngModel)]="filterTo" class="date-input">
+      </label>
+      <button class="btn btn-primary" (click)="applyFilters()" [disabled]="applyingFilters">
+        {{ applyingFilters ? 'Applying...' : 'Apply' }}
+      </button>
+    </div>
+
     <div class="advance-grid">
       <div class="advance-card">
         <h4>Portfolio Value (Snapshots)</h4>
@@ -123,6 +146,86 @@
         </div>
         <div *ngIf="!allocationLatestChartData.labels || allocationLatestChartData.labels.length === 0" style="text-align: center; padding: 24px; color: #6b7280;">
           <p>No allocation data yet</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="advance-card" style="margin-top: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <h4 style="margin: 0;">Insights (Hygiene + Risk)</h4>
+        <div style="color:#64748b; font-size: 13px;" *ngIf="insights && insights.latestDate">
+          Latest snapshot: <strong>{{ insights.latestDate }}</strong>
+        </div>
+      </div>
+
+      <div *ngIf="insightsLoading" style="padding: 12px; color: #64748b;">Loading insights…</div>
+
+      <div *ngIf="!insightsLoading && insights" class="insights-grid">
+        <div class="insight-item">
+          <div class="label">Snapshot freshness</div>
+          <div class="big">{{ insights.daysSinceLatestSnapshot === null ? '—' : insights.daysSinceLatestSnapshot + ' days' }}</div>
+        </div>
+        <div class="insight-item" *ngIf="insights.portfolio">
+          <div class="label">Portfolio change vs previous</div>
+          <div class="big">
+            ₹{{ toNumber(insights.portfolio.changeAbs) | number:'1.2-2' }}
+            <span style="color:#64748b; font-size: 13px;" *ngIf="insights.portfolio.changePct !== null">
+              ({{ toNumber(insights.portfolio.changePct) | number:'1.2-2' }}%)
+            </span>
+          </div>
+        </div>
+        <div class="insight-item" *ngIf="insights.portfolio">
+          <div class="label">Latest total</div>
+          <div class="big">₹{{ toNumber(insights.portfolio.latestValue) | number:'1.2-2' }}</div>
+        </div>
+      </div>
+
+      <div *ngIf="!insightsLoading && insights && insights.topHoldings && insights.topHoldings.length" style="margin-top: 12px;">
+        <h5 style="margin: 8px 0;">Top holdings (concentration)</h5>
+        <div class="delta-table">
+          <div class="delta-row delta-head">
+            <div>Holding</div><div class="right">Share</div>
+          </div>
+          <div class="delta-row" *ngFor="let h of insights.topHoldings">
+            <div class="name">
+              <div class="title">{{ h.sub_type_name || h.website_app_name }}</div>
+              <div class="meta">{{ h.investment_type }} • {{ h.sub_type_category || '—' }}</div>
+            </div>
+            <div class="right">
+              <div style="font-weight:700;">{{ toNumber(h.pct_of_portfolio) | number:'1.1-1' }}%</div>
+              <div style="font-size: 12px; color:#64748b;">₹{{ toNumber(h.amount) | number:'1.2-2' }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="advance-card" style="margin-top: 16px;">
+      <h4 style="margin: 0 0 10px 0;">Planning: Target Allocation + Rebalance</h4>
+      <div style="color:#64748b; font-size: 13px; margin-bottom: 10px;">
+        Set target % per type (saved locally in your browser).
+      </div>
+
+      <div *ngIf="!rebalanceRows.length" style="padding: 12px; color:#64748b;">Load allocation to see planner.</div>
+
+      <div *ngIf="rebalanceRows.length" class="delta-table">
+        <div class="delta-row delta-head">
+          <div>Type</div><div class="right">Target %</div>
+        </div>
+        <div class="delta-row" *ngFor="let r of rebalanceRows">
+          <div class="name">
+            <div class="title">{{ r.investment_type }}</div>
+            <div class="meta">
+              Current: ₹{{ r.currentValue | number:'1.2-2' }} ({{ r.currentPct | number:'1.1-1' }}%)
+              • Suggested: ₹{{ r.suggestion | number:'1.2-2' }}
+            </div>
+          </div>
+          <div class="right">
+            <input type="number" step="0.1" min="0" max="100"
+              [(ngModel)]="targetAllocationPct[r.investment_type]"
+              (change)="persistTargets()"
+              class="pct-input">
+          </div>
         </div>
       </div>
     </div>

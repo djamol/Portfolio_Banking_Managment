@@ -163,15 +163,47 @@ router.get('/growth', async (req, res) => {
 // Portfolio value over time from history snapshots (best for line chart)
 router.get('/value-series', async (req, res) => {
   try {
+    const from = req.query.from;
+    const to = req.query.to;
+    const platform = req.query.platform;
+    const investmentType = req.query.type;
+
     const pool = db.getPool();
-    const [rows] = await pool.query(`
+    const where = [];
+    const params = [];
+
+    if (from) {
+      where.push('ih.change_date >= ?');
+      params.push(from);
+    }
+    if (to) {
+      where.push('ih.change_date <= ?');
+      params.push(to);
+    }
+    if (platform) {
+      where.push('i.website_app_name = ?');
+      params.push(platform);
+    }
+    if (investmentType) {
+      where.push('i.investment_type = ?');
+      params.push(investmentType);
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const [rows] = await pool.query(
+      `
       SELECT
-        change_date,
-        SUM(amount) AS total_value
-      FROM investment_history
-      GROUP BY change_date
-      ORDER BY change_date ASC
-    `);
+        ih.change_date,
+        SUM(ih.amount) AS total_value
+      FROM investment_history ih
+      JOIN investments i ON i.id = ih.investment_id
+      ${whereSql}
+      GROUP BY ih.change_date
+      ORDER BY ih.change_date ASC
+      `,
+      params
+    );
     res.json({ success: true, data: rows });
   } catch (error) {
     console.error('Error fetching value series:', error);
@@ -182,7 +214,12 @@ router.get('/value-series', async (req, res) => {
 // Latest allocation by investment_type (donut/treemap)
 router.get('/allocation-latest', async (req, res) => {
   try {
+    const platform = req.query.platform;
     const pool = db.getPool();
+    const params = [];
+    const platformSql = platform ? 'WHERE i.website_app_name = ?' : '';
+    if (platform) params.push(platform);
+
     const [rows] = await pool.query(`
       WITH latest AS (
         SELECT investment_id, MAX(change_date) AS max_dt
@@ -197,12 +234,126 @@ router.get('/allocation-latest', async (req, res) => {
         ON ih.investment_id = l.investment_id AND ih.change_date = l.max_dt
       JOIN investments i
         ON i.id = ih.investment_id
+      ${platformSql}
       GROUP BY i.investment_type
       ORDER BY value DESC
-    `);
+    `, params);
     res.json({ success: true, data: rows });
   } catch (error) {
     console.error('Error fetching latest allocation:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Insights & hygiene signals: snapshot freshness, portfolio change, concentration risk
+router.get('/insights', async (req, res) => {
+  try {
+    const pool = db.getPool();
+
+    const [[latestRow]] = await pool.query(`
+      SELECT MAX(change_date) AS latest_date
+      FROM investment_history
+    `);
+
+    const latestDate = latestRow?.latest_date;
+    if (!latestDate) {
+      return res.json({
+        success: true,
+        data: {
+          latestDate: null,
+          daysSinceLatestSnapshot: null,
+          portfolio: null,
+          topHoldings: []
+        }
+      });
+    }
+
+    const [[prevRow]] = await pool.query(
+      `
+      SELECT MAX(change_date) AS prev_date
+      FROM investment_history
+      WHERE change_date < ?
+      `,
+      [latestDate]
+    );
+    const prevDate = prevRow?.prev_date || null;
+
+    const [[portfolioLatest]] = await pool.query(
+      `
+      SELECT SUM(amount) AS total_value
+      FROM investment_history
+      WHERE change_date = ?
+      `,
+      [latestDate]
+    );
+
+    let portfolioPrevValue = null;
+    if (prevDate) {
+      const [[portfolioPrev]] = await pool.query(
+        `
+        SELECT SUM(amount) AS total_value
+        FROM investment_history
+        WHERE change_date = ?
+        `,
+        [prevDate]
+      );
+      portfolioPrevValue = portfolioPrev?.total_value ?? null;
+    }
+
+    const [[freshness]] = await pool.query(
+      `
+      SELECT DATEDIFF(CURDATE(), ?) AS days_since
+      `,
+      [latestDate]
+    );
+
+    // Top holdings concentration at latest snapshot
+    const [topHoldings] = await pool.query(
+      `
+      SELECT
+        i.id AS investment_id,
+        i.website_app_name,
+        i.investment_type,
+        i.sub_type_name,
+        i.sub_type_category,
+        ih.amount,
+        (ih.amount / totals.total_value) * 100 AS pct_of_portfolio
+      FROM investment_history ih
+      JOIN investments i ON i.id = ih.investment_id
+      JOIN (
+        SELECT SUM(amount) AS total_value
+        FROM investment_history
+        WHERE change_date = ?
+      ) totals
+      WHERE ih.change_date = ?
+      ORDER BY ih.amount DESC
+      LIMIT 10
+      `,
+      [latestDate, latestDate]
+    );
+
+    const latestValue = portfolioLatest?.total_value ?? 0;
+    const prevValue = portfolioPrevValue;
+    const changeAbs = prevValue === null ? null : (latestValue - prevValue);
+    const changePct = prevValue === null || Number(prevValue) === 0 ? null : ((latestValue - prevValue) / prevValue) * 100;
+
+    res.json({
+      success: true,
+      data: {
+        latestDate,
+        prevDate,
+        daysSinceLatestSnapshot: freshness?.days_since ?? null,
+        portfolio: {
+          latestValue,
+          prevValue,
+          changeAbs,
+          changePct
+        },
+        topHoldings
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching insights:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
