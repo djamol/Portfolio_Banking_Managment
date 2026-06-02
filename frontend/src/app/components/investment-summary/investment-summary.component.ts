@@ -119,6 +119,7 @@ export class InvestmentSummaryComponent implements OnInit {
       let comparison = 0;
       switch (this.sortBy) {
         case 'amount':
+        case 'percentage':
           comparison = a.amount - b.amount;
           break;
         case 'investment_type':
@@ -226,6 +227,14 @@ export class InvestmentSummaryComponent implements OnInit {
   // Helper method for calculating min value in template
   getMin(a: number, b: number): number {
     return Math.min(a, b);
+  }
+
+  /** Share of row amount relative to the current filtered total. */
+  getAmountPercentage(amount: number): number {
+    if (!this.filteredTotalAmount) {
+      return 0;
+    }
+    return (Number(amount) / this.filteredTotalAmount) * 100;
   }
 
   // Method to show history for an investment
