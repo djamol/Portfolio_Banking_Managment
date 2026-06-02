@@ -28,7 +28,7 @@ import { routes } from './app.routes';
     CommonModule,
     FormsModule,
     HttpClientModule,
-    RouterModule.forRoot(routes),
+    RouterModule.forRoot(routes, { useHash: true }),
     NgChartsModule
   ],
   providers: [],
