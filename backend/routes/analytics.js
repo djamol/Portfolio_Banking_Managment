@@ -4,7 +4,8 @@ const db = require('../config/database');
 const {
   amountAsOfSubquery,
   buildInvestmentFilterClauses,
-  buildAmountFilterClauses
+  buildAmountFilterClauses,
+  resolveSeriesBreakdown
 } = require('../utils/snapshot-queries');
 
 // Get total portfolio value
@@ -170,6 +171,7 @@ router.get('/value-series', async (req, res) => {
   try {
     const from = req.query.from;
     const to = req.query.to;
+    const breakdown = resolveSeriesBreakdown(req.query);
 
     const pool = db.getPool();
     const snapshotWhere = [];
@@ -190,20 +192,22 @@ router.get('/value-series', async (req, res) => {
       ? `WHERE ${investmentWhere.join(' AND ')}`
       : '';
 
-    const amountExpr = amountAsOfSubquery('i', 'sd.change_date');
     const amountParams = [];
     const amountWhere = buildAmountFilterClauses(req.query, amountParams, 'vals.amount_at_date');
-
-    const outerWhere = [
-      ...snapshotWhere,
-      ...amountWhere
-    ];
+    const outerWhere = [...snapshotWhere, ...amountWhere];
     const outerSql = outerWhere.length ? `WHERE ${outerWhere.join(' AND ')}` : '';
+
+    const seriesSelect = breakdown
+      ? `${breakdown.seriesExpr} AS series_name,`
+      : '';
+    const groupBySeries = breakdown ? ', vals.series_name' : '';
+    const selectSeries = breakdown ? 'vals.series_name,' : '';
 
     const [rows] = await pool.query(
       `
       SELECT
         sd.change_date,
+        ${selectSeries}
         SUM(vals.amount_at_date) AS total_value
       FROM (
         SELECT DISTINCT change_date
@@ -213,6 +217,7 @@ router.get('/value-series', async (req, res) => {
         SELECT
           i.id,
           sd2.change_date,
+          ${seriesSelect}
           ${amountAsOfSubquery('i', 'sd2.change_date')} AS amount_at_date
         FROM (
           SELECT DISTINCT change_date
@@ -222,13 +227,31 @@ router.get('/value-series', async (req, res) => {
         ${investmentSql}
       ) vals ON vals.change_date = sd.change_date
       ${outerSql}
-      GROUP BY sd.change_date
-      ORDER BY sd.change_date ASC
+      GROUP BY sd.change_date${groupBySeries}
+      ORDER BY sd.change_date ASC${breakdown ? ', vals.series_name ASC' : ''}
       `,
       [...investmentParams, ...snapshotParams, ...amountParams]
     );
 
-    res.json({ success: true, data: rows });
+    if (breakdown) {
+      return res.json({
+        success: true,
+        data: {
+          mode: 'series',
+          breakdown: breakdown.breakdown,
+          rows
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        mode: 'total',
+        breakdown: null,
+        rows
+      }
+    });
   } catch (error) {
     console.error('Error fetching value series:', error);
     res.status(500).json({ success: false, error: error.message });

@@ -110,11 +110,35 @@ function parseAnalyticsFilters(query) {
   };
 }
 
+function resolveSeriesBreakdown(query) {
+  const platforms = parseListParam(query.platform);
+  const types = parseListParam(query.type);
+  const subTypes = parseListParam(query.subType);
+  const categories = parseListParam(query.category);
+
+  const candidates = [];
+  if (types.length) {
+    candidates.push({ breakdown: 'type', seriesExpr: 'i.investment_type' });
+  }
+  if (subTypes.length) {
+    candidates.push({ breakdown: 'subType', seriesExpr: 'i.sub_type_name' });
+  }
+  if (categories.length) {
+    candidates.push({ breakdown: 'category', seriesExpr: 'i.sub_type_category' });
+  }
+  if (platforms.length) {
+    candidates.push({ breakdown: 'platform', seriesExpr: 'i.website_app_name' });
+  }
+
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
 module.exports = {
   parseListParam,
   parseNumberParam,
   parseBoolParam,
   parseAnalyticsFilters,
+  resolveSeriesBreakdown,
   amountAsOfSubquery,
   buildInvestmentFilterClauses,
   buildAmountFilterClauses

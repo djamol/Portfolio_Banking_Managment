@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
-import { AnalyticsService, AnalyticsFilters, DeltaRow, InsightsResponse } from '../../services/analytics.service';
+import { AnalyticsService, AnalyticsFilters, DeltaRow, InsightsResponse, ValueSeriesResponse } from '../../services/analytics.service';
 import { ChartConfiguration, ChartOptions, ChartType } from 'chart.js';
 import { BaseChartDirective } from 'ng2-charts';
 import { INVESTMENT_TYPES } from '../../constants/investment-types.constants';
@@ -282,6 +282,17 @@ export class AnalyticsComponent implements OnInit {
   };
 
   // Advance analytics charts + state
+  private readonly valueSeriesLineColors = [
+    { border: 'rgba(102, 126, 234, 1)', fill: 'rgba(102, 126, 234, 0.12)' },
+    { border: 'rgba(34, 197, 94, 1)', fill: 'rgba(34, 197, 94, 0.12)' },
+    { border: 'rgba(245, 158, 11, 1)', fill: 'rgba(245, 158, 11, 0.12)' },
+    { border: 'rgba(239, 68, 68, 1)', fill: 'rgba(239, 68, 68, 0.12)' },
+    { border: 'rgba(118, 75, 162, 1)', fill: 'rgba(118, 75, 162, 0.12)' },
+    { border: 'rgba(59, 130, 246, 1)', fill: 'rgba(59, 130, 246, 0.12)' },
+    { border: 'rgba(236, 72, 153, 1)', fill: 'rgba(236, 72, 153, 0.12)' },
+    { border: 'rgba(14, 165, 233, 1)', fill: 'rgba(14, 165, 233, 0.12)' }
+  ];
+
   valueSeriesChartData: ChartConfiguration<'line'>['data'] = {
     labels: [],
     datasets: [{
@@ -750,18 +761,14 @@ export class AnalyticsComponent implements OnInit {
     // Advance: Portfolio value series from snapshots (line chart)
     this.analyticsService.getValueSeriesFiltered(this.getAnalyticsFilters()).subscribe({
       next: (response) => {
-        if (response.data && response.data.length > 0) {
-          this.valueSeriesChartData = {
-            labels: response.data.map((p) => this.formatSnapshotLabel(p.change_date)),
-            datasets: [{
-              ...this.valueSeriesChartData.datasets[0],
-              data: response.data.map((p) => typeof p.total_value === 'string' ? parseFloat(p.total_value) : Number(p.total_value) || 0)
-            }]
-          };
+        const payload = response.data;
+        if (payload?.rows?.length) {
+          this.buildValueSeriesChart(payload);
 
-          // Auto-fill delta dates (last 2 snapshots)
+          const dates = [...new Set(payload.rows.map((p) => p.change_date))].sort(
+            (a, b) => new Date(a).getTime() - new Date(b).getTime()
+          );
           if (!this.deltaFrom || !this.deltaTo) {
-            const dates = response.data.map((p) => p.change_date);
             if (dates.length >= 2) {
               this.deltaFrom = dates[dates.length - 2];
               this.deltaTo = dates[dates.length - 1];
@@ -770,6 +777,8 @@ export class AnalyticsComponent implements OnInit {
               this.deltaTo = dates[0];
             }
           }
+        } else {
+          this.valueSeriesChartData = { labels: [], datasets: [] };
         }
         checkComplete();
       },
@@ -1119,6 +1128,56 @@ export class AnalyticsComponent implements OnInit {
       return dateStr;
     }
     return d.toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  buildValueSeriesChart(payload: ValueSeriesResponse) {
+    const rows = payload.rows || [];
+    const allDates = [...new Set(rows.map((row) => row.change_date))].sort(
+      (a, b) => new Date(a).getTime() - new Date(b).getTime()
+    );
+    const labels = allDates.map((date) => this.formatSnapshotLabel(date));
+
+    if (payload.mode === 'series') {
+      const seriesNames = [...new Set(rows.map((row) => row.series_name).filter(Boolean))] as string[];
+      this.valueSeriesChartData = {
+        labels,
+        datasets: seriesNames.map((name, index) => {
+          const color = this.valueSeriesLineColors[index % this.valueSeriesLineColors.length];
+          const pointsByDate = new Map(
+            rows
+              .filter((row) => row.series_name === name)
+              .map((row) => [row.change_date, this.toNumber(row.total_value)])
+          );
+          return {
+            label: name,
+            data: allDates.map((date) => pointsByDate.get(date) ?? null),
+            borderColor: color.border,
+            backgroundColor: color.fill,
+            tension: 0.35,
+            fill: false,
+            pointRadius: 2,
+            pointHoverRadius: 5,
+            spanGaps: true
+          };
+        })
+      };
+      return;
+    }
+
+    const pointsByDate = new Map(rows.map((row) => [row.change_date, this.toNumber(row.total_value)]));
+    this.valueSeriesChartData = {
+      labels,
+      datasets: [{
+        label: 'Total Value (₹)',
+        data: allDates.map((date) => pointsByDate.get(date) ?? 0),
+        borderColor: 'rgba(34, 197, 94, 1)',
+        backgroundColor: 'rgba(34, 197, 94, 0.12)',
+        tension: 0.35,
+        fill: true,
+        pointRadius: 2,
+        pointHoverRadius: 5
+      }]
+    };
   }
 
   applyFilters() {

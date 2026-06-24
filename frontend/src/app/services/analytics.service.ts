@@ -31,7 +31,17 @@ function appendAnalyticsFilters(qs: URLSearchParams, filters: AnalyticsFilters =
   if (filters.ignoreZero) qs.set('ignoreZero', 'true');
 }
 
-export type PortfolioValueSeriesPoint = { change_date: string; total_value: number | string };
+export type PortfolioValueSeriesPoint = {
+  change_date: string;
+  total_value: number | string;
+  series_name?: string | null;
+};
+
+export type ValueSeriesResponse = {
+  mode: 'total' | 'series';
+  breakdown: string | null;
+  rows: PortfolioValueSeriesPoint[];
+};
 export type AllocationLatestRow = { investment_type: string; value: number | string };
 export type DeltaRow = {
   investment_id: number;
@@ -127,11 +137,11 @@ export class AnalyticsService {
     return this.http.get<{ success: boolean; data: PortfolioValueSeriesPoint[] }>(`${this.getApiUrl()}/analytics/value-series`);
   }
 
-  getValueSeriesFiltered(filters: AnalyticsFilters = {}): Observable<{ success: boolean; data: PortfolioValueSeriesPoint[] }> {
+  getValueSeriesFiltered(filters: AnalyticsFilters = {}): Observable<{ success: boolean; data: ValueSeriesResponse }> {
     const qs = new URLSearchParams();
     appendAnalyticsFilters(qs, filters);
     const suffix = qs.toString() ? `?${qs.toString()}` : '';
-    return this.http.get<{ success: boolean; data: PortfolioValueSeriesPoint[] }>(`${this.getApiUrl()}/analytics/value-series${suffix}`);
+    return this.http.get<{ success: boolean; data: ValueSeriesResponse }>(`${this.getApiUrl()}/analytics/value-series${suffix}`);
   }
 
   getAllocationLatest(): Observable<{ success: boolean; data: AllocationLatestRow[] }> {
