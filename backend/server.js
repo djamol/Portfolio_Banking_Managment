@@ -5,9 +5,13 @@ const investmentRoutes = require('./routes/investments');
 const analyticsRoutes = require('./routes/analytics');
 const categoriesRoutes = require('./routes/categories');
 const portfolioRoutes = require('./routes/portfolio');
+app.enable('trust proxy');
 
 const app = express();
 const PORT = process.env.PORT || 3000; // 
+
+// CRITICAL FIX: Place trust proxy right after initializing app
+app.enable('trust proxy');
 
 app.use(cors());
 app.use(express.json());
