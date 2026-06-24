@@ -5,12 +5,11 @@
 }
 
 .nav-container {
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 20px;
+  padding: 0 24px;
 }
 
 .nav-brand {
@@ -42,9 +41,8 @@
 }
 
 .main-content {
-  padding: 0 20px;
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
+  padding: 0 24px 24px;
 }
 
 .logout-btn {

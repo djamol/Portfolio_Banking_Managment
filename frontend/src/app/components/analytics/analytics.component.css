@@ -36,6 +36,11 @@
 .chart-container {
   height: 400px;
   position: relative;
+  width: 100%;
+}
+
+.advance-card .chart-container {
+  height: 420px;
 }
 
 .btn {
@@ -62,8 +67,14 @@
 
 .advance-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: 2fr 1fr;
   gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .advance-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .advance-card {
