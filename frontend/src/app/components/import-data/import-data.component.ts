@@ -334,17 +334,20 @@ export class ImportDataComponent implements OnInit {
       return;
     }
 
-    const isMfPortfolioFormat = csvText.toLowerCase().includes('fund') &&
+    const isDhanMfPortfolioFormat = lines[0]?.trim().toLowerCase().startsWith('mf,');
+
+    const isMfPortfolioFormat = !isDhanMfPortfolioFormat &&
+      csvText.toLowerCase().includes('fund') &&
       csvText.toLowerCase().includes('scheme') &&
       csvText.toLowerCase().includes('value at cost');
 
-    const isDhanAppFormat = !isDhanEtfFormat &&
+    const isDhanAppFormat = !isDhanEtfFormat && !isDhanMfPortfolioFormat &&
       csvText.toLowerCase().includes('name') &&
       csvText.toLowerCase().includes('current value') &&
       csvText.toLowerCase().includes('nav') &&
       !csvText.toLowerCase().includes('folio no');
 
-    if (isDhanAppFormat) {
+    if (isDhanMfPortfolioFormat || isDhanAppFormat) {
       this.parseDhanAppFormat(lines);
     } else if (isMfPortfolioFormat) {
       this.parseMfPortfolioFormat(lines);
@@ -413,22 +416,51 @@ export class ImportDataComponent implements OnInit {
     }
   }
 
+  private findDhanMfHeaderIndex(lines: string[]): number {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      const headers = this.parseCSVLine(line);
+      const lowerHeaders = headers.map(h => h.toLowerCase().trim());
+
+      if (
+        lowerHeaders.includes('name') &&
+        lowerHeaders.includes('units') &&
+        lowerHeaders.includes('nav') &&
+        lowerHeaders.some(h => h.includes('current value'))
+      ) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
   private parseDhanAppFormat(lines: string[]) {
-    // Find the header line (first line typically contains the headers)
-    const headerLine = lines[0];
-    const headers = this.parseCSVLine(headerLine);
+    if (lines[0]?.trim().toLowerCase().startsWith('mf,')) {
+      this.csvPortfolioDate = this.extractDhanPortfolioDate(lines);
+    }
+
+    const headerIndex = this.findDhanMfHeaderIndex(lines);
+    if (headerIndex === -1) {
+      this.showMessage('Could not find the expected Dhan MF header row in the CSV.', 'error');
+      return;
+    }
+
+    const headers = this.parseCSVLine(lines[headerIndex]);
     
     // Identify column indices
-    const nameColIndex = headers.findIndex(h => h.toLowerCase().includes('name'));
+    const nameColIndex = headers.findIndex(h => h.toLowerCase().trim() === 'name');
     const currentValueColIndex = headers.findIndex(h => h.toLowerCase().includes('current value'));
     const navColIndex = headers.findIndex(h => h.toLowerCase().includes('nav'));
     const investmentColIndex = headers.findIndex(h => h.toLowerCase().includes('investment'));
-    const plColIndex = headers.findIndex(h => h.toLowerCase().includes('p&l'));
+    const plColIndex = headers.findIndex(h => h.toLowerCase().includes('p&l') && !h.toLowerCase().includes('%'));
     
-    // Parse data rows starting from line 1 (skip header)
-    for (let i = 1; i < lines.length; i++) {
+    // Parse data rows starting after header
+    for (let i = headerIndex + 1; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
+      if (line.toLowerCase().startsWith('investment,') || line.toLowerCase().startsWith('note')) continue;
 
       const fields = this.parseCSVLine(line);
       

@@ -209,13 +209,15 @@
   <div class="instructions" *ngIf="investmentType === 'Mutual Fund'">
     <h3>Instructions for Mutual Fund Imports:</h3>
     <ul>
-      <li>Three CSV formats are supported:
+      <li>Four CSV formats are supported:
         <ul>
           <li><strong>HDFC Securities format</strong>: Columns like "Folio No", "Scheme Name", "Present Value"</li>
           <li><strong>MFPorfolioData format</strong>: Columns like "Fund", "Scheme", "Value At Cost"</li>
-          <li><strong>Dhan App format</strong>: Columns like "Name", "Current Value"</li>
+          <li><strong>Dhan App format</strong>: Columns like "Name", "Units", "NAV", "Current Value"</li>
+          <li><strong>Dhan MF portfolio export</strong>: File starting with "MF,For DD-MM-YYYY" and columns like "Name", "Units", "NAV", "Current Value"</li>
         </ul>
       </li>
+      <li>For Dhan MF portfolio exports, the date in the file header is used as the investment date unless you choose a custom date</li>
       <li>The system will automatically detect the CSV format and extract the data accordingly</li>
       <li>The system will automatically extract the AMC name as "Sub Type Name"</li>
       <li>The scheme name (without AMC) will be set as "Sub Type Category"</li>
