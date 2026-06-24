@@ -30,19 +30,23 @@
       </select>
     </div>
     
-    <div class="form-group" *ngIf="investmentType === 'Mutual Fund'">
-      <label for="csvFile">Upload Mutual Fund Statement (CSV) *</label>
+    <div class="form-group" *ngIf="supportsCsvImport">
+      <label for="csvFile">
+        <ng-container *ngIf="investmentType === 'Mutual Fund'">Upload Mutual Fund Statement (CSV) *</ng-container>
+        <ng-container *ngIf="investmentType === 'ETF'">Upload Dhan ETF Portfolio (CSV) *</ng-container>
+      </label>
       <input 
         type="file" 
         id="csvFile" 
         (change)="onFileSelected($event)"
         accept=".csv"
         class="form-control">
-      <small class="form-text">Only CSV files are supported for Mutual Funds</small>
+      <small class="form-text" *ngIf="investmentType === 'Mutual Fund'">Only CSV files are supported for Mutual Funds</small>
+      <small class="form-text" *ngIf="investmentType === 'ETF'">Only Dhan ETF portfolio CSV exports are supported</small>
     </div>
     
-    <!-- Optional date selection for Mutual Fund -->
-    <div class="form-group" *ngIf="investmentType === 'Mutual Fund'">
+    <!-- Optional date selection for CSV imports -->
+    <div class="form-group" *ngIf="supportsCsvImport">
       <label>
         <input 
           type="checkbox" 
@@ -61,7 +65,7 @@
       <small class="form-text" *ngIf="useCustomDate">All imported investments will use this date</small>
     </div>
     
-    <div class="form-group" *ngIf="investmentType !== 'Mutual Fund'">
+    <div class="form-group" *ngIf="!supportsCsvImport && investmentType">
       <label for="genericFile">Upload File *</label>
       <input 
         type="file" 
@@ -73,7 +77,7 @@
     </div>
     
     <!-- Optional date selection for non-Mutual Fund -->
-    <div class="form-group" *ngIf="investmentType !== 'Mutual Fund'">
+    <div class="form-group" *ngIf="!supportsCsvImport && investmentType">
       <label>
         <input 
           type="checkbox" 
@@ -143,12 +147,14 @@
             <th>Folio No</th>
             <th>Original Scheme Name</th>
             <th>
-              Extracted AMC (Sub Type)
-              <span *ngIf="hasNewAMC" class="new-indicator" title="New AMC not in existing data">*</span>
+              <ng-container *ngIf="investmentType === 'ETF'">Extracted Issuer (Sub Type)</ng-container>
+              <ng-container *ngIf="investmentType !== 'ETF'">Extracted AMC (Sub Type)</ng-container>
+              <span *ngIf="hasNewAMC" class="new-indicator" title="New issuer not in existing data">*</span>
             </th>
             <th>
-              Extracted Scheme (Category)
-              <span *ngIf="hasNewScheme" class="new-indicator" title="New scheme category not in existing data">*</span>
+              <ng-container *ngIf="investmentType === 'ETF'">Extracted ETF (Category)</ng-container>
+              <ng-container *ngIf="investmentType !== 'ETF'">Extracted Scheme (Category)</ng-container>
+              <span *ngIf="hasNewScheme" class="new-indicator" title="New category not in existing data">*</span>
             </th>
             <th>Present Value</th>
           </tr>
@@ -185,6 +191,19 @@
         Confirm & Import All
       </button>
     </div>
+  </div>
+  
+  <div class="instructions" *ngIf="investmentType === 'ETF'">
+    <h3>Instructions for ETF Imports:</h3>
+    <ul>
+      <li>Upload a <strong>Dhan ETF portfolio CSV</strong> exported from the Dhan portal</li>
+      <li>Expected columns: Scrip Name, Quantity, Avg. Buy Rate, Buy Value, LTP, Current Value, P&amp;L, P&amp;L%</li>
+      <li>The portfolio date from the file header (e.g. "For 24-06-2026") is used as the investment date unless you choose a custom date</li>
+      <li>The ETF issuer (e.g. HDFC, Kotak, ICICI Pru) is extracted as "Sub Type Name"</li>
+      <li>The ETF name without the issuer is set as "Sub Type Category"</li>
+      <li>If an investment with the same Platform, Sub Type Name, and Sub Type Category already exists, its value will be updated</li>
+      <li>New issuers or ETF categories not in existing data will be marked with 🆕</li>
+    </ul>
   </div>
   
   <div class="instructions" *ngIf="investmentType === 'Mutual Fund'">

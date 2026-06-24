@@ -30,6 +30,11 @@ export class ImportDataComponent implements OnInit {
   // Optional date selection
   useCustomDate = false;
   customDate: string = new Date().toISOString().split('T')[0]; // Default to today's date
+  csvPortfolioDate: string | null = null;
+
+  get supportsCsvImport(): boolean {
+    return this.investmentType === 'Mutual Fund' || this.investmentType === 'ETF';
+  }
   
   // Method to reset custom date to today when checkbox is toggled
   resetCustomDate() {
@@ -42,7 +47,8 @@ export class ImportDataComponent implements OnInit {
     'Aditya Birla Sun Life', 
     'Bandhan Mutual Fund',
     'Bank of India', 
-    'ICICI Prudential', 
+    'ICICI Prudential',
+    'ICICI Pru',
     'Kotak Mahindra', 
     'Mirae Asset', 
     'Nippon India', 
@@ -157,8 +163,8 @@ export class ImportDataComponent implements OnInit {
       return;
     }
 
-    if (this.investmentType !== 'Mutual Fund') {
-      this.showMessage('Currently only Mutual Fund imports are supported.', 'error');
+    if (!this.supportsCsvImport) {
+      this.showMessage('Currently only Mutual Fund and ETF imports are supported.', 'error');
       return;
     }
 
@@ -176,6 +182,16 @@ export class ImportDataComponent implements OnInit {
       this.parsedData = this.aggregateDuplicateRecords(this.parsedData);
       
       if (this.parsedData.length > 0) {
+        const existingInvestments = await this.investmentService.getAll().toPromise();
+        const typeAmcs = new Set<string>();
+        const typeSchemes = new Set<string>();
+        existingInvestments
+          ?.filter(inv => inv.investment_type === this.investmentType)
+          .forEach(inv => {
+            if (inv.sub_type_name) typeAmcs.add(inv.sub_type_name);
+            if (inv.sub_type_category) typeSchemes.add(inv.sub_type_category);
+          });
+
         // Prepare preview data
         this.previewData = this.parsedData.map(record => ({
           folioNo: record.folioNo,
@@ -183,8 +199,8 @@ export class ImportDataComponent implements OnInit {
           extractedAMC: record.subTypeName,
           extractedScheme: record.subTypeCategory,
           presentValue: record.presentValue,
-          isNewAMC: !this.existingAMCs.has(record.subTypeName),
-          isNewScheme: !this.existingSchemeCategories.has(record.subTypeCategory)
+          isNewAMC: !typeAmcs.has(record.subTypeName),
+          isNewScheme: !typeSchemes.has(record.subTypeCategory)
         }));
         
         // Set flags for new indicators in headers
@@ -242,8 +258,8 @@ export class ImportDataComponent implements OnInit {
       return;
     }
 
-    if (this.investmentType !== 'Mutual Fund') {
-      this.showMessage('Currently only Mutual Fund imports are supported.', 'error');
+    if (!this.supportsCsvImport) {
+      this.showMessage('Currently only Mutual Fund and ETF imports are supported.', 'error');
       return;
     }
 
@@ -282,6 +298,14 @@ export class ImportDataComponent implements OnInit {
     this.message = '';
     this.hasNewAMC = false;
     this.hasNewScheme = false;
+    this.csvPortfolioDate = null;
+  }
+
+  private getInvestmentDate(): string {
+    if (this.useCustomDate) {
+      return this.customDate;
+    }
+    return this.csvPortfolioDate || new Date().toISOString().split('T')[0];
   }
 
   private readFileAsText(file: File): Promise<string> {
@@ -294,29 +318,98 @@ export class ImportDataComponent implements OnInit {
   }
 
   private parseCSV(csvText: string) {
-    // Split the text into lines
     const lines = csvText.split('\n');
     this.parsedData = [];
+    this.csvPortfolioDate = null;
 
-    // Check if this is the new MFPorfolioData.csv format by looking for header keywords
-    const isMfPortfolioFormat = csvText.toLowerCase().includes('fund') && 
-                                csvText.toLowerCase().includes('scheme') && 
-                                csvText.toLowerCase().includes('value at cost');
-    
-    // Check if this is the Dhan App format by looking for header keywords
-    const isDhanAppFormat = csvText.toLowerCase().includes('name') && 
-                            csvText.toLowerCase().includes('current value') &&
-                            !csvText.toLowerCase().includes('folio no'); // Exclude if it has folio no (would be original format)
-    
+    const isDhanEtfFormat = lines[0]?.trim().toLowerCase().startsWith('etf,') ||
+      (csvText.toLowerCase().includes('scrip name') && csvText.toLowerCase().includes('avg. buy rate'));
+
+    if (this.investmentType === 'ETF') {
+      if (isDhanEtfFormat) {
+        this.parseDhanEtfFormat(lines);
+      } else {
+        this.showMessage('Unsupported ETF CSV format. Please upload a Dhan ETF portfolio export.', 'error');
+      }
+      return;
+    }
+
+    const isMfPortfolioFormat = csvText.toLowerCase().includes('fund') &&
+      csvText.toLowerCase().includes('scheme') &&
+      csvText.toLowerCase().includes('value at cost');
+
+    const isDhanAppFormat = !isDhanEtfFormat &&
+      csvText.toLowerCase().includes('name') &&
+      csvText.toLowerCase().includes('current value') &&
+      csvText.toLowerCase().includes('nav') &&
+      !csvText.toLowerCase().includes('folio no');
+
     if (isDhanAppFormat) {
-      // Parse Dhan App format
       this.parseDhanAppFormat(lines);
     } else if (isMfPortfolioFormat) {
-      // Parse MFPorfolioData.csv format
       this.parseMfPortfolioFormat(lines);
     } else {
-      // Parse the original format
       this.parseOriginalFormat(lines);
+    }
+  }
+
+  private extractDhanPortfolioDate(lines: string[]): string | null {
+    const firstLine = lines[0]?.trim();
+    if (!firstLine) return null;
+
+    const match = firstLine.match(/For\s+(\d{2})-(\d{2})-(\d{4})/i);
+    if (match) {
+      return `${match[3]}-${match[2]}-${match[1]}`;
+    }
+    return null;
+  }
+
+  private parseDhanEtfFormat(lines: string[]) {
+    this.csvPortfolioDate = this.extractDhanPortfolioDate(lines);
+
+    let headerIndex = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.toLowerCase().includes('scrip name') && line.toLowerCase().includes('current value')) {
+        headerIndex = i;
+        break;
+      }
+    }
+
+    if (headerIndex === -1) {
+      this.showMessage('Could not find the expected ETF header row in the CSV.', 'error');
+      return;
+    }
+
+    const headers = this.parseCSVLine(lines[headerIndex]);
+    const scripNameColIndex = headers.findIndex(h => h.toLowerCase().includes('scrip name'));
+    const currentValueColIndex = headers.findIndex(h => h.toLowerCase().includes('current value'));
+
+    for (let i = headerIndex + 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      if (line.toLowerCase().startsWith('investment,') || line.toLowerCase().startsWith('note')) continue;
+
+      const fields = this.parseCSVLine(line);
+      if (fields.length <= Math.max(scripNameColIndex, currentValueColIndex)) continue;
+
+      const scripName = fields[scripNameColIndex]?.trim();
+      const currentValue = fields[currentValueColIndex]?.trim();
+      if (!scripName || !currentValue) continue;
+
+      const currentValueNum = parseFloat(currentValue.replace(/,/g, ''));
+      if (isNaN(currentValueNum) || currentValueNum <= 0) continue;
+
+      const { amcName, schemeNameWithoutAMC } = this.extractAMCAndScheme(scripName, true);
+
+      this.parsedData.push({
+        folioNo: '',
+        originalSchemeName: scripName,
+        schemeName: scripName,
+        presentValue: currentValueNum,
+        subTypeName: amcName || 'Unknown Issuer',
+        subTypeCategory: schemeNameWithoutAMC || scripName
+      });
     }
   }
 
@@ -533,9 +626,10 @@ export class ImportDataComponent implements OnInit {
     return cleaned;
   }
 
-  private extractAMCAndScheme(fullSchemeName: string) {
-    // Clean the scheme name first
-    let cleanedSchemeName = this.cleanSchemeName(fullSchemeName);
+  private extractAMCAndScheme(fullSchemeName: string, skipNormalization = false) {
+    let cleanedSchemeName = skipNormalization
+      ? fullSchemeName.trim()
+      : this.cleanSchemeName(fullSchemeName);
     
     // Look for the longest matching AMC name in the scheme name
     let foundAMC = '';
@@ -571,33 +665,33 @@ export class ImportDataComponent implements OnInit {
       schemeWithoutAMC = schemeWithoutAMC.replace(/\s+[-–—]+$/, '').trim(); // Remove any trailing dashes
       schemeWithoutAMC = schemeWithoutAMC.replace(/\s+$/, '').trim(); // Remove trailing spaces
       
-      // Normalize the scheme category to group similar fund types
-      const normalizedScheme = this.normalizeFundCategory(schemeWithoutAMC);
-      
+      const schemeName = skipNormalization
+        ? schemeWithoutAMC
+        : this.normalizeFundCategory(schemeWithoutAMC);
+
       return {
         amcName: foundAMC,
-        schemeNameWithoutAMC: normalizedScheme
+        schemeNameWithoutAMC: schemeName
       };
     } else {
-      // If no known AMC found, try to extract the first few words as potential AMC
       const parts = cleanedSchemeName.split(' ');
       if (parts.length >= 2) {
-        // Take the first two words as potential AMC name
         const potentialAMC = parts.slice(0, 2).join(' ');
         const remainingScheme = parts.slice(2).join(' ');
-        // Normalize the remaining scheme name
-        const normalizedScheme = this.normalizeFundCategory(remainingScheme.trim());
+        const schemeName = skipNormalization
+          ? remainingScheme.trim()
+          : this.normalizeFundCategory(remainingScheme.trim());
         return {
           amcName: potentialAMC,
-          schemeNameWithoutAMC: normalizedScheme
+          schemeNameWithoutAMC: schemeName
         };
       } else {
-        // If only one word, treat it as the scheme name and use a generic placeholder for AMC
-        // Normalize the scheme name
-        const normalizedScheme = this.normalizeFundCategory(cleanedSchemeName);
+        const schemeName = skipNormalization
+          ? cleanedSchemeName
+          : this.normalizeFundCategory(cleanedSchemeName);
         return {
-          amcName: 'Unknown AMC',
-          schemeNameWithoutAMC: normalizedScheme
+          amcName: skipNormalization ? 'Unknown Issuer' : 'Unknown AMC',
+          schemeNameWithoutAMC: schemeName
         };
       }
     }
@@ -844,9 +938,12 @@ export class ImportDataComponent implements OnInit {
           record.subTypeCategory
         ).toPromise();
 
-        if (existingInvestments && existingInvestments.length > 0) {
-          // Update existing investment with the aggregated value
-          await this.updateExistingInvestment(existingInvestments[0], record.presentValue);
+        const matchingInvestments = existingInvestments?.filter(
+          inv => inv.investment_type === this.investmentType
+        ) || [];
+
+        if (matchingInvestments.length > 0) {
+          await this.updateExistingInvestment(matchingInvestments[0], record.presentValue);
         } else {
           // Create new investment with the aggregated value
           await this.createInvestment(record);
@@ -861,7 +958,7 @@ export class ImportDataComponent implements OnInit {
     const updatedInvestment = {
       ...investment,
       amount: newValue,
-      investment_date: this.useCustomDate ? this.customDate : new Date().toISOString().split('T')[0],
+      investment_date: this.getInvestmentDate(),
       notes: investment.notes || `Updated via import on ${new Date().toLocaleDateString()} - Total aggregated value from CSV`
     };
 
@@ -880,8 +977,10 @@ export class ImportDataComponent implements OnInit {
       sub_type_name: record.subTypeName,
       sub_type_category: record.subTypeCategory,
       amount: record.presentValue,
-      investment_date: this.useCustomDate ? this.customDate : new Date().toISOString().split('T')[0],
-      notes: `Imported from CSV on ${new Date().toLocaleDateString()} - Aggregated value from ${record.count || 1} folio${(record.count || 1) > 1 ? 's' : ''}: ${record.folioNo}`
+      investment_date: this.getInvestmentDate(),
+      notes: this.investmentType === 'ETF'
+        ? `Imported from Dhan ETF CSV on ${new Date().toLocaleDateString()}`
+        : `Imported from CSV on ${new Date().toLocaleDateString()} - Aggregated value from ${record.count || 1} folio${(record.count || 1) > 1 ? 's' : ''}: ${record.folioNo}`
     };
 
     try {
