@@ -26,6 +26,7 @@ COPY backend/package.json backend/package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY backend/config ./config
+COPY backend/db ./db
 COPY backend/routes ./routes
 COPY backend/utils ./utils
 COPY backend/server.js ./
