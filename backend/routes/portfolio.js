@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
+const { exportDatabaseSql } = require('../utils/sql-export');
+const { importDatabaseSql } = require('../utils/sql-import');
 
 // Export all portfolio data
 router.get('/export', async (req, res) => {
@@ -124,6 +126,50 @@ router.post('/import', async (req, res) => {
     });
   } catch (error) {
     console.error('Error importing portfolio:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Export full database as SQL dump (all portfolio tables)
+router.get('/export/sql', async (req, res) => {
+  try {
+    const pool = db.getPool();
+    const { sql, counts, exportedAt } = await exportDatabaseSql(pool);
+
+    const filename = `portfolio_export_${exportedAt.slice(0, 10)}.sql`;
+    res.setHeader('Content-Type', 'application/sql; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(sql);
+  } catch (error) {
+    console.error('Error exporting SQL:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Import SQL dump — freshInstall=true clears all tables first
+router.post('/import/sql', express.json({ limit: '50mb' }), async (req, res) => {
+  try {
+    const { sql, freshInstall = false } = req.body || {};
+
+    if (!sql || !String(sql).trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing SQL content. Expected { sql: string, freshInstall?: boolean }'
+      });
+    }
+
+    const pool = db.getPool();
+    const result = await importDatabaseSql(pool, sql, { freshInstall: !!freshInstall });
+
+    res.json({
+      success: true,
+      data: result,
+      message: freshInstall
+        ? `Fresh SQL import completed. ${result.executed} statements executed.`
+        : `SQL merge import completed. ${result.executed} statements executed, ${result.skipped} duplicates skipped.`
+    });
+  } catch (error) {
+    console.error('Error importing SQL:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

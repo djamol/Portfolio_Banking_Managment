@@ -1,0 +1,232 @@
+.import-export-container {
+  max-width: 900px;
+  margin: 20px auto;
+  padding: 20px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.page-desc {
+  color: #64748b;
+  margin: 0 0 20px;
+}
+
+.section {
+  margin-bottom: 24px;
+  padding: 20px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.section h3 {
+  margin: 0 0 12px;
+  color: #1e293b;
+}
+
+.format-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 700px) {
+  .format-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.format-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.format-card.highlight {
+  border-color: #667eea;
+  background: linear-gradient(135deg, #f8faff, #fff);
+}
+
+.format-card h4 {
+  margin: 0 0 8px;
+  color: #334155;
+}
+
+.format-card p {
+  margin: 0 0 14px;
+  font-size: 0.88rem;
+  color: #64748b;
+}
+
+.import-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.mode-option {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+}
+
+.mode-option.active {
+  border-color: #667eea;
+  background: #f8faff;
+}
+
+.mode-option.danger.active {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+.mode-option input {
+  margin-top: 4px;
+}
+
+.mode-option strong {
+  display: block;
+  color: #1e293b;
+  margin-bottom: 4px;
+}
+
+.mode-option span {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.sql-warning {
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  color: #b91c1c;
+  font-size: 0.88rem;
+}
+
+.btn {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  display: inline-block;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #667eea;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #5a6fd6;
+}
+
+.btn-secondary {
+  background: #64748b;
+  color: white;
+}
+
+.btn-secondary:hover {
+  background: #475569;
+}
+
+.btn-danger {
+  background: #dc2626;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+}
+
+.message {
+  padding: 12px;
+  margin-bottom: 16px;
+  border-radius: 6px;
+}
+
+.message.success {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.message.error {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.message.info {
+  background: #d1ecf1;
+  color: #0c5460;
+  border: 1px solid #bee5eb;
+}
+
+.loading {
+  text-align: center;
+  padding: 16px;
+  color: #64748b;
+}
+
+.instructions {
+  margin-top: 8px;
+  padding: 16px;
+  background: white;
+  border-left: 4px solid #667eea;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.instructions h4 {
+  margin: 0 0 12px;
+  color: #334155;
+}
+
+.instructions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 700px) {
+  .instructions-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.instructions h5 {
+  margin: 0 0 8px;
+  color: #475569;
+}
+
+.instructions ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.88rem;
+  color: #64748b;
+}
+
+.instructions li {
+  margin-bottom: 6px;
+}
+
+code {
+  background: #f1f5f9;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.85em;
+}

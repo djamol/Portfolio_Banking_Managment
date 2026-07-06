@@ -1,159 +1,94 @@
 <div class="import-export-container">
-  <h2>Portfolio Data Import/Export</h2>
-  
-  <!-- Status message -->
-  <div *ngIf="message" [class]="'message ' + messageType">
-    {{ message }}
-  </div>
-  
-  <!-- Loading indicator -->
-  <div *ngIf="loading" class="loading">
-    <p>{{ message }}</p>
-  </div>
-  
-  <!-- Export Section -->
+  <h2>Portfolio Data Import / Export</h2>
+  <p class="page-desc">Backup and restore your portfolio in CSV or full SQL format.</p>
+
+  <div *ngIf="message" [class]="'message ' + messageType">{{ message }}</div>
+  <div *ngIf="loading" class="loading"><p>{{ message || 'Processing...' }}</p></div>
+
+  <!-- Export -->
   <div class="section">
     <h3>Export Data</h3>
-    <p>Download all your investment data as a CSV file.</p>
-    <button 
-      class="btn btn-primary" 
-      (click)="exportData()" 
-      [disabled]="loading"
-      type="button">
-      📤 Export All Data
-    </button>
-  </div>
-  
-  <!-- Import Section -->
-  <div class="section">
-    <h3>Import Data</h3>
-    <p>Upload a CSV file to add/update your investment data. Existing records will be updated, new records will be added.</p>
-    <div class="import-controls">
-      <label class="btn btn-secondary">
-        📥 Select CSV File
-        <input 
-          type="file" 
-          accept=".csv" 
-          (change)="importData($event)" 
-          style="display: none;">
-      </label>
+    <div class="format-grid">
+      <div class="format-card">
+        <h4>CSV Export</h4>
+        <p>Investments only — good for spreadsheet editing.</p>
+        <button class="btn btn-primary" type="button" (click)="exportCsv()" [disabled]="loading">
+          Export CSV
+        </button>
+      </div>
+      <div class="format-card highlight">
+        <h4>SQL Export</h4>
+        <p>Full database backup: investments, history, categories, transactions.</p>
+        <button class="btn btn-primary" type="button" (click)="exportSql()" [disabled]="loading">
+          Export SQL
+        </button>
+      </div>
     </div>
   </div>
-  
+
+  <!-- CSV Import -->
+  <div class="section">
+    <h3>Import CSV</h3>
+    <p>Upload a CSV file to add or update investments. Existing matching records are updated.</p>
+    <label class="btn btn-secondary">
+      Select CSV File
+      <input type="file" accept=".csv" (change)="importCsv($event)" hidden>
+    </label>
+  </div>
+
+  <!-- SQL Import -->
+  <div class="section sql-section">
+    <h3>Import SQL</h3>
+    <p>Restore from a <code>.sql</code> backup file exported from this app or compatible MySQL dump.</p>
+
+    <div class="import-modes">
+      <label class="mode-option" [class.active]="sqlImportMode === 'merge'">
+        <input type="radio" name="sqlMode" value="merge" [(ngModel)]="sqlImportMode">
+        <div>
+          <strong>Merge import</strong>
+          <span>Keep existing data and insert new rows. Skips DROP/TRUNCATE/DELETE statements.</span>
+        </div>
+      </label>
+
+      <label class="mode-option danger" [class.active]="sqlImportMode === 'fresh'">
+        <input type="radio" name="sqlMode" value="fresh" [(ngModel)]="sqlImportMode">
+        <div>
+          <strong>Fresh install</strong>
+          <span>Delete all data from all tables first, then import SQL. Use for full restore.</span>
+        </div>
+      </label>
+    </div>
+
+    <div class="sql-warning" *ngIf="sqlImportMode === 'fresh'">
+      Warning: Fresh install removes all existing portfolio data before importing.
+    </div>
+
+    <label class="btn" [class.btn-danger]="sqlImportMode === 'fresh'" [class.btn-secondary]="sqlImportMode === 'merge'">
+      {{ sqlImportMode === 'fresh' ? 'Select SQL — Fresh Install' : 'Select SQL — Merge Import' }}
+      <input type="file" accept=".sql" (change)="onSqlFileSelected($event)" hidden>
+    </label>
+  </div>
+
   <!-- Instructions -->
   <div class="instructions">
-    <h4>CSV Format Requirements:</h4>
-    <ul>
-      <li>Headers must include: ID, Website/App Name, Investment Type, Sub Type Name, Sub Type Category, Amount, Investment Date</li>
-      <li>Date format should be YYYY-MM-DD</li>
-      <li>Amount should be numeric values</li>
-      <li>Records with matching Website/App Name, Investment Type, Sub Type Name, and Sub Type Category will be updated</li>
-      <li>New records will be added to your portfolio</li>
-    </ul>
+    <h4>Format notes</h4>
+    <div class="instructions-grid">
+      <div>
+        <h5>CSV</h5>
+        <ul>
+          <li>Headers: ID, Website/App Name, Investment Type, Sub Type Name, Sub Type Category, Amount, Investment Date</li>
+          <li>Date format: YYYY-MM-DD</li>
+          <li>Matching records (platform + type + sub-type + category) are updated</li>
+        </ul>
+      </div>
+      <div>
+        <h5>SQL</h5>
+        <ul>
+          <li>Exports all tables: investments, investment_history, sub_type_names, sub_type_categories, investment_transactions</li>
+          <li><strong>Merge:</strong> adds data without clearing existing records</li>
+          <li><strong>Fresh install:</strong> truncates all tables then imports — like a clean setup</li>
+        </ul>
+      </div>
+    </div>
   </div>
 </div>
-
-<style>
-  .import-export-container {
-    max-width: 800px;
-    margin: 20px auto;
-    padding: 20px;
-    font-family: Arial, sans-serif;
-  }
-  
-  .section {
-    margin-bottom: 30px;
-    padding: 20px;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    background-color: #f9f9f9;
-  }
-  
-  .section h3 {
-    margin-top: 0;
-    color: #333;
-  }
-  
-  .import-controls {
-    margin-top: 15px;
-  }
-  
-  .btn {
-    padding: 10px 15px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    text-decoration: none;
-    display: inline-block;
-  }
-  
-  .btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-  
-  .btn-primary {
-    background-color: #007bff;
-    color: white;
-  }
-  
-  .btn-primary:hover:not(:disabled) {
-    background-color: #0056b3;
-  }
-  
-  .btn-secondary {
-    background-color: #6c757d;
-    color: white;
-  }
-  
-  .btn-secondary:hover {
-    background-color: #545b62;
-  }
-  
-  .message {
-    padding: 10px;
-    margin-bottom: 15px;
-    border-radius: 4px;
-  }
-  
-  .message.success {
-    background-color: #d4edda;
-    color: #155724;
-    border: 1px solid #c3e6cb;
-  }
-  
-  .message.error {
-    background-color: #f8d7da;
-    color: #721c24;
-    border: 1px solid #f5c6cb;
-  }
-  
-  .message.info {
-    background-color: #d1ecf1;
-    color: #0c5460;
-    border: 1px solid #bee5eb;
-  }
-  
-  .loading {
-    text-align: center;
-    padding: 20px;
-  }
-  
-  .instructions {
-    margin-top: 30px;
-    padding: 15px;
-    background-color: #f8f9fa;
-    border-left: 4px solid #007bff;
-    border-radius: 4px;
-  }
-  
-  .instructions ul {
-    margin: 10px 0;
-    padding-left: 20px;
-  }
-  
-  .instructions li {
-    margin-bottom: 8px;
-  }
-</style>
