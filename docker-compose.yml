@@ -1,0 +1,42 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: portfolio-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-portfolio_root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-portfolio}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - portfolio_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-portfolio_root}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: portfolio-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: ${DB_USER:-root}
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-portfolio_root}
+      DB_NAME: ${MYSQL_DATABASE:-portfolio}
+      PORT: 3000
+      DB_CONNECT_RETRIES: ${DB_CONNECT_RETRIES:-15}
+      DB_CONNECT_DELAY_MS: ${DB_CONNECT_DELAY_MS:-2000}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  portfolio_mysql_data:

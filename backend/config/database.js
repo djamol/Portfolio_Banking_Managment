@@ -3,7 +3,7 @@ require('dotenv').config();
 
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 3306,
+  port: Number(process.env.DB_PORT) || 3306,
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'portfolio',
@@ -11,6 +11,8 @@ const dbConfig = {
   connectionLimit: 10,
   queueLimit: 0
 };
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let pool;
 
@@ -21,27 +23,39 @@ const getPool = () => {
   return pool;
 };
 
+const initializeDatabaseOnce = async () => {
+  const connection = await mysql.createConnection({
+    host: dbConfig.host,
+    port: dbConfig.port,
+    user: dbConfig.user,
+    password: dbConfig.password
+  });
+
+  await connection.query(`CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}\``);
+  await connection.end();
+
+  pool = mysql.createPool(dbConfig);
+  await createTables();
+  console.log('Database initialized successfully');
+};
+
 const initializeDatabase = async () => {
-  try {
-    // First, create database if it doesn't exist
-    const connection = await mysql.createConnection({
-      host: dbConfig.host,
-      user: dbConfig.user,
-      password: dbConfig.password
-    });
+  const maxAttempts = Number(process.env.DB_CONNECT_RETRIES) || 15;
+  const delayMs = Number(process.env.DB_CONNECT_DELAY_MS) || 2000;
 
-    await connection.query(`CREATE DATABASE IF NOT EXISTS ${dbConfig.database}`);
-    await connection.end();
-
-    // Now create the pool with the database
-    pool = mysql.createPool(dbConfig);
-
-    // Create tables
-    await createTables();
-    console.log('Database initialized successfully');
-  } catch (error) {
-    console.error('Database initialization error:', error);
-    throw error;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await initializeDatabaseOnce();
+      return;
+    } catch (error) {
+      console.error(`Database initialization error (attempt ${attempt}/${maxAttempts}):`, error.message);
+      pool = null;
+      if (attempt === maxAttempts) {
+        throw error;
+      }
+      console.log(`Retrying database connection in ${delayMs}ms...`);
+      await sleep(delayMs);
+    }
   }
 };
 

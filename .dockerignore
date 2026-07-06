@@ -12,6 +12,7 @@ frontend/out-tsc
 # Environment & secrets
 .env
 .env.*
+!.env.example
 backend/.env
 
 # Git & IDE
