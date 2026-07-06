@@ -1,5 +1,6 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
+const logger = require('../utils/logger');
 
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
@@ -16,6 +17,16 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let pool;
 
+function getConnectionSummary() {
+  return {
+    host: dbConfig.host,
+    port: dbConfig.port,
+    user: dbConfig.user,
+    database: dbConfig.database,
+    password: logger.redact(dbConfig.password)
+  };
+}
+
 const getPool = () => {
   if (!pool) {
     pool = mysql.createPool(dbConfig);
@@ -24,36 +35,50 @@ const getPool = () => {
 };
 
 const initializeDatabaseOnce = async () => {
+  logger.info('MySQL: connecting', getConnectionSummary());
+
   const connection = await mysql.createConnection({
     host: dbConfig.host,
     port: dbConfig.port,
     user: dbConfig.user,
-    password: dbConfig.password
+    password: dbConfig.password,
+    connectTimeout: 10000
   });
 
+  logger.info('MySQL: server reachable, ensuring database exists', { database: dbConfig.database });
   await connection.query(`CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}\``);
   await connection.end();
 
   pool = mysql.createPool(dbConfig);
   await createTables();
-  console.log('Database initialized successfully');
+  logger.info('MySQL: initialization complete', getConnectionSummary());
 };
 
 const initializeDatabase = async () => {
   const maxAttempts = Number(process.env.DB_CONNECT_RETRIES) || 15;
   const delayMs = Number(process.env.DB_CONNECT_DELAY_MS) || 2000;
 
+  logger.info('MySQL: starting connection attempts', {
+    maxAttempts,
+    delayMs,
+    maxWaitSeconds: Math.round((maxAttempts * delayMs) / 1000),
+    ...getConnectionSummary()
+  });
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       await initializeDatabaseOnce();
       return;
     } catch (error) {
-      console.error(`Database initialization error (attempt ${attempt}/${maxAttempts}):`, error.message);
+      logger.logError(`MySQL initialization attempt ${attempt}/${maxAttempts}`, error, getConnectionSummary());
       pool = null;
       if (attempt === maxAttempts) {
+        logger.error('MySQL: all connection attempts exhausted', {
+          hint: 'Check DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME and that MySQL is running'
+        });
         throw error;
       }
-      console.log(`Retrying database connection in ${delayMs}ms...`);
+      logger.warn('MySQL: retrying connection', { attempt, nextRetryInMs: delayMs });
       await sleep(delayMs);
     }
   }
@@ -61,9 +86,10 @@ const initializeDatabase = async () => {
 
 const createTables = async () => {
   const connection = await pool.getConnection();
-  
+
   try {
-    // Investments table
+    logger.info('MySQL: creating tables if missing');
+
     await connection.query(`
       CREATE TABLE IF NOT EXISTS investments (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -82,7 +108,6 @@ const createTables = async () => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
 
-    // Investment history for tracking changes
     await connection.query(`
       CREATE TABLE IF NOT EXISTS investment_history (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -98,7 +123,6 @@ const createTables = async () => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
 
-    // Sub-type names (e.g., MF house names, Bank names)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS sub_type_names (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -110,7 +134,6 @@ const createTables = async () => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
 
-    // Sub-type categories (e.g., Nifty 50, Large Cap, etc.)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS sub_type_categories (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -125,9 +148,6 @@ const createTables = async () => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
 
-    // Investment transactions for true cashflow-based analytics (XIRR, realized P&L, income)
-    // Convention: cashflow_amount is POSITIVE for inflows (sell/dividend/interest),
-    // NEGATIVE for outflows (buy/fee). Units/price are optional for non-market instruments.
     await connection.query(`
       CREATE TABLE IF NOT EXISTS investment_transactions (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -156,9 +176,9 @@ const createTables = async () => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
 
-    console.log('Tables created successfully');
+    logger.info('MySQL: tables ready');
   } catch (error) {
-    console.error('Error creating tables:', error);
+    logger.logError('MySQL table creation', error);
     throw error;
   } finally {
     connection.release();
@@ -167,5 +187,6 @@ const createTables = async () => {
 
 module.exports = {
   getPool,
-  initializeDatabase
+  initializeDatabase,
+  getConnectionSummary
 };

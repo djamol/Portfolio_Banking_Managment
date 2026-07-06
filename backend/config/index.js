@@ -1,4 +1,5 @@
 require('dotenv').config();
+const logger = require('../utils/logger');
 
 const DB_TYPE = (process.env.DB_TYPE || 'mysql').toLowerCase();
 
@@ -13,7 +14,24 @@ function isMongoDb() {
   return getDbType() === 'mongodb';
 }
 
+function logStartupConfig() {
+  const summary = {
+    dbType: getDbType(),
+    nodeEnv: process.env.NODE_ENV || 'development',
+    logLevel: process.env.LOG_LEVEL || 'info'
+  };
+
+  if (isMongoDb()) {
+    Object.assign(summary, mongoDb.getConnectionSummary());
+  } else {
+    Object.assign(summary, mysqlDb.getConnectionSummary());
+  }
+
+  logger.info('Database backend selected', summary);
+}
+
 function initializeDatabase() {
+  logStartupConfig();
   if (isMongoDb()) {
     return mongoDb.initializeDatabase();
   }

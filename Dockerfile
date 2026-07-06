@@ -36,10 +36,12 @@ COPY --from=frontend-build /app/frontend/dist/portfolio-frontend ./public
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
+ENV LOG_LEVEL=info
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+# DB retries can take up to ~30s (15 x 2s); allow extra time before marking unhealthy
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
   CMD node -e "require('http').get('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
 
 CMD ["node", "server.js"]
