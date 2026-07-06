@@ -1,0 +1,165 @@
+<div class="asset-tracker-container">
+  <div class="page-header">
+    <div>
+      <h2>Asset Tracker</h2>
+      <p class="subtitle">Portfolio analytics by snapshot date — only dates with history entries</p>
+    </div>
+    <button type="button" class="refresh-btn" (click)="refresh()" [disabled]="loading">
+      {{ loading ? 'Loading…' : 'Refresh' }}
+    </button>
+  </div>
+
+  <div *ngIf="errorMessage" class="error-message">
+    <strong>Error:</strong> {{ errorMessage }}<br>
+    <small>Make sure the backend server is running on http://localhost:3000</small>
+  </div>
+
+  <div *ngIf="loading && !stats" class="loading-message">Loading asset tracker data...</div>
+
+  <ng-container *ngIf="stats">
+    <!-- KPI Summary -->
+    <div class="stats-grid">
+      <div class="stat-card highlight">
+        <span class="stat-label">Current Total</span>
+        <span class="stat-value">₹{{ stats.currentAmount | number:'1.2-2' }}</span>
+        <span class="stat-meta">Latest snapshot: {{ stats.latestSnapshotLabel }}</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Total Growth</span>
+        <span class="stat-value" [class.positive]="isPositive(stats.totalGrowth)" [class.negative]="isNegative(stats.totalGrowth)">
+          {{ isPositive(stats.totalGrowth) ? '+' : '' }}{{ stats.totalGrowth | number:'1.2-2' }}
+        </span>
+        <span class="stat-meta" [class.positive]="isPositive(stats.totalGrowthPercent)" [class.negative]="isNegative(stats.totalGrowthPercent)">
+          {{ stats.totalGrowthPercent | number:'1.2-2' }}% since {{ stats.firstSnapshotLabel }}
+        </span>
+      </div>
+      <div class="stat-card" *ngIf="stats.cagr !== null">
+        <span class="stat-label">CAGR</span>
+        <span class="stat-value" [class.positive]="isPositive(stats.cagr)" [class.negative]="isNegative(stats.cagr)">
+          {{ stats.cagr | number:'1.2-2' }}%
+        </span>
+        <span class="stat-meta">Over {{ stats.trackingMonths }} months</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Since Last Snapshot</span>
+        <span class="stat-value" [class.positive]="isPositive(stats.sinceLastSnapshot)" [class.negative]="isNegative(stats.sinceLastSnapshot)">
+          {{ isPositive(stats.sinceLastSnapshot) ? '+' : '' }}{{ stats.sinceLastSnapshot | number:'1.2-2' }}
+        </span>
+        <span class="stat-meta">{{ stats.sinceLastSnapshotPercent | number:'1.2-2' }}%</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Peak Value</span>
+        <span class="stat-value">₹{{ stats.highestAmount | number:'1.2-2' }}</span>
+        <span class="stat-meta">{{ stats.highestDateLabel }}</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Snapshots</span>
+        <span class="stat-value">{{ stats.snapshotCount }}</span>
+        <span class="stat-meta">Avg period change ₹{{ stats.avgPeriodChange | number:'1.0-0' }}</span>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-grid" *ngIf="rows.length > 0">
+      <div class="card chart-card wide">
+        <h3>Portfolio Value &amp; Period Change</h3>
+        <p class="chart-hint">Left axis: total value · Right axis: change vs previous snapshot</p>
+        <div class="chart-container tall">
+          <canvas baseChart
+            [data]="amountDiffChartData"
+            [options]="amountDiffChartOptions"
+            [type]="'line'">
+          </canvas>
+        </div>
+      </div>
+
+      <div class="card chart-card">
+        <h3>Period % Change</h3>
+        <p class="chart-hint">Return between consecutive snapshots</p>
+        <div class="chart-container">
+          <canvas baseChart
+            [data]="periodChangeChartData"
+            [options]="periodChangeChartOptions"
+            [type]="'bar'">
+          </canvas>
+        </div>
+      </div>
+
+      <div class="card chart-card">
+        <h3>Growth vs Current</h3>
+        <p class="chart-hint">How far each snapshot is below/above today's total</p>
+        <div class="chart-container">
+          <canvas baseChart
+            [data]="growthChartData"
+            [options]="growthChartOptions"
+            [type]="'line'">
+          </canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Data Table -->
+    <div class="card table-section">
+      <div class="table-header">
+        <h3>Snapshot History</h3>
+        <button type="button" class="sort-btn" (click)="toggleSort()">
+          Sort: {{ sortDirection === 'asc' ? 'Oldest first' : 'Newest first' }}
+        </button>
+      </div>
+
+      <div class="table-wrapper">
+        <table class="tracker-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th class="num">Amount</th>
+              <th class="num">Diff Previous</th>
+              <th class="num">Period %</th>
+              <th class="num">Days Gap</th>
+              <th class="num">Diff in L</th>
+              <th class="num">Months to Latest</th>
+              <th class="num">Diff vs Current</th>
+              <th class="num">% vs Current</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of displayRows" [class.latest-row]="row.isLatest">
+              <td>
+                {{ row.dateLabel }}
+                <span *ngIf="row.isLatest" class="badge">Latest</span>
+              </td>
+              <td class="num amount-cell">₹{{ row.amount | number:'1.2-2' }}</td>
+              <td class="num" [class.positive]="isPositive(row.diffPreviousDate)" [class.negative]="isNegative(row.diffPreviousDate)">
+                <ng-container *ngIf="row.diffPreviousDate !== 0">
+                  {{ isPositive(row.diffPreviousDate) ? '+' : '' }}{{ row.diffPreviousDate | number:'1.2-2' }}
+                </ng-container>
+                <ng-container *ngIf="row.diffPreviousDate === 0">—</ng-container>
+              </td>
+              <td class="num" [class.positive]="isPositive(row.diffPreviousPercent)" [class.negative]="isNegative(row.diffPreviousPercent)">
+                <ng-container *ngIf="row.diffPreviousPercent !== 0">
+                  {{ isPositive(row.diffPreviousPercent) ? '+' : '' }}{{ row.diffPreviousPercent | number:'1.2-2' }}%
+                </ng-container>
+                <ng-container *ngIf="row.diffPreviousPercent === 0">—</ng-container>
+              </td>
+              <td class="num muted">{{ row.daysSincePrevious ?? '—' }}</td>
+              <td class="num" [class.positive]="isPositive(row.diffInL)" [class.negative]="isNegative(row.diffInL)">
+                {{ row.diffInL | number:'1.2-2' }}
+              </td>
+              <td class="num muted">{{ row.monthsDiff }}</td>
+              <td class="num" [class.positive]="isPositive(row.diffWithCurrent)" [class.negative]="isNegative(row.diffWithCurrent)">
+                {{ isPositive(row.diffWithCurrent) ? '+' : '' }}{{ row.diffWithCurrent | number:'1.2-2' }}
+              </td>
+              <td class="num" [class.positive]="isPositive(row.percent)" [class.negative]="isNegative(row.percent)">
+                {{ isPositive(row.percent) ? '+' : '' }}{{ row.percent | number:'1.2-2' }}%
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </ng-container>
+
+  <div *ngIf="!loading && !errorMessage && !stats" class="empty-state card">
+    No snapshot dates found. Add investment history entries to see asset tracking analytics.
+  </div>
+</div>

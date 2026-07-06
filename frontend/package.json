@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "scripts": {
     "ng": "ng",
-    "start": "ng serve",
+    "start": "ng serve --port 4200",
+    "start:prod": "ng serve --configuration production",
     "dev": "ng build",
     "build2": "ng build",
     "build": "ng build --base-href /mgmt/",

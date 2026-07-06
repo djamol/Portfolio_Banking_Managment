@@ -6,6 +6,7 @@ import { InvestmentFormComponent } from './components/investment-form/investment
 import { ImportDataComponent } from './components/import-data/import-data.component';
 import { ImportExportComponent } from './components/import-export/import-export.component';
 import { LoginComponent } from './components/login/login.component';
+import { AssetTrackerComponent } from './components/asset-tracker/asset-tracker.component';
 import { authGuard } from './guards/auth.guard';
 
 export const routes: Routes = [
@@ -15,6 +16,7 @@ export const routes: Routes = [
   { path: 'investments/new', component: InvestmentFormComponent, canActivate: [authGuard] },
   { path: 'investments/edit/:id', component: InvestmentFormComponent, canActivate: [authGuard] },
   { path: 'analytics', component: AnalyticsComponent, canActivate: [authGuard] },
+  { path: 'asset-tracker', component: AssetTrackerComponent, canActivate: [authGuard] },
   { path: 'investment-summary', component: InvestmentSummaryComponent, canActivate: [authGuard] },
   { path: 'import-data', component: ImportDataComponent, canActivate: [authGuard] },
   { path: 'import-export', component: ImportExportComponent, canActivate: [authGuard] }
