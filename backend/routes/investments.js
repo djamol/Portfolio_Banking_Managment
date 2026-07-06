@@ -1,15 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../config/database');
+const store = require('../db');
 
-// Get all investments
 router.get('/', async (req, res) => {
   try {
-    const pool = db.getPool();
-    const [rows] = await pool.query(`
-      SELECT * FROM investments 
-      ORDER BY investment_date DESC, created_at DESC
-    `);
+    const rows = await store.getAllInvestments();
     res.json({ success: true, data: rows });
   } catch (error) {
     console.error('Error fetching investments:', error);
@@ -17,33 +12,10 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Search investments by criteria
 router.get('/search', async (req, res) => {
   try {
     const { website_app_name, sub_type_name, sub_type_category } = req.query;
-    const pool = db.getPool();
-    
-    let query = 'SELECT * FROM investments WHERE 1=1';
-    const params = [];
-    
-    if (website_app_name) {
-      query += ' AND website_app_name = ?';
-      params.push(website_app_name);
-    }
-    
-    if (sub_type_name) {
-      query += ' AND sub_type_name = ?';
-      params.push(sub_type_name);
-    }
-    
-    if (sub_type_category) {
-      query += ' AND sub_type_category = ?';
-      params.push(sub_type_category);
-    }
-    
-    query += ' ORDER BY investment_date DESC, created_at DESC';
-    
-    const [rows] = await pool.query(query, params);
+    const rows = await store.searchInvestments({ website_app_name, sub_type_name, sub_type_category });
     res.json({ success: true, data: rows });
   } catch (error) {
     console.error('Error searching investments:', error);
@@ -51,136 +23,77 @@ router.get('/search', async (req, res) => {
   }
 });
 
-// Get investment by ID
 router.get('/:id', async (req, res) => {
   try {
-    const pool = db.getPool();
-    const [rows] = await pool.query(
-      'SELECT * FROM investments WHERE id = ?',
-      [req.params.id]
-    );
-    
-    if (rows.length === 0) {
+    const row = await store.getInvestmentById(req.params.id);
+    if (!row) {
       return res.status(404).json({ success: false, error: 'Investment not found' });
     }
-    
-    res.json({ success: true, data: rows[0] });
+    res.json({ success: true, data: row });
   } catch (error) {
     console.error('Error fetching investment:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Create new investment
 router.post('/', async (req, res) => {
   try {
     const { website_app_name, investment_type, sub_type_name, sub_type_category, amount, investment_date, notes } = req.body;
-    
+
     if (!website_app_name || !investment_type || !amount || !investment_date) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Missing required fields: website_app_name, investment_type, amount, investment_date' 
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: website_app_name, investment_type, amount, investment_date'
       });
     }
 
-    const pool = db.getPool();
-    const [result] = await pool.query(
-      `INSERT INTO investments (website_app_name, investment_type, sub_type_name, sub_type_category, amount, investment_date, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [website_app_name, investment_type, sub_type_name || null, sub_type_category || null, amount, investment_date, notes || null]
-    );
+    const newInvestment = await store.createInvestment({
+      website_app_name,
+      investment_type,
+      sub_type_name,
+      sub_type_category,
+      amount,
+      investment_date,
+      notes
+    });
 
-    // Add to history
-    await pool.query(
-      `INSERT INTO investment_history (investment_id, amount, change_date, change_type, notes)
-       VALUES (?, ?, ?, 'added', ?)`,
-      [result.insertId, amount, investment_date, notes || null]
-    );
-
-    const [newInvestment] = await pool.query(
-      'SELECT * FROM investments WHERE id = ?',
-      [result.insertId]
-    );
-
-    res.status(201).json({ success: true, data: newInvestment[0] });
+    res.status(201).json({ success: true, data: newInvestment });
   } catch (error) {
     console.error('Error creating investment:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Update investment
 router.put('/:id', async (req, res) => {
   try {
     const { website_app_name, investment_type, sub_type_name, sub_type_category, amount, investment_date, notes } = req.body;
-    
-    const pool = db.getPool();
-    
-    // Get old amount for history
-    const [oldInvestment] = await pool.query(
-      'SELECT amount FROM investments WHERE id = ?',
-      [req.params.id]
-    );
+    const updatedInvestment = await store.updateInvestment(req.params.id, {
+      website_app_name,
+      investment_type,
+      sub_type_name,
+      sub_type_category,
+      amount,
+      investment_date,
+      notes
+    });
 
-    if (oldInvestment.length === 0) {
+    if (!updatedInvestment) {
       return res.status(404).json({ success: false, error: 'Investment not found' });
     }
 
-    await pool.query(
-      `UPDATE investments 
-       SET website_app_name = ?, investment_type = ?, sub_type_name = ?, 
-           sub_type_category = ?, amount = ?, investment_date = ?, notes = ?
-       WHERE id = ?`,
-      [website_app_name, investment_type, sub_type_name || null, sub_type_category || null, 
-       amount, investment_date, notes || null, req.params.id]
-    );
-
-    // Add to history if amount changed
-    if (oldInvestment[0].amount !== amount) {
-      await pool.query(
-        `INSERT INTO investment_history (investment_id, amount, change_date, change_type, notes)
-         VALUES (?, ?, ?, 'updated', ?)`,
-        [req.params.id, amount, investment_date || new Date().toISOString().split('T')[0], notes || null]
-      );
-    }
-
-    const [updatedInvestment] = await pool.query(
-      'SELECT * FROM investments WHERE id = ?',
-      [req.params.id]
-    );
-
-    res.json({ success: true, data: updatedInvestment[0] });
+    res.json({ success: true, data: updatedInvestment });
   } catch (error) {
     console.error('Error updating investment:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Delete investment
 router.delete('/:id', async (req, res) => {
   try {
-    const pool = db.getPool();
-    
-    // Get investment details before deletion for history
-    const [investment] = await pool.query(
-      'SELECT * FROM investments WHERE id = ?',
-      [req.params.id]
-    );
-
-    if (investment.length === 0) {
+    const deleted = await store.deleteInvestment(req.params.id);
+    if (!deleted) {
       return res.status(404).json({ success: false, error: 'Investment not found' });
     }
-
-    // Add to history
-    await pool.query(
-      `INSERT INTO investment_history (investment_id, amount, change_date, change_type, notes)
-       VALUES (?, ?, ?, 'removed', ?)`,
-      [req.params.id, investment[0].amount, new Date().toISOString().split('T')[0], investment[0].notes || null]
-    );
-
-    // Delete investment
-    await pool.query('DELETE FROM investments WHERE id = ?', [req.params.id]);
-
     res.json({ success: true, message: 'Investment deleted successfully' });
   } catch (error) {
     console.error('Error deleting investment:', error);

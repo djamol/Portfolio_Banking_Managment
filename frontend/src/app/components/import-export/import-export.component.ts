@@ -18,7 +18,9 @@ export class ImportExportComponent {
   message = '';
   messageType: MessageType = 'info';
   sqlImportMode: 'merge' | 'fresh' = 'merge';
+  mongoImportMode: 'merge' | 'fresh' = 'merge';
   pendingSqlFile: File | null = null;
+  pendingMongoFile: File | null = null;
 
   constructor(private http: HttpClient) {}
 
@@ -71,6 +73,29 @@ export class ImportExportComponent {
       error: (error) => {
         console.error('SQL export error:', error);
         this.showMessage('SQL export failed: ' + this.errorText(error), 'error');
+        this.loading = false;
+      }
+    });
+  }
+
+  exportMongo() {
+    this.loading = true;
+    this.showMessage('Exporting MongoDB JSON...', 'info');
+
+    this.http.get(`${this.apiUrl}/portfolio/export/mongo`, { responseType: 'text' }).subscribe({
+      next: (json) => {
+        if (!json?.trim()) {
+          this.showMessage('No MongoDB data to export', 'error');
+          this.loading = false;
+          return;
+        }
+        this.downloadFile(json, `portfolio_export_${this.today()}.mongo.json`, 'application/json;charset=utf-8;');
+        this.showMessage('MongoDB export completed successfully!', 'success');
+        this.loading = false;
+      },
+      error: (error) => {
+        console.error('MongoDB export error:', error);
+        this.showMessage('MongoDB export failed: ' + this.errorText(error), 'error');
         this.loading = false;
       }
     });
@@ -216,6 +241,106 @@ export class ImportExportComponent {
       this.loading = false;
       input.value = '';
       this.pendingSqlFile = null;
+    };
+
+    reader.readAsText(file);
+  }
+
+  onMongoFileSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.json')) {
+      this.showMessage('Please select a .json or .mongo.json file', 'error');
+      input.value = '';
+      return;
+    }
+
+    this.pendingMongoFile = file;
+
+    if (this.mongoImportMode === 'fresh') {
+      const confirmed = window.confirm(
+        'Fresh install will DELETE ALL existing data from all portfolio collections before importing.\n\nThis cannot be undone. Continue?'
+      );
+      if (!confirmed) {
+        this.pendingMongoFile = null;
+        input.value = '';
+        return;
+      }
+    }
+
+    this.importMongoFile(file, input);
+  }
+
+  private importMongoFile(file: File, input: HTMLInputElement) {
+    this.loading = true;
+    this.showMessage(
+      this.mongoImportMode === 'fresh' ? 'Running fresh MongoDB install...' : 'Importing MongoDB (merge mode)...',
+      'info'
+    );
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const raw = String(e.target?.result || '');
+      if (!raw.trim()) {
+        this.showMessage('MongoDB file is empty', 'error');
+        this.loading = false;
+        input.value = '';
+        this.pendingMongoFile = null;
+        return;
+      }
+
+      let data;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        this.showMessage('Invalid JSON file', 'error');
+        this.loading = false;
+        input.value = '';
+        this.pendingMongoFile = null;
+        return;
+      }
+
+      this.http.post(`${this.apiUrl}/portfolio/import/mongo`, {
+        data,
+        freshInstall: this.mongoImportMode === 'fresh'
+      }).subscribe({
+        next: (response: any) => {
+          if (response.success) {
+            const result = response.data;
+            const counts = result.tableCounts
+              ? Object.entries(result.tableCounts).map(([t, c]) => `${t}: ${c}`).join(', ')
+              : '';
+            this.showMessage(
+              `${response.message || 'MongoDB import completed.'} Rows — ${counts}`,
+              result.errors?.length ? 'info' : 'success'
+            );
+            if (result.errors?.length) {
+              console.warn('MongoDB import warnings:', result.errors);
+            }
+          } else {
+            this.showMessage('MongoDB import failed: ' + (response.error || 'Unknown error'), 'error');
+          }
+          this.loading = false;
+          input.value = '';
+          this.pendingMongoFile = null;
+        },
+        error: (error) => {
+          console.error('MongoDB import error:', error);
+          this.showMessage('MongoDB import failed: ' + this.errorText(error), 'error');
+          this.loading = false;
+          input.value = '';
+          this.pendingMongoFile = null;
+        }
+      });
+    };
+
+    reader.onerror = () => {
+      this.showMessage('Failed to read MongoDB file', 'error');
+      this.loading = false;
+      input.value = '';
+      this.pendingMongoFile = null;
     };
 
     reader.readAsText(file);

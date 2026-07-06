@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const db = require('./config/database');
+const db = require('./config/index');
 const investmentRoutes = require('./routes/investments');
 const analyticsRoutes = require('./routes/analytics');
 const categoriesRoutes = require('./routes/categories');
@@ -20,7 +20,7 @@ app.use(express.json({ limit: '50mb' }));
 
 // Health check for login / connectivity tests
 app.get('/api/health', (req, res) => {
-  res.json({ success: true, status: 'ok' });
+  res.json({ success: true, status: 'ok', dbType: db.getDbType() });
 });
 
 // Routes
@@ -48,8 +48,7 @@ if (hasFrontend) {
 db.initializeDatabase()
   .then(() => {
     app.listen(PORT, HOST, () => {
-      console.log(`Tables created successfully`);
-      console.log(`Database initialized successfully`);
+      console.log(`Database type: ${db.getDbType()}`);
       console.log(`[${new Date().toLocaleString()}] Server is running on http://${HOST}:${PORT}`);
       console.log(`Local access: http://localhost:${PORT}`);
       console.log(`Network access: use your machine IP or domain with port ${PORT}, e.g. http://your-domain.com:${PORT}`);

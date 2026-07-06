@@ -17,6 +17,21 @@ services:
       retries: 12
       start_period: 30s
 
+  mongo:
+    image: mongo:7
+    container_name: portfolio-mongo
+    restart: unless-stopped
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    volumes:
+      - portfolio_mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
   app:
     build:
       context: .
@@ -26,17 +41,23 @@ services:
     ports:
       - "${APP_PORT:-3000}:3000"
     environment:
+      DB_TYPE: ${DB_TYPE:-mysql}
       DB_HOST: db
       DB_PORT: 3306
       DB_USER: ${DB_USER:-root}
       DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-portfolio_root}
       DB_NAME: ${MYSQL_DATABASE:-portfolio}
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DB: ${MONGODB_DB:-portfolio}
       PORT: 3000
       DB_CONNECT_RETRIES: ${DB_CONNECT_RETRIES:-15}
       DB_CONNECT_DELAY_MS: ${DB_CONNECT_DELAY_MS:-2000}
     depends_on:
       db:
         condition: service_healthy
+      mongo:
+        condition: service_healthy
 
 volumes:
   portfolio_mysql_data:
+  portfolio_mongo_data:

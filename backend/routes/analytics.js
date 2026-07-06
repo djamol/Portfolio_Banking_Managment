@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../config/database');
+const { isMongoDb, getPool } = require('../config/index');
+const mongoAnalytics = require('../utils/mongo-analytics');
 const {
   amountAsOfSubquery,
   buildInvestmentFilterClauses,
@@ -8,10 +9,12 @@ const {
   resolveSeriesBreakdown
 } = require('../utils/snapshot-queries');
 
-// Get total portfolio value
 router.get('/total', async (req, res) => {
   try {
-    const pool = db.getPool();
+    if (isMongoDb()) {
+      return res.json({ success: true, data: await mongoAnalytics.getTotal() });
+    }
+    const pool = getPool();
     const [rows] = await pool.query(`
       SELECT SUM(amount) as total_amount, COUNT(*) as total_investments
       FROM investments
@@ -23,10 +26,12 @@ router.get('/total', async (req, res) => {
   }
 });
 
-// Get investments by type
 router.get('/by-type', async (req, res) => {
   try {
-    const pool = db.getPool();
+    if (isMongoDb()) {
+      return res.json({ success: true, data: await mongoAnalytics.getByType() });
+    }
+    const pool = getPool();
     const [rows] = await pool.query(`
       SELECT 
         investment_type,
@@ -44,10 +49,12 @@ router.get('/by-type', async (req, res) => {
   }
 });
 
-// Get investments by month
 router.get('/by-month', async (req, res) => {
   try {
-    const pool = db.getPool();
+    if (isMongoDb()) {
+      return res.json({ success: true, data: await mongoAnalytics.getByMonth() });
+    }
+    const pool = getPool();
     const [rows] = await pool.query(`
       SELECT 
         DATE_FORMAT(investment_date, '%Y-%m') as month,
@@ -64,10 +71,12 @@ router.get('/by-month', async (req, res) => {
   }
 });
 
-// Get investments by year
 router.get('/by-year', async (req, res) => {
   try {
-    const pool = db.getPool();
+    if (isMongoDb()) {
+      return res.json({ success: true, data: await mongoAnalytics.getByYear() });
+    }
+    const pool = getPool();
     const [rows] = await pool.query(`
       SELECT 
         YEAR(investment_date) as year,
@@ -84,10 +93,12 @@ router.get('/by-year', async (req, res) => {
   }
 });
 
-// Get monthly changes (comparison)
 router.get('/monthly-changes', async (req, res) => {
   try {
-    const pool = db.getPool();
+    if (isMongoDb()) {
+      return res.json({ success: true, data: await mongoAnalytics.getMonthlyChanges() });
+    }
+    const pool = getPool();
     const [rows] = await pool.query(`
       SELECT 
         DATE_FORMAT(change_date, '%Y-%m') as month,
@@ -106,10 +117,12 @@ router.get('/monthly-changes', async (req, res) => {
   }
 });
 
-// Get yearly changes
 router.get('/yearly-changes', async (req, res) => {
   try {
-    const pool = db.getPool();
+    if (isMongoDb()) {
+      return res.json({ success: true, data: await mongoAnalytics.getYearlyChanges() });
+    }
+    const pool = getPool();
     const [rows] = await pool.query(`
       SELECT 
         YEAR(change_date) as year,
@@ -127,10 +140,12 @@ router.get('/yearly-changes', async (req, res) => {
   }
 });
 
-// Get investments by website/app
 router.get('/by-platform', async (req, res) => {
   try {
-    const pool = db.getPool();
+    if (isMongoDb()) {
+      return res.json({ success: true, data: await mongoAnalytics.getByPlatform() });
+    }
+    const pool = getPool();
     const [rows] = await pool.query(`
       SELECT 
         website_app_name,
@@ -147,10 +162,12 @@ router.get('/by-platform', async (req, res) => {
   }
 });
 
-// Get portfolio growth over time
 router.get('/growth', async (req, res) => {
   try {
-    const pool = db.getPool();
+    if (isMongoDb()) {
+      return res.json({ success: true, data: await mongoAnalytics.getGrowth() });
+    }
+    const pool = getPool();
     const [rows] = await pool.query(`
       SELECT 
         DATE_FORMAT(investment_date, '%Y-%m') as month,
@@ -166,14 +183,18 @@ router.get('/growth', async (req, res) => {
   }
 });
 
-// Portfolio value over time from history snapshots (best for line chart)
 router.get('/value-series', async (req, res) => {
   try {
+    if (isMongoDb()) {
+      const data = await mongoAnalytics.getValueSeries(req.query);
+      return res.json({ success: true, data });
+    }
+
     const from = req.query.from;
     const to = req.query.to;
     const breakdown = resolveSeriesBreakdown(req.query);
 
-    const pool = db.getPool();
+    const pool = getPool();
     const snapshotWhere = [];
     const snapshotParams = [];
 
@@ -258,10 +279,13 @@ router.get('/value-series', async (req, res) => {
   }
 });
 
-// Latest allocation by investment_type (donut/treemap)
 router.get('/allocation-latest', async (req, res) => {
   try {
-    const pool = db.getPool();
+    if (isMongoDb()) {
+      return res.json({ success: true, data: await mongoAnalytics.getAllocationLatest(req.query) });
+    }
+
+    const pool = getPool();
     const amountExpr = amountAsOfSubquery('i', 'CURDATE()');
     const investmentParams = [];
     const investmentWhere = buildInvestmentFilterClauses(req.query, investmentParams);
@@ -295,10 +319,13 @@ router.get('/allocation-latest', async (req, res) => {
   }
 });
 
-// Insights & hygiene signals: snapshot freshness, portfolio change, concentration risk
 router.get('/insights', async (req, res) => {
   try {
-    const pool = db.getPool();
+    if (isMongoDb()) {
+      return res.json({ success: true, data: await mongoAnalytics.getInsights(req.query) });
+    }
+
+    const pool = getPool();
 
     const [[latestRow]] = await pool.query(`
       SELECT MAX(change_date) AS latest_date
@@ -422,8 +449,6 @@ router.get('/insights', async (req, res) => {
   }
 });
 
-// Delta between two snapshot dates (waterfall / top movers)
-// Query params: from=YYYY-MM-DD&to=YYYY-MM-DD
 router.get('/delta', async (req, res) => {
   try {
     const fromDate = req.query.from;
@@ -436,7 +461,16 @@ router.get('/delta', async (req, res) => {
       });
     }
 
-    const pool = db.getPool();
+    if (isMongoDb()) {
+      const rows = await mongoAnalytics.getDelta(fromDate, toDate);
+      return res.json({
+        success: true,
+        meta: { from: fromDate, to: toDate },
+        data: rows
+      });
+    }
+
+    const pool = getPool();
     const [rows] = await pool.query(
       `
       WITH a AS (
@@ -478,11 +512,13 @@ router.get('/delta', async (req, res) => {
   }
 });
 
-// Cashflows over time from investment_transactions (bar chart)
-// Helpful for XIRR and income analytics later.
 router.get('/cashflows-by-month', async (req, res) => {
   try {
-    const pool = db.getPool();
+    if (isMongoDb()) {
+      return res.json({ success: true, data: await mongoAnalytics.getCashflowsByMonth() });
+    }
+
+    const pool = getPool();
     const [rows] = await pool.query(`
       SELECT
         DATE_FORMAT(txn_date, '%Y-%m') AS month,
@@ -500,10 +536,13 @@ router.get('/cashflows-by-month', async (req, res) => {
   }
 });
 
-// Get investments by sub type name
 router.get('/by-sub-type-name', async (req, res) => {
   try {
-    const pool = db.getPool();
+    if (isMongoDb()) {
+      return res.json({ success: true, data: await mongoAnalytics.getBySubTypeName() });
+    }
+
+    const pool = getPool();
     const [rows] = await pool.query(`
       SELECT 
         sub_type_name,
@@ -521,10 +560,13 @@ router.get('/by-sub-type-name', async (req, res) => {
   }
 });
 
-// Get investments by sub type category
 router.get('/by-sub-type-category', async (req, res) => {
   try {
-    const pool = db.getPool();
+    if (isMongoDb()) {
+      return res.json({ success: true, data: await mongoAnalytics.getBySubTypeCategory() });
+    }
+
+    const pool = getPool();
     const [rows] = await pool.query(`
       SELECT 
         sub_type_category,
@@ -542,10 +584,13 @@ router.get('/by-sub-type-category', async (req, res) => {
   }
 });
 
-// Get investment summary table with history record counts
 router.get('/summary-table', async (req, res) => {
   try {
-    const pool = db.getPool();
+    if (isMongoDb()) {
+      return res.json({ success: true, data: await mongoAnalytics.getSummaryTable() });
+    }
+
+    const pool = getPool();
     const [rows] = await pool.query(`
       SELECT 
         i.id,
@@ -583,10 +628,14 @@ router.get('/summary-table', async (req, res) => {
   }
 });
 
-// Get investment history by investment ID
 router.get('/investment-history/:id', async (req, res) => {
   try {
-    const pool = db.getPool();
+    if (isMongoDb()) {
+      const rows = await mongoAnalytics.getInvestmentHistory(req.params.id);
+      return res.json({ success: true, data: rows });
+    }
+
+    const pool = getPool();
     const investmentId = req.params.id;
     const [rows] = await pool.query(`
       SELECT 

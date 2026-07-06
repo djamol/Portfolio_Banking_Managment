@@ -1,6 +1,6 @@
 <div class="import-export-container">
   <h2>Portfolio Data Import / Export</h2>
-  <p class="page-desc">Backup and restore your portfolio in CSV or full SQL format.</p>
+  <p class="page-desc">Backup and restore your portfolio in CSV, SQL, or MongoDB JSON format.</p>
 
   <div *ngIf="message" [class]="'message ' + messageType">{{ message }}</div>
   <div *ngIf="loading" class="loading"><p>{{ message || 'Processing...' }}</p></div>
@@ -18,9 +18,16 @@
       </div>
       <div class="format-card highlight">
         <h4>SQL Export</h4>
-        <p>Full database backup: investments, history, categories, transactions.</p>
+        <p>Full MySQL backup: investments, history, categories, transactions.</p>
         <button class="btn btn-primary" type="button" (click)="exportSql()" [disabled]="loading">
           Export SQL
+        </button>
+      </div>
+      <div class="format-card highlight mongo">
+        <h4>MongoDB Export</h4>
+        <p>Full backup in MongoDB Extended JSON format — works with MySQL or MongoDB backends.</p>
+        <button class="btn btn-primary" type="button" (click)="exportMongo()" [disabled]="loading">
+          Export MongoDB
         </button>
       </div>
     </div>
@@ -69,6 +76,39 @@
     </label>
   </div>
 
+  <!-- MongoDB Import -->
+  <div class="section mongo-section">
+    <h3>Import MongoDB</h3>
+    <p>Restore from a <code>.mongo.json</code> backup exported from this app (MongoDB Extended JSON format).</p>
+
+    <div class="import-modes">
+      <label class="mode-option" [class.active]="mongoImportMode === 'merge'">
+        <input type="radio" name="mongoMode" value="merge" [(ngModel)]="mongoImportMode">
+        <div>
+          <strong>Merge import</strong>
+          <span>Keep existing data and upsert documents by ID.</span>
+        </div>
+      </label>
+
+      <label class="mode-option danger" [class.active]="mongoImportMode === 'fresh'">
+        <input type="radio" name="mongoMode" value="fresh" [(ngModel)]="mongoImportMode">
+        <div>
+          <strong>Fresh install</strong>
+          <span>Delete all data from all collections first, then import.</span>
+        </div>
+      </label>
+    </div>
+
+    <div class="sql-warning" *ngIf="mongoImportMode === 'fresh'">
+      Warning: Fresh install removes all existing portfolio data before importing.
+    </div>
+
+    <label class="btn" [class.btn-danger]="mongoImportMode === 'fresh'" [class.btn-secondary]="mongoImportMode === 'merge'">
+      {{ mongoImportMode === 'fresh' ? 'Select MongoDB — Fresh Install' : 'Select MongoDB — Merge Import' }}
+      <input type="file" accept=".json,.mongo.json" (change)="onMongoFileSelected($event)" hidden>
+    </label>
+  </div>
+
   <!-- Instructions -->
   <div class="instructions">
     <h4>Format notes</h4>
@@ -87,6 +127,16 @@
           <li>Exports all tables: investments, investment_history, sub_type_names, sub_type_categories, investment_transactions</li>
           <li><strong>Merge:</strong> adds data without clearing existing records</li>
           <li><strong>Fresh install:</strong> truncates all tables then imports — like a clean setup</li>
+        </ul>
+      </div>
+      <div>
+        <h5>MongoDB</h5>
+        <ul>
+          <li>Extended JSON format with all portfolio collections</li>
+          <li>Compatible with <code>mongoimport</code> and MongoDB tools</li>
+          <li>Works when backend uses MySQL or MongoDB (<code>DB_TYPE</code>)</li>
+          <li><strong>Merge:</strong> upserts by document ID</li>
+          <li><strong>Fresh install:</strong> clears all collections before import</li>
         </ul>
       </div>
     </div>
