@@ -1,4 +1,5 @@
 const { TABLES } = require('./sql-export');
+const { ensureTablesExist } = require('../config/database');
 
 const DESTRUCTIVE_PATTERNS = [
   /^\s*DROP\s+TABLE/i,
@@ -84,13 +85,23 @@ function filterMergeStatements(statements) {
   });
 }
 
+async function tableExists(connection, tableName) {
+  const [[row]] = await connection.query(
+    `SELECT COUNT(*) AS total
+     FROM information_schema.tables
+     WHERE table_schema = DATABASE() AND table_name = ?`,
+    [tableName]
+  );
+  return Number(row.total) > 0;
+}
+
 async function clearAllTables(connection) {
   await connection.query('SET FOREIGN_KEY_CHECKS=0');
-  await connection.query('TRUNCATE TABLE investment_transactions');
-  await connection.query('TRUNCATE TABLE investment_history');
-  await connection.query('TRUNCATE TABLE investments');
-  await connection.query('TRUNCATE TABLE sub_type_categories');
-  await connection.query('TRUNCATE TABLE sub_type_names');
+  for (const table of TABLES) {
+    if (await tableExists(connection, table)) {
+      await connection.query(`TRUNCATE TABLE \`${table}\``);
+    }
+  }
   await connection.query('SET FOREIGN_KEY_CHECKS=1');
 }
 
@@ -109,6 +120,8 @@ async function importDatabaseSql(pool, sqlText, { freshInstall = false } = {}) {
   if (!statements.length) {
     throw new Error('No executable SQL statements found in file');
   }
+
+  await ensureTablesExist();
 
   const connection = await pool.getConnection();
   const errors = [];

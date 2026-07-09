@@ -94,7 +94,7 @@ const createTables = async () => {
       CREATE TABLE IF NOT EXISTS investments (
         id INT AUTO_INCREMENT PRIMARY KEY,
         website_app_name VARCHAR(255) NOT NULL,
-        investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'Saving Bank Balance') NOT NULL,
+        investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'EPF', 'Saving Bank Balance') NOT NULL,
         sub_type_name VARCHAR(255),
         sub_type_category VARCHAR(255),
         amount DECIMAL(15, 2) NOT NULL,
@@ -127,7 +127,7 @@ const createTables = async () => {
       CREATE TABLE IF NOT EXISTS sub_type_names (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(255) NOT NULL UNIQUE,
-        investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'Saving Bank Balance') NOT NULL,
+        investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'EPF', 'Saving Bank Balance') NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_investment_type (investment_type),
         INDEX idx_name (name)
@@ -139,7 +139,7 @@ const createTables = async () => {
         id INT AUTO_INCREMENT PRIMARY KEY,
         category VARCHAR(255) NOT NULL,
         sub_type_name_id INT,
-        investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'Saving Bank Balance') NOT NULL,
+        investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'EPF', 'Saving Bank Balance') NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (sub_type_name_id) REFERENCES sub_type_names(id) ON DELETE SET NULL,
         INDEX idx_investment_type (investment_type),
@@ -185,8 +185,16 @@ const createTables = async () => {
   }
 };
 
+const ensureTablesExist = async () => {
+  if (!pool) {
+    pool = mysql.createPool(dbConfig);
+  }
+  await createTables();
+};
+
 module.exports = {
   getPool,
   initializeDatabase,
+  ensureTablesExist,
   getConnectionSummary
 };
