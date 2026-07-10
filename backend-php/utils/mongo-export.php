@@ -70,7 +70,7 @@ function mongo_export_fetch_mongo_collections(): array
 function mongo_export_database(): array
 {
     $exportedAt = gmdate('c');
-    $database = $_ENV['MONGODB_DB'] ?? ($_ENV['DB_NAME'] ?? 'portfolio');
+    $database = app_env('MONGODB_DB', app_env('DB_NAME', 'portfolio'));
 
     if (app_is_mongodb()) {
         $result = mongo_export_fetch_mongo_collections();

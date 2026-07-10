@@ -8,9 +8,6 @@ use Slim\Factory\AppFactory;
 
 require __DIR__ . '/../vendor/autoload.php';
 
-$dotenv = Dotenv\Dotenv::createImmutable(dirname(__DIR__));
-$dotenv->safeLoad();
-
 $appStartTime = microtime(true);
 
 set_exception_handler(function (Throwable $error) {
@@ -20,11 +17,11 @@ set_exception_handler(function (Throwable $error) {
     exit(1);
 });
 
-$port = (int) ($_ENV['PORT'] ?? 3000);
+$port = app_env_int('PORT', 3000);
 if ($port <= 0) {
     $port = 3000;
 }
-$host = $_ENV['HOST'] ?? '0.0.0.0';
+$host = app_env('HOST', '0.0.0.0');
 $publicPath = dirname(__DIR__) . '/public';
 $hasFrontend = is_file($publicPath . '/index.html');
 
@@ -34,7 +31,7 @@ logger_info('Portfolio app starting', [
     'cwd' => getcwd(),
     'host' => $host,
     'port' => $port,
-    'nodeEnv' => $_ENV['NODE_ENV'] ?? 'development',
+    'nodeEnv' => app_env('NODE_ENV', 'development'),
     'dbType' => app_get_db_type(),
     'frontendBundled' => $hasFrontend,
     'publicPath' => $publicPath,
@@ -58,7 +55,13 @@ if (!$appBootstrapped) {
 }
 
 $app = AppFactory::create();
-$app->setBasePath('');
+
+$basePath = app_detect_base_path();
+if ($basePath !== '') {
+    $app->setBasePath($basePath);
+    logger_info('Slim base path configured for subdirectory deployment', ['basePath' => $basePath]);
+}
+
 $app->addBodyParsingMiddleware();
 $app->addRoutingMiddleware();
 

@@ -12,25 +12,15 @@ class ComposerStaticInitef76437136f254aa402d0abd50a0bfc6
         '320cde22f66dd4f5d3fd621d3e88b98f' => __DIR__ . '/..' . '/symfony/polyfill-ctype/bootstrap.php',
         '0e6d7bf4a5811bfa5cf40c5ccd6fae6a' => __DIR__ . '/..' . '/symfony/polyfill-mbstring/bootstrap.php',
         'a4a119a56e50fbb293281d9a48007e0e' => __DIR__ . '/..' . '/symfony/polyfill-php80/bootstrap.php',
+        '606a39d89246991a373564698c2d8383' => __DIR__ . '/..' . '/symfony/polyfill-php85/bootstrap.php',
         '3a37ebac017bc098e9a86b35401e7a68' => __DIR__ . '/..' . '/mongodb/mongodb/src/functions.php',
-        '336f51c0b52589c6f9e321166acf86a9' => __DIR__ . '/../..' . '/utils/logger.php',
-        '5a9710a3a6d6a690c92cb0a774bda242' => __DIR__ . '/../..' . '/utils/snapshot-queries.php',
-        '1c2da4895c93d6f3e093aba3ed8ee214' => __DIR__ . '/../..' . '/config/database.php',
-        '1ac379fc96a404e040a104b1f2b323f9' => __DIR__ . '/../..' . '/config/mongodb.php',
-        'e89a1ff0e20cc0e58e5882b284fee53b' => __DIR__ . '/../..' . '/config/index.php',
-        '354e714833fc27b2b154fa77ace2d22b' => __DIR__ . '/../..' . '/db/mysql-store.php',
-        'b2d71a63a41c38ed34ed750c1b2be56a' => __DIR__ . '/../..' . '/db/mongo-store.php',
-        '61ec17bc85951d597d55325a5ee432f0' => __DIR__ . '/../..' . '/db/index.php',
-        'ca1b0fa2b8cac448b9e13b5d777af817' => __DIR__ . '/../..' . '/utils/mongo-analytics.php',
-        '044e949292c8b6e8906bd5fb48eaf206' => __DIR__ . '/../..' . '/utils/sql-export.php',
-        'e910d520e3662ff6ffcf8912746687fe' => __DIR__ . '/../..' . '/utils/sql-import.php',
-        'e5014efb28b3b884fe32a1ee4e40f878' => __DIR__ . '/../..' . '/utils/mongo-export.php',
-        '1f326d78f2f7652adc866f90daad8bbb' => __DIR__ . '/../..' . '/utils/mongo-import.php',
+        'ee443e001a6f4ea6b988aa4acedf002b' => __DIR__ . '/../..' . '/bootstrap/app.php',
     );
 
     public static $prefixLengthsPsr4 = array (
         'S' =>
         array (
+            'Symfony\\Polyfill\\Php85\\' => 23,
             'Symfony\\Polyfill\\Php80\\' => 23,
             'Symfony\\Polyfill\\Mbstring\\' => 26,
             'Symfony\\Polyfill\\Ctype\\' => 23,
@@ -65,6 +55,10 @@ class ComposerStaticInitef76437136f254aa402d0abd50a0bfc6
     );
 
     public static $prefixDirsPsr4 = array (
+        'Symfony\\Polyfill\\Php85\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/symfony/polyfill-php85',
+        ),
         'Symfony\\Polyfill\\Php80\\' =>
         array (
             0 => __DIR__ . '/..' . '/symfony/polyfill-php80',
@@ -132,6 +126,10 @@ class ComposerStaticInitef76437136f254aa402d0abd50a0bfc6
     public static $classMap = array (
         'Attribute' => __DIR__ . '/..' . '/symfony/polyfill-php80/Resources/stubs/Attribute.php',
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
+        'DelayedTargetValidation' => __DIR__ . '/..' . '/symfony/polyfill-php85/Resources/stubs/DelayedTargetValidation.php',
+        'Filter\\FilterException' => __DIR__ . '/..' . '/symfony/polyfill-php85/Resources/stubs/Filter/FilterException.php',
+        'Filter\\FilterFailedException' => __DIR__ . '/..' . '/symfony/polyfill-php85/Resources/stubs/Filter/FilterFailedException.php',
+        'NoDiscard' => __DIR__ . '/..' . '/symfony/polyfill-php85/Resources/stubs/NoDiscard.php',
         'PhpToken' => __DIR__ . '/..' . '/symfony/polyfill-php80/Resources/stubs/PhpToken.php',
         'Stringable' => __DIR__ . '/..' . '/symfony/polyfill-php80/Resources/stubs/Stringable.php',
         'UnhandledMatchError' => __DIR__ . '/..' . '/symfony/polyfill-php80/Resources/stubs/UnhandledMatchError.php',

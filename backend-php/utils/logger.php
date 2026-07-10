@@ -7,7 +7,7 @@ function logger_levels(): array
 
 function logger_min_level(): int
 {
-    $levelName = strtolower($_ENV['LOG_LEVEL'] ?? 'info');
+    $levelName = strtolower(app_env('LOG_LEVEL', 'info'));
     $levels = logger_levels();
     return $levels[$levelName] ?? $levels['info'];
 }
@@ -61,7 +61,7 @@ function logger_log_error(string $context, Throwable $error, array $extra = []):
         'code' => $error->getCode(),
     ], $extra);
 
-    $levelName = strtolower($_ENV['LOG_LEVEL'] ?? 'info');
+    $levelName = strtolower(app_env('LOG_LEVEL', 'info'));
     if ($levelName === 'debug') {
         $meta['stack'] = $error->getTraceAsString();
     }

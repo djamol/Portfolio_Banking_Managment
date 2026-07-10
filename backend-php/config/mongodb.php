@@ -11,10 +11,13 @@ const MONGO_COLLECTIONS = [
     'investment_transactions',
 ];
 
-$mongoConfig = [
-    'uri' => $_ENV['MONGODB_URI'] ?? 'mongodb://localhost:27017',
-    'database' => $_ENV['MONGODB_DB'] ?? ($_ENV['DB_NAME'] ?? 'portfolio'),
-];
+function mongo_get_config(): array
+{
+    return [
+        'uri' => app_env('MONGODB_URI', 'mongodb://localhost:27017'),
+        'database' => app_env('MONGODB_DB', app_env('DB_NAME', 'portfolio')),
+    ];
+}
 
 /** @var Client|null */
 $mongoClient = null;
@@ -24,7 +27,7 @@ $mongoDb = null;
 
 function mongo_get_connection_summary(): array
 {
-    global $mongoConfig;
+    $mongoConfig = mongo_get_config();
     return [
         'uri' => logger_redact_uri($mongoConfig['uri']),
         'database' => $mongoConfig['database'],
@@ -92,8 +95,9 @@ function mongo_ensure_indexes(Database $database): void
 
 function mongo_initialize_database_once(): void
 {
-    global $mongoConfig, $mongoClient, $mongoDb;
+    global $mongoClient, $mongoDb;
 
+    $mongoConfig = mongo_get_config();
     logger_info('MongoDB: connecting', mongo_get_connection_summary());
 
     $mongoClient = new Client($mongoConfig['uri'], [
@@ -111,8 +115,8 @@ function mongo_initialize_database_once(): void
 
 function mongo_initialize_database(): void
 {
-    $maxAttempts = (int) ($_ENV['DB_CONNECT_RETRIES'] ?? 15);
-    $delayMs = (int) ($_ENV['DB_CONNECT_DELAY_MS'] ?? 2000);
+    $maxAttempts = app_env_int('DB_CONNECT_RETRIES', 15);
+    $delayMs = app_env_int('DB_CONNECT_DELAY_MS', 2000);
 
     logger_info('MongoDB: starting connection attempts', array_merge([
         'maxAttempts' => $maxAttempts,

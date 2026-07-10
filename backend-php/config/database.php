@@ -1,19 +1,32 @@
 <?php
 
-$dbConfig = [
-    'host' => $_ENV['DB_HOST'] ?? 'localhost',
-    'port' => (int) ($_ENV['DB_PORT'] ?? 3306),
-    'user' => $_ENV['DB_USER'] ?? 'root',
-    'password' => $_ENV['DB_PASSWORD'] ?? '',
-    'database' => $_ENV['DB_NAME'] ?? 'portfolio',
-];
-
 /** @var PDO|null */
 $mysqlPool = null;
 
+function mysql_get_db_config(): array
+{
+    return [
+        'host' => app_env('DB_HOST', 'localhost'),
+        'port' => app_env_int('DB_PORT', 3306),
+        'user' => app_env('DB_USER', 'root'),
+        'password' => app_env('DB_PASSWORD', ''),
+        'database' => app_env('DB_NAME', 'portfolio'),
+    ];
+}
+
+function mysql_should_create_database(): bool
+{
+    if (app_env_bool('DB_CREATE_DATABASE', false)) {
+        return true;
+    }
+    // Docker/local dev convenience: auto-create only on typical local hosts
+    $host = app_env('DB_HOST', 'localhost');
+    return in_array($host, ['localhost', '127.0.0.1', 'db'], true);
+}
+
 function mysql_get_connection_summary(): array
 {
-    global $dbConfig;
+    $dbConfig = mysql_get_db_config();
     return [
         'host' => $dbConfig['host'],
         'port' => $dbConfig['port'],
@@ -23,20 +36,28 @@ function mysql_get_connection_summary(): array
     ];
 }
 
-function mysql_get_dsn(): string
+function mysql_get_dsn(bool $includeDatabase = true): string
 {
-    global $dbConfig;
+    $dbConfig = mysql_get_db_config();
+    if ($includeDatabase) {
+        return sprintf(
+            'mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
+            $dbConfig['host'],
+            $dbConfig['port'],
+            $dbConfig['database']
+        );
+    }
     return sprintf(
-        'mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
+        'mysql:host=%s;port=%d;charset=utf8mb4',
         $dbConfig['host'],
-        $dbConfig['port'],
-        $dbConfig['database']
+        $dbConfig['port']
     );
 }
 
 function mysql_get_pool(): PDO
 {
-    global $mysqlPool, $dbConfig;
+    global $mysqlPool;
+    $dbConfig = mysql_get_db_config();
 
     if ($mysqlPool === null) {
         $mysqlPool = new PDO(
@@ -148,27 +169,27 @@ function mysql_create_tables(): void
 
 function mysql_initialize_database_once(): void
 {
-    global $dbConfig;
+    $dbConfig = mysql_get_db_config();
+
+    if (empty($dbConfig['database'])) {
+        throw new RuntimeException('DB_NAME is not set. Add DB_NAME to your .env file (project root, parent of public/).');
+    }
 
     logger_info('MySQL: connecting', mysql_get_connection_summary());
 
-    $serverDsn = sprintf(
-        'mysql:host=%s;port=%d;charset=utf8mb4',
-        $dbConfig['host'],
-        $dbConfig['port']
-    );
+    if (mysql_should_create_database()) {
+        $connection = new PDO(
+            mysql_get_dsn(false),
+            $dbConfig['user'],
+            $dbConfig['password'],
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        );
 
-    $connection = new PDO(
-        $serverDsn,
-        $dbConfig['user'],
-        $dbConfig['password'],
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-    );
-
-    logger_info('MySQL: server reachable, ensuring database exists', ['database' => $dbConfig['database']]);
-    $dbName = $dbConfig['database'];
-    $connection->exec("CREATE DATABASE IF NOT EXISTS `{$dbName}`");
-    $connection = null;
+        logger_info('MySQL: server reachable, ensuring database exists', ['database' => $dbConfig['database']]);
+        $dbName = $dbConfig['database'];
+        $connection->exec("CREATE DATABASE IF NOT EXISTS `{$dbName}`");
+        $connection = null;
+    }
 
     global $mysqlPool;
     $mysqlPool = null;
@@ -179,8 +200,8 @@ function mysql_initialize_database_once(): void
 
 function mysql_initialize_database(): void
 {
-    $maxAttempts = (int) ($_ENV['DB_CONNECT_RETRIES'] ?? 15);
-    $delayMs = (int) ($_ENV['DB_CONNECT_DELAY_MS'] ?? 2000);
+    $maxAttempts = app_env_int('DB_CONNECT_RETRIES', 15);
+    $delayMs = app_env_int('DB_CONNECT_DELAY_MS', 2000);
 
     logger_info('MySQL: starting connection attempts', array_merge([
         'maxAttempts' => $maxAttempts,

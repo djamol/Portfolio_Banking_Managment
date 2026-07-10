@@ -2,7 +2,7 @@
 
 function app_get_db_type(): string
 {
-    $dbType = strtolower($_ENV['DB_TYPE'] ?? 'mysql');
+    $dbType = strtolower(app_env('DB_TYPE', 'mysql'));
     return $dbType === 'mongodb' ? 'mongodb' : 'mysql';
 }
 
@@ -15,8 +15,8 @@ function app_log_startup_config(): void
 {
     $summary = [
         'dbType' => app_get_db_type(),
-        'nodeEnv' => $_ENV['NODE_ENV'] ?? 'development',
-        'logLevel' => $_ENV['LOG_LEVEL'] ?? 'info',
+        'nodeEnv' => app_env('NODE_ENV', 'development'),
+        'logLevel' => app_env('LOG_LEVEL', 'info'),
     ];
 
     if (app_is_mongodb()) {
