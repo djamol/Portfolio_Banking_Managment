@@ -341,7 +341,8 @@ router.get('/allocation-latest', async (req, res) => {
     }
 
     const pool = getPool();
-    const amountExpr = amountAsOfSubquery('i', 'CURDATE()');
+    // Live allocation uses current holdings, not history as-of (avoids missing
+    // brand-new investments that have no history row yet).
     const investmentParams = [];
     const investmentWhere = buildInvestmentFilterClauses(req.query, investmentParams);
     const amountParams = [];
@@ -357,7 +358,7 @@ router.get('/allocation-latest', async (req, res) => {
       FROM (
         SELECT
           i.investment_type,
-          ${amountExpr} AS amount_at_date
+          i.amount AS amount_at_date
         FROM investments i
         ${investmentSql}
       ) vals

@@ -58,19 +58,13 @@ function matchesFilters(investment, query) {
   return true;
 }
 
-function amountAsOf(investmentId, asOfDate, historyRows, investmentsById) {
-  const asOf = toDateString(asOfDate);
-  const relevant = historyRows
-    .filter((h) => h.investment_id === investmentId && toDateString(h.change_date) <= asOf)
-    .sort((a, b) => {
-      const dateCmp = toDateString(b.change_date).localeCompare(toDateString(a.change_date));
-      if (dateCmp !== 0) return dateCmp;
-      return (b.id || 0) - (a.id || 0);
-    });
-
-  if (relevant.length) return Number(relevant[0].amount);
-  const inv = investmentsById[investmentId];
-  return inv ? Number(inv.amount) : 0;
+/**
+ * Latest known history amount on/before date.
+ * Returns 0 when none — never falls back to live investments.amount
+ * (that would project today's holdings onto past snapshot dates).
+ */
+function amountAsOf(investmentId, asOfDate, historyRows, _investmentsById) {
+  return amountAsOfHistoryOnly(investmentId, asOfDate, historyRows);
 }
 
 /** Last history amount on/before date; 0 if none (no live-amount fallback). */
@@ -361,13 +355,13 @@ async function getValueSeries(query) {
 }
 
 async function getAllocationLatest(query) {
-  const { investments, history, investmentsById } = await loadCoreData();
-  const today = toDateString(new Date());
+  const { investments } = await loadCoreData();
   const filtered = investments.filter((i) => matchesFilters(i, query));
   const map = new Map();
 
   for (const inv of filtered) {
-    const value = amountAsOf(inv.id, today, history, investmentsById);
+    // Live allocation uses current holdings, not history as-of.
+    const value = Number(inv.amount) || 0;
     const minAmount = parseNumberParam(query.minAmount);
     const maxAmount = parseNumberParam(query.maxAmount);
     if (minAmount != null && value < minAmount) continue;

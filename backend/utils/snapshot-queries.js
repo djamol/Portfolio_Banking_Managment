@@ -21,7 +21,11 @@ function parseBoolParam(value) {
 
 /**
  * Latest known amount for an investment on or before a snapshot date.
- * Falls back to the live investments.amount when no history exists yet.
+ * Returns 0 when no history exists on/before that date.
+ *
+ * Do NOT fall back to live investments.amount — that projects today's
+ * holdings onto past snapshot dates and invents false peaks/growth.
+ * Live totals should use SUM(investments.amount) directly.
  */
 function amountAsOfSubquery(investmentAlias, asOfDateExpr) {
   return `COALESCE(
@@ -33,7 +37,7 @@ function amountAsOfSubquery(investmentAlias, asOfDateExpr) {
       ORDER BY ih.change_date DESC, ih.id DESC
       LIMIT 1
     ),
-    ${investmentAlias}.amount
+    0
   )`;
 }
 
