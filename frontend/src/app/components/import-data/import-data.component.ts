@@ -178,11 +178,11 @@ export class ImportDataComponent implements OnInit {
       // Store original count before aggregation
       this.originalRecordCount = this.parsedData.length;
       
-      // Aggregate duplicate records (same platform, AMC, and scheme name)
-      this.parsedData = this.aggregateDuplicateRecords(this.parsedData);
-      
       if (this.parsedData.length > 0) {
-        const existingInvestments = await this.investmentService.getAll().toPromise();
+        const [existingInvestments, existingCategoriesResp] = await Promise.all([
+          this.investmentService.getAll().toPromise(),
+          this.categoryService.getCategories(this.investmentType).toPromise()
+        ]);
         const typeAmcs = new Set<string>();
         const typeSchemes = new Set<string>();
         existingInvestments
@@ -191,6 +191,20 @@ export class ImportDataComponent implements OnInit {
             if (inv.sub_type_name) typeAmcs.add(inv.sub_type_name);
             if (inv.sub_type_category) typeSchemes.add(inv.sub_type_category);
           });
+        existingCategoriesResp?.data?.forEach(cat => {
+          if (cat.category) typeSchemes.add(cat.category);
+        });
+
+        // Prefer existing category without trailing "Fund" (e.g. FoF) before aggregating
+        for (const record of this.parsedData) {
+          record.subTypeCategory = this.resolveCategoryForImport(
+            record.subTypeCategory,
+            typeSchemes
+          );
+        }
+
+        // Aggregate duplicate records (same platform, AMC, and scheme name)
+        this.parsedData = this.aggregateDuplicateRecords(this.parsedData);
 
         // Prepare preview data
         this.previewData = this.parsedData.map(record => ({
@@ -735,9 +749,7 @@ export class ImportDataComponent implements OnInit {
    */
   private canonicalizeFoFCategory(schemeName: string): string {
     if (!schemeName) return schemeName;
-    return schemeName.replace(/\b(FoF|FOF|fof)\s+Fund\b/g, (_, fof: string) =>
-      fof.toLowerCase() === 'fof' ? 'FoF' : fof
-    ).trim();
+    return schemeName.replace(/\bfof\s+fund\b/gi, 'FoF').trim();
   }
 
   /** Category name variants that should match the same holding (e.g. FoF vs FoF Fund). */
@@ -755,6 +767,22 @@ export class ImportDataComponent implements OnInit {
 
   private categoryExistsInSet(schemes: Set<string>, category: string): boolean {
     return this.getCategoryNameVariants(category).some(variant => schemes.has(variant));
+  }
+
+  /**
+   * Reuse an existing category when present (prefer without trailing "Fund").
+   * Only keep/create a new name when no FoF / FoF Fund variant exists yet.
+   */
+  private resolveCategoryForImport(category: string, existing: Set<string>): string {
+    if (!category) return category;
+    const canonical = this.canonicalizeFoFCategory(category.trim());
+    const preferredOrder = [canonical, `${canonical} Fund`, ...this.getCategoryNameVariants(category)];
+    for (const variant of preferredOrder) {
+      if (existing.has(variant)) {
+        return variant;
+      }
+    }
+    return canonical;
   }
 
   /**
@@ -942,6 +970,20 @@ export class ImportDataComponent implements OnInit {
     // First, collect all unique sub-type names and categories
     const uniqueSubTypeNames = new Map<string, string>(); // name -> investment_type
     const uniqueCategories = new Map<string, {category: string, investment_type: string}>(); // category -> {category, investment_type}
+
+    const existingCategoriesResp = await this.categoryService.getCategories(this.investmentType).toPromise();
+    const existingCategoryNames = new Set<string>();
+    existingCategoriesResp?.data?.forEach(cat => {
+      if (cat.category) existingCategoryNames.add(cat.category);
+    });
+
+    // Prefer existing category without trailing "Fund" before creating lookup rows
+    for (const record of this.parsedData) {
+      record.subTypeCategory = this.resolveCategoryForImport(
+        record.subTypeCategory,
+        existingCategoryNames
+      );
+    }
     
     // Collect unique values from parsed data
     for (const record of this.parsedData) {
@@ -973,8 +1015,12 @@ export class ImportDataComponent implements OnInit {
       }
     }
     
-    // Create categories in database
+    // Create categories only when no FoF / FoF Fund variant already exists
     for (const categoryData of uniqueCategories.values()) {
+      if (this.categoryExistsInSet(existingCategoryNames, categoryData.category)) {
+        console.log(`Skipped category create (already exists): ${categoryData.category}`);
+        continue;
+      }
       try {
         const category: Category = {
           category: categoryData.category,
@@ -982,6 +1028,7 @@ export class ImportDataComponent implements OnInit {
           sub_type_name_id: null
         };
         await this.categoryService.createCategory(category).toPromise();
+        existingCategoryNames.add(categoryData.category);
         console.log(`Created category: ${categoryData.category}`);
       } catch (error: any) {
         // Handle duplicate entry error gracefully
@@ -1003,7 +1050,11 @@ export class ImportDataComponent implements OnInit {
           // Prefer the holding with the highest amount so FoF / FoF Fund duplicates consolidate
           matchingInvestments.sort((a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0));
           const primary = matchingInvestments[0];
-          await this.updateExistingInvestment(primary, record.presentValue, record.subTypeCategory);
+          // Keep canonical FoF name (without trailing Fund) when updating
+          const categoryToKeep = this.canonicalizeFoFCategory(
+            record.subTypeCategory || primary.sub_type_category
+          );
+          await this.updateExistingInvestment(primary, record.presentValue, categoryToKeep);
 
           for (const duplicate of matchingInvestments.slice(1)) {
             try {
