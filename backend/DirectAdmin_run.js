@@ -11,6 +11,7 @@ const analyticsRoutes = require('./routes/analytics');
 const categoriesRoutes = require('./routes/categories');
 const portfolioRoutes = require('./routes/portfolio');
 const configRoutes = require('./routes/config');
+const bankingRoutes = require('./routes/banking');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -89,6 +90,7 @@ router.use('/api/analytics', analyticsRoutes);
 router.use('/api/categories', categoriesRoutes);
 router.use('/api/portfolio', portfolioRoutes);
 router.use('/api/config', configRoutes);
+router.use('/api/banking', bankingRoutes);
 
 if (hasFrontend) {
   logger.info('Serving bundled frontend from /public', { basePath: BASE_PATH || '/' });
