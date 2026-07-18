@@ -192,20 +192,47 @@ router.post('/import/preview', upload.single('file'), async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'file is required' });
     }
-    const accountId = Number(req.body.account_id) || 0;
+    const accountId = Number(req.body.account_id);
+    if (!accountId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Select a target account before preview to check existing vs new transactions'
+      });
+    }
+
+    const account = await banking.getAccountById(accountId);
+    if (!account) {
+      return res.status(404).json({ success: false, error: 'Account not found' });
+    }
+
+    const bankHint = req.body.bank_hint || account.bank_name || '';
     const parsed = parseBankStatement({
       buffer: req.file.buffer,
       filename: req.file.originalname,
-      accountId: accountId || 0,
-      bankHint: req.body.bank_hint
+      accountId,
+      bankHint
     });
+
+    const fingerprints = parsed.transactions.map((t) => t.fingerprint);
+    const existingSet = await banking.findExistingFingerprints(accountId, fingerprints);
+
+    const newTxns = [];
+    const existingTxns = [];
+    for (const txn of parsed.transactions) {
+      if (existingSet.has(txn.fingerprint)) existingTxns.push(txn);
+      else newTxns.push(txn);
+    }
+
     res.json({
       success: true,
       data: {
         bank: parsed.bank,
         meta: parsed.meta,
         count: parsed.transactions.length,
-        preview: parsed.transactions.slice(0, 25),
+        existing_count: existingTxns.length,
+        new_count: newTxns.length,
+        preview: newTxns.slice(0, 25),
+        existing_preview: existingTxns.slice(0, 10),
         categories: [...new Set(parsed.transactions.map((t) => t.category))].sort()
       }
     });

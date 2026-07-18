@@ -241,7 +241,7 @@
       </div>
 
       <div class="section-actions">
-        <button class="btn btn-secondary" (click)="previewImport()" [disabled]="importing || !importFile">Preview</button>
+        <button class="btn btn-secondary" (click)="previewImport()" [disabled]="importing || !importFile || !importAccountId">Preview</button>
         <button class="btn btn-primary" (click)="runImport()" [disabled]="importing || !importFile || !importAccountId">
           {{ importing ? 'Working…' : 'Import (skip duplicates)' }}
         </button>
@@ -249,13 +249,31 @@
     </div>
 
     <div class="card" *ngIf="importPreview">
-      <h3>Preview — {{ importPreview.bank }} ({{ importPreview.count }} txns)</h3>
+      <h3>Preview — {{ importPreview.bank }}</h3>
+      <div class="preview-stats">
+        <div class="preview-stat">
+          <span class="preview-stat-label">In file</span>
+          <span class="preview-stat-value">{{ importPreview.count }}</span>
+        </div>
+        <div class="preview-stat existing">
+          <span class="preview-stat-label">Already exist</span>
+          <span class="preview-stat-value">{{ importPreview.existing_count || 0 }}</span>
+        </div>
+        <div class="preview-stat neu">
+          <span class="preview-stat-label">New to import</span>
+          <span class="preview-stat-value">{{ importPreview.new_count || 0 }}</span>
+        </div>
+      </div>
       <p class="hint" *ngIf="importPreview.meta">
         A/c {{ importPreview.meta.accountNumber || '—' }}
         <span *ngIf="importPreview.meta.ifsc"> · IFSC {{ importPreview.meta.ifsc }}</span>
         <span *ngIf="importPreview.meta.customerName"> · {{ importPreview.meta.customerName }}</span>
       </p>
-      <table class="data-table compact">
+      <p class="hint" *ngIf="(importPreview.new_count || 0) === 0">
+        All transactions in this file already exist for the selected account. Nothing new to import.
+      </p>
+      <h4 *ngIf="importPreview.preview?.length">New transactions (sample)</h4>
+      <table class="data-table compact" *ngIf="importPreview.preview?.length">
         <thead>
           <tr>
             <th>Date</th>

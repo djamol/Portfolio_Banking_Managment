@@ -363,6 +363,23 @@ async function mysqlGetCategories() {
   return rows.map((r) => r.category);
 }
 
+async function mysqlFindExistingFingerprints(accountId, fingerprints) {
+  if (!accountId || !fingerprints?.length) return new Set();
+  const pool = getPool();
+  const existing = new Set();
+  const chunkSize = 500;
+  for (let i = 0; i < fingerprints.length; i += chunkSize) {
+    const chunk = fingerprints.slice(i, i + chunkSize);
+    const [rows] = await pool.query(
+      `SELECT fingerprint FROM bank_transactions
+       WHERE account_id = ? AND fingerprint IN (${chunk.map(() => '?').join(',')})`,
+      [Number(accountId), ...chunk]
+    );
+    rows.forEach((r) => existing.add(r.fingerprint));
+  }
+  return existing;
+}
+
 /* ===================== Mongo ===================== */
 
 async function nextMongoId(collectionName) {
@@ -687,6 +704,22 @@ async function mongoGetCategories() {
   return (await db.collection('bank_transactions').distinct('category')).filter(Boolean).sort();
 }
 
+async function mongoFindExistingFingerprints(accountId, fingerprints) {
+  if (!accountId || !fingerprints?.length) return new Set();
+  const db = getMongoDb();
+  const existing = new Set();
+  const chunkSize = 500;
+  for (let i = 0; i < fingerprints.length; i += chunkSize) {
+    const chunk = fingerprints.slice(i, i + chunkSize);
+    const rows = await db
+      .collection('bank_transactions')
+      .find({ account_id: Number(accountId), fingerprint: { $in: chunk } }, { projection: { fingerprint: 1 } })
+      .toArray();
+    rows.forEach((r) => existing.add(r.fingerprint));
+  }
+  return existing;
+}
+
 /* ===================== Public API ===================== */
 
 const impl = () => (isMongoDb() ? 'mongo' : 'mysql');
@@ -707,5 +740,7 @@ module.exports = {
   bulkCategorize: (...a) => (impl() === 'mongo' ? mongoBulkCategorize(...a) : mysqlBulkCategorize(...a)),
   recategorizeAll: (...a) => (impl() === 'mongo' ? mongoRecategorizeAll(...a) : mysqlRecategorizeAll(...a)),
   getAnalytics: (...a) => (impl() === 'mongo' ? mongoGetAnalytics(...a) : mysqlGetAnalytics(...a)),
-  getCategories: (...a) => (impl() === 'mongo' ? mongoGetCategories(...a) : mysqlGetCategories(...a))
+  getCategories: (...a) => (impl() === 'mongo' ? mongoGetCategories(...a) : mysqlGetCategories(...a)),
+  findExistingFingerprints: (...a) =>
+    impl() === 'mongo' ? mongoFindExistingFingerprints(...a) : mysqlFindExistingFingerprints(...a)
 };

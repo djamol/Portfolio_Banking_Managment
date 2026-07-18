@@ -339,18 +339,25 @@ export class BankingComponent implements OnInit {
       this.flash('error', 'Choose a statement file first');
       return;
     }
+    if (!this.importAccountId) {
+      this.flash('error', 'Select a target account before preview');
+      return;
+    }
     this.importing = true;
+    const account = this.accounts.find((a) => a.id === Number(this.importAccountId));
+    const hint = this.importBankHint || account?.bank_name || '';
     this.bankingService
-      .previewStatement(
-        this.importFile,
-        this.importAccountId ? Number(this.importAccountId) : undefined,
-        this.importBankHint || undefined
-      )
+      .previewStatement(this.importFile, Number(this.importAccountId), hint || undefined)
       .subscribe({
         next: (data) => {
           this.importPreview = data;
           this.importing = false;
-          this.flash('info', `Detected ${data.bank}: ${data.count} transactions`);
+          const existing = data.existing_count ?? 0;
+          const neu = data.new_count ?? data.count ?? 0;
+          this.flash(
+            'info',
+            `${data.bank}: ${data.count} in file · ${existing} already exist · ${neu} new`
+          );
         },
         error: (err) => {
           this.importing = false;
