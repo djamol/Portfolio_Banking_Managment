@@ -47,6 +47,30 @@ function parseBankDate(value) {
   m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (m) return raw.slice(0, 10);
 
+  // DD-MMM-YYYY or DD/MMM/YYYY
+  m = raw.match(/^(\d{1,2})[\/\-]([A-Za-z]{3,9})[\/\-](\d{2,4})$/);
+  if (m) {
+    const months = {
+      jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+      may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8,
+      sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11,
+      dec: 12, december: 12
+    };
+    let [, dd, mon, yyyy] = m;
+    const mi = months[mon.toLowerCase()];
+    if (mi) {
+      if (yyyy.length === 2) yyyy = Number(yyyy) > 50 ? `19${yyyy}` : `20${yyyy}`;
+      return `${yyyy.padStart(4, '0')}-${String(mi).padStart(2, '0')}-${dd.padStart(2, '0')}`;
+    }
+  }
+
+  // Month DD, YYYY
+  m = raw.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/);
+  if (m) {
+    const parsed = new Date(`${m[1]} ${m[2]}, ${m[3]}`);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  }
+
   const parsed = new Date(raw);
   if (!Number.isNaN(parsed.getTime())) {
     return parsed.toISOString().slice(0, 10);
