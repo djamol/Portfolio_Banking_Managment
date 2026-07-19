@@ -37,13 +37,24 @@ function splitSqlStatements(sql) {
       continue;
     }
 
+    // MySQL string escape: '' inside a single-quoted string is a literal quote
     if (char === "'" && !inDoubleQuote) {
+      if (inSingleQuote && sql[i + 1] === "'") {
+        current += "''";
+        i++;
+        continue;
+      }
       inSingleQuote = !inSingleQuote;
       current += char;
       continue;
     }
 
     if (char === '"' && !inSingleQuote) {
+      if (inDoubleQuote && sql[i + 1] === '"') {
+        current += '""';
+        i++;
+        continue;
+      }
       inDoubleQuote = !inDoubleQuote;
       current += char;
       continue;
@@ -78,8 +89,9 @@ function filterMergeStatements(statements) {
     }
     if (/^SET\s+NAMES/i.test(normalized)) return true;
     if (/^SET\s+FOREIGN_KEY_CHECKS/i.test(normalized)) return true;
-    if (/^LOCK\s+TABLES/i.test(normalized)) return true;
-    if (/^UNLOCK\s+TABLES/i.test(normalized)) return true;
+    // Skip LOCK/UNLOCK — not needed for restore and can leave the session locked
+    if (/^LOCK\s+TABLES/i.test(normalized)) return false;
+    if (/^UNLOCK\s+TABLES/i.test(normalized)) return false;
     if (/^INSERT\s+INTO/i.test(normalized)) return true;
     return false;
   });
@@ -138,6 +150,10 @@ async function importDatabaseSql(pool, sqlText, { freshInstall = false } = {}) {
     for (const statement of statements) {
       const normalized = statement.replace(/\s+/g, ' ').trim();
       if (!normalized) continue;
+      // Always ignore session lock statements from dumps
+      if (/^LOCK\s+TABLES/i.test(normalized) || /^UNLOCK\s+TABLES/i.test(normalized)) {
+        continue;
+      }
 
       try {
         await connection.query(statement);
@@ -151,10 +167,15 @@ async function importDatabaseSql(pool, sqlText, { freshInstall = false } = {}) {
       }
     }
 
+    await connection.query('UNLOCK TABLES').catch(() => {});
     await connection.query('SET FOREIGN_KEY_CHECKS=1');
 
     const counts = {};
     for (const table of TABLES) {
+      if (!(await tableExists(connection, table))) {
+        counts[table] = 0;
+        continue;
+      }
       const [[{ total }]] = await connection.query(
         `SELECT COUNT(*) AS total FROM \`${table}\``
       );
@@ -169,6 +190,12 @@ async function importDatabaseSql(pool, sqlText, { freshInstall = false } = {}) {
       tableCounts: counts
     };
   } finally {
+    try {
+      await connection.query('UNLOCK TABLES');
+      await connection.query('SET FOREIGN_KEY_CHECKS=1');
+    } catch (_) {
+      // ignore cleanup errors
+    }
     connection.release();
   }
 }
