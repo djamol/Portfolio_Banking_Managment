@@ -14,6 +14,7 @@ function detectKotak(textOrBuffer) {
     : String(textOrBuffer || '');
   const sample = text.toLowerCase();
   if (/kotak mahindra|\bkotak\b|kkbk\d{4}/i.test(text)) return true;
+  // Official Kotak netbanking CSV export
   if (
     sample.includes('withdrawal (dr.)') &&
     sample.includes('deposit (cr.)') &&
@@ -42,35 +43,31 @@ function isEmptyRow(row) {
   return !(row || []).some((c) => normalizeWhitespace(c));
 }
 
-function rowJoined(row) {
-  return (row || [])
+function isFooterRow(row) {
+  const joined = (row || [])
     .map((c) => normalizeWhitespace(c))
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
-}
-
-function isFooterRow(row) {
-  const joined = rowJoined(row);
   if (!joined) return false;
   if (joined.startsWith('please note')) return true;
   if (joined.includes('commonly used narrations')) return true;
   if (joined.includes('should not be construed as a tax invoice')) return true;
   if (joined.includes('goods and services tax')) return true;
   if (joined.startsWith('dear customer')) return true;
-  if (joined.includes('account summary')) return true;
-  if (joined.includes('end of statement')) return true;
   return false;
 }
 
 function isEndOfStatementFooter(row) {
-  const joined = rowJoined(row);
+  const joined = (row || [])
+    .map((c) => normalizeWhitespace(c))
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
   return (
     joined.includes('commonly used narrations') ||
     joined.startsWith('please note') ||
-    joined.includes('should not be construed as a tax invoice') ||
-    joined.includes('account summary') ||
-    joined.includes('end of statement')
+    joined.includes('should not be construed as a tax invoice')
   );
 }
 
@@ -83,20 +80,10 @@ function isPageBannerRow(row) {
   if (joined.includes('savings account transactions')) return true;
   if (/^account no\.?\s*[0-9x]+$/i.test(joined)) return true;
   if (/^account statement\b/i.test(joined)) return true;
-  if (joined.includes('account summary')) return true;
-  if (joined.includes('end of statement')) return true;
-  if (joined.startsWith('particulars') && joined.includes('opening balance')) return true;
-  if (joined.startsWith('contact us')) return true;
-  if (joined.startsWith('important information')) return true;
-  if (joined.startsWith('any discrepancy')) return true;
-  if (joined.startsWith('remember!')) return true;
-  if (joined.includes('system generated report')) return true;
-  // Page-break name lines are full person names (2+ words), not short narration wraps like "Fund"
+  // Lone account-holder name on a page break
   if (
     cells.length === 1 &&
     /^[A-Za-z][A-Za-z .'-]{2,}$/.test(cells[0]) &&
-    /\s/.test(cells[0]) &&
-    cells[0].split(/\s+/).length >= 2 &&
     !/[\/:]/.test(cells[0]) &&
     !/\d{1,2}\s+[A-Za-z]{3}/.test(cells[0])
   ) {
@@ -106,30 +93,15 @@ function isPageBannerRow(row) {
 }
 
 function isOpeningBalanceRow(row) {
-  return rowJoined(row).includes('opening balance');
+  const joined = (row || []).map((c) => normalizeWhitespace(c)).join(' ').toLowerCase();
+  return joined.includes('opening balance');
 }
 
 function extractValueDate(narration) {
-  const cleaned = String(narration || '').replace(/\s+/g, ' ');
-  let m = cleaned.match(/Value Date:\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i);
-  if (!m) {
-    m = cleaned.match(/Value Date:\s*(\d{1,2})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{2,4})/i);
-    if (m) return parseBankDate(`${m[1]}-${m[2]}-${m[3]}`);
-  }
+  const m = String(narration || '').match(
+    /Value Date:\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i
+  );
   return m ? parseBankDate(m[1]) : null;
-}
-
-function looksLikeContinuationNoise(text) {
-  const t = normalizeWhitespace(text).toLowerCase();
-  if (!t) return true;
-  if (/^\d+(\.\d+)?$/.test(t)) return true;
-  if (t.includes('branch phone')) return true;
-  if (t.includes('more safe')) return true;
-  if (t.includes('banking tips')) return true;
-  if (t.includes('toll-free')) return true;
-  if (t.includes('kotak mahindra bank')) return true;
-  if (t.startsWith('savings account (sa)')) return true;
-  return false;
 }
 
 function extractAccountMeta(rows) {
@@ -256,7 +228,7 @@ function parseKotakRows(rows, accountId) {
     const balance = balanceRaw && balanceRaw !== '-' ? parseIndianAmount(balanceRaw) : null;
 
     if (!txnDate) {
-      if (current && narrationPart && !looksLikeContinuationNoise(narrationPart)) {
+      if (current && narrationPart) {
         current.narration = normalizeWhitespace(`${current.narration} ${narrationPart}`);
       }
       continue;

@@ -101,7 +101,7 @@ export class BankingComponent implements OnInit {
     { name: 'DCB', formats: 'XLS / XLSX', status: 'Full' },
     { name: 'SBI', formats: 'CSV / Excel', status: 'Generic+' },
     { name: 'Axis', formats: 'CSV / Excel', status: 'Generic+' },
-    { name: 'Kotak', formats: 'CSV / Excel', status: 'Generic+' }
+    { name: 'Kotak', formats: 'CSV / Excel', status: 'Full' }
   ];
 
   categoryChartData: ChartConfiguration<'doughnut'>['data'] = { labels: [], datasets: [] };

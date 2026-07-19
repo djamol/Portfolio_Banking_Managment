@@ -20,6 +20,27 @@ function parseIndianAmount(value) {
   return Number.isFinite(num) ? num : 0;
 }
 
+const MONTH_MAP = {
+  jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+  may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8,
+  sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11,
+  dec: 12, december: 12
+};
+
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function normalizeYear(yyyy) {
+  const y = String(yyyy);
+  if (y.length === 2) return Number(y) > 50 ? `19${y}` : `20${y}`;
+  return y.padStart(4, '0');
+}
+
+function ymdFromParts(dd, mm, yyyy) {
+  return `${normalizeYear(yyyy)}-${pad2(mm)}-${pad2(dd)}`;
+}
+
 function parseBankDate(value) {
   if (value === null || value === undefined || value === '') return null;
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -36,39 +57,40 @@ function parseBankDate(value) {
 
   let m = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (m) {
-    let [, dd, mm, yyyy] = m;
-    if (yyyy.length === 2) yyyy = Number(yyyy) > 50 ? `19${yyyy}` : `20${yyyy}`;
-    return `${yyyy.padStart(4, '0')}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+    return ymdFromParts(m[1], m[2], m[3]);
   }
 
   m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (m) return raw.slice(0, 10);
 
+  // 01-May-2022 / 01/May/2022
   m = raw.match(/^(\d{1,2})[\/\-]([A-Za-z]{3,9})[\/\-](\d{2,4})$/);
   if (m) {
-    const months = {
-      jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
-      may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8,
-      sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11,
-      dec: 12, december: 12
-    };
-    let [, dd, mon, yyyy] = m;
-    const mi = months[mon.toLowerCase()];
-    if (mi) {
-      if (yyyy.length === 2) yyyy = Number(yyyy) > 50 ? `19${yyyy}` : `20${yyyy}`;
-      return `${yyyy.padStart(4, '0')}-${String(mi).padStart(2, '0')}-${dd.padStart(2, '0')}`;
-    }
+    const mi = MONTH_MAP[m[2].toLowerCase()];
+    if (mi) return ymdFromParts(m[1], mi, m[3]);
   }
 
-  m = raw.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/);
+  // Kotak CSV: 01 May 2022
+  m = raw.match(/^(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{2,4})$/);
   if (m) {
-    const parsed = new Date(`${m[1]} ${m[2]}, ${m[3]}`);
-    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+    const mi = MONTH_MAP[m[2].toLowerCase()];
+    if (mi) return ymdFromParts(m[1], mi, m[3]);
   }
+
+  // May 1, 2022 / May 01 2022
+  m = raw.match(/^([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{2,4})$/);
+  if (m) {
+    const mi = MONTH_MAP[m[1].toLowerCase()];
+    if (mi) return ymdFromParts(m[2], mi, m[3]);
+  }
+
+  // Reject bare numbers / codes (e.g. "0", account balances) that Date() misparses
+  if (/^\d+(\.\d+)?$/.test(raw)) return null;
 
   const parsed = new Date(raw);
   if (!Number.isNaN(parsed.getTime())) {
-    return parsed.toISOString().slice(0, 10);
+    // Prefer local Y-M-D to avoid UTC off-by-one for date-only strings
+    return ymdFromParts(parsed.getDate(), parsed.getMonth() + 1, parsed.getFullYear());
   }
   return null;
 }
