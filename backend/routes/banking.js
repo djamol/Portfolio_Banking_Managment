@@ -164,7 +164,8 @@ router.post('/import', upload.single('file'), async (req, res) => {
       buffer: req.file.buffer,
       filename: req.file.originalname,
       accountId,
-      bankHint
+      bankHint,
+      accountNumber: account.account_number || null
     });
 
     const importBatchId = crypto.randomBytes(8).toString('hex');
@@ -221,7 +222,8 @@ router.post('/import/preview', upload.single('file'), async (req, res) => {
       buffer: req.file.buffer,
       filename: req.file.originalname,
       accountId,
-      bankHint
+      bankHint,
+      accountNumber: account.account_number || null
     });
 
     const fingerprints = parsed.transactions.map((t) => t.fingerprint);

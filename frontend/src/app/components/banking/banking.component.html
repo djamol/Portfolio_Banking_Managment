@@ -223,8 +223,9 @@
     <div class="card">
       <h3>Import bank statement</h3>
       <p class="hint">
-        Supports <strong>HDFC CSV</strong>, <strong>ICICI</strong> (online OpTransactionHistory XLS and monthly statement XLS/XLSX),
-        and generic CSV/Excel. Duplicate transactions are skipped automatically (same date, amounts, ref, narration).
+        Supports <strong>HDFC CSV</strong>, <strong>ICICI</strong> XLS,
+        <strong>DCB</strong> consolidated statement XLS, and generic CSV/Excel.
+        Duplicate transactions are skipped automatically (same date, amounts, ref, narration).
         Prefer unlocked CSV/Excel exports over PDF.
       </p>
 
@@ -242,6 +243,7 @@
             <option value="">Auto-detect</option>
             <option value="HDFC">HDFC</option>
             <option value="ICICI">ICICI</option>
+            <option value="DCB">DCB</option>
             <option value="GENERIC">Generic</option>
           </select>
         </div>

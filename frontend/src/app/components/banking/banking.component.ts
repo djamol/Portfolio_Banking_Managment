@@ -137,7 +137,7 @@ export class BankingComponent implements OnInit {
     }
   };
 
-  readonly bankOptions = ['HDFC', 'ICICI', 'SBI', 'Axis', 'Kotak', 'Other'];
+  readonly bankOptions = ['HDFC', 'ICICI', 'DCB', 'SBI', 'Axis', 'Kotak', 'Other'];
   readonly pageSizeOptions = [50, 100, 200, 500];
   readonly sortOptions = [
     { value: 'date_desc', label: 'Newest first' },

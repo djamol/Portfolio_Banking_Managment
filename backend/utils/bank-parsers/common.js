@@ -100,18 +100,18 @@ function buildFingerprint({
 }
 
 const CATEGORY_RULES = [
-  { category: 'Interest Income', patterns: [/INTEREST\s*CREDIT/i, /Int\.Pd/i, /MONTHLY INTEREST/i, /SAVING.*INTEREST/i] },
+  { category: 'Interest Income', patterns: [/INTEREST\s*CREDIT/i, /Int\.Pd/i, /MONTHLY INTEREST/i, /SAVING.*INTEREST/i, /\bFD\s*Int\b/i, /FD Int/i] },
   { category: 'TDS / Tax', patterns: [/TAX\s*RECOVERED/i, /TDS/i, /INCOME\s*TAX/i, /DTAX/i] },
   { category: 'Fixed Deposit', patterns: [/FD\s*BOOKED/i, /FD\s*PREMATURE/i, /FD\s*CLOSURE/i, /FIXED\s*DEPOSIT/i] },
   { category: 'Salary / Income', patterns: [/SALARY/i, /PAYROLL/i, /NEFT\s*CR.*SAL/i] },
-  { category: 'UPI', patterns: [/\bUPI\b/i, /@upi/i, /UPI-/i] },
+  { category: 'UPI', patterns: [/\bUPI\b/i, /@upi/i, /UPI-/i, /UPI:PAY/i, /UPI:COLLECT/i] },
   { category: 'ATM / Cash', patterns: [/\bATM\b/i, /CASH\s*WDL/i, /CASH\s*DEP/i, /NWD-/i, /EAW-/i, /CCWD/i] },
   { category: 'Card Payment', patterns: [/\bPOS\b/i, /CREDIT\s*CARD/i, /VISA/i, /MASTERCARD/i, /CRV\s*POS/i] },
   { category: 'Bill Payment', patterns: [/\bBIL\//i, /BILLPAY/i, /BBPS/i, /ELECTRICITY/i, /GAS\s*BILL/i, /WATER\s*BILL/i] },
   { category: 'Recharge', patterns: [/RECHARGE/i, /OXIGEN/i, /PREPAID/i, /RCHG/i, /MOBILE/i] },
   { category: 'Shopping / Online', patterns: [/AMAZON/i, /FLIPKART/i, /EBAY/i, /PAYU/i, /SWIGGY/i, /ZOMATO/i, /ONL\b/i] },
-  { category: 'Investment / Broker', patterns: [/ZERODHA/i, /GROWW/i, /DHAN/i, /PAYOUT/i, /NSE|BSE/i, /MUTUAL\s*FUND/i, /CAMS/i, /KARVY/i] },
-  { category: 'Transfer In', patterns: [/NEFT\s*CR/i, /IMPS.*CR/i, /IFT.*CR/i, /INTERNAL\s*TRANSFER/i, /INF\//i] },
+  { category: 'Investment / Broker', patterns: [/ZERODHA/i, /GROWW/i, /DHAN/i, /PAYOUT/i, /NSE|BSE/i, /MUTUAL\s*FUND/i, /CAMS/i, /KARVY/i, /MONEYLICIOUS/i, /RAISE SECURITIES/i] },
+  { category: 'Transfer In', patterns: [/NEFT\s*CR/i, /IMPS.*CR/i, /IFT.*CR/i, /INTERNAL\s*TRANSFER/i, /INF\//i, /NACH-CR/i, /NEFT\//i] },
   { category: 'Transfer Out', patterns: [/NEFT\s*DR/i, /IMPS.*DR/i, /IB\s*FUNDS\s*TRANSFER\s*DR/i, /TPT-/i] },
   { category: 'Cheque', patterns: [/CHQ\s*PAID/i, /CHEQUE/i, /MICR/i] },
   { category: 'Bank Charges', patterns: [/CHGS/i, /CHARGES/i, /Nchg/i, /SMS\s*ALERT/i, /AMCB/i, /FEE/i] },
