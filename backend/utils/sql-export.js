@@ -6,7 +6,9 @@ const TABLES = [
   'sub_type_categories',
   'investments',
   'investment_history',
-  'investment_transactions'
+  'investment_transactions',
+  'bank_accounts',
+  'bank_transactions'
 ];
 
 function escapeSqlValue(value) {

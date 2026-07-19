@@ -124,7 +124,7 @@
       <div>
         <h5>SQL</h5>
         <ul>
-          <li>Exports all tables: investments, investment_history, sub_type_names, sub_type_categories, investment_transactions</li>
+          <li>Exports all tables: investments, investment_history, sub_type_names, sub_type_categories, investment_transactions, bank_accounts, bank_transactions</li>
           <li>Works when backend uses MySQL or MongoDB — Mongo data is converted to MySQL INSERT statements</li>
           <li><strong>Merge:</strong> adds data without clearing existing records (MySQL backend)</li>
           <li><strong>Fresh install:</strong> truncates all tables then imports — like a clean setup (MySQL backend)</li>
@@ -133,7 +133,7 @@
       <div>
         <h5>MongoDB</h5>
         <ul>
-          <li>Extended JSON format with all portfolio collections</li>
+          <li>Extended JSON format with all portfolio collections (including bank_accounts and bank_transactions)</li>
           <li>Compatible with <code>mongoimport</code> and MongoDB tools</li>
           <li>Works when backend uses MySQL or MongoDB (<code>DB_TYPE</code>)</li>
           <li><strong>Merge:</strong> upserts by document ID</li>

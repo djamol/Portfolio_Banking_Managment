@@ -355,12 +355,15 @@ async function getCollectionData(collectionName) {
 
 async function clearAllCollections() {
   const db = getDb();
+  // Child collections first (bank_transactions before bank_accounts)
   const collections = [
+    'bank_transactions',
     'investment_transactions',
     'investment_history',
     'investments',
     'sub_type_categories',
-    'sub_type_names'
+    'sub_type_names',
+    'bank_accounts'
   ];
   for (const name of collections) {
     await db.collection(name).deleteMany({});
@@ -384,6 +387,7 @@ async function importCollectionData(collectionName, documents, { freshInstall = 
     if (doc.investment_date) doc.investment_date = toDateString(doc.investment_date);
     if (doc.change_date) doc.change_date = toDateString(doc.change_date);
     if (doc.txn_date) doc.txn_date = toDateString(doc.txn_date);
+    if (doc.value_date) doc.value_date = toDateString(doc.value_date);
 
     try {
       if (freshInstall) {
@@ -413,15 +417,9 @@ async function importCollectionData(collectionName, documents, { freshInstall = 
 
 async function getCollectionCounts() {
   const db = getDb();
-  const names = [
-    'sub_type_names',
-    'sub_type_categories',
-    'investments',
-    'investment_history',
-    'investment_transactions'
-  ];
+  const { COLLECTIONS } = require('../config/mongodb');
   const counts = {};
-  for (const name of names) {
+  for (const name of COLLECTIONS) {
     counts[name] = await db.collection(name).countDocuments();
   }
   return counts;
