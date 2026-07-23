@@ -9,6 +9,7 @@ import { LoginComponent } from './components/login/login.component';
 import { AssetTrackerComponent } from './components/asset-tracker/asset-tracker.component';
 import { DashboardComponent } from './components/dashboard/dashboard.component';
 import { BankingComponent } from './components/banking/banking.component';
+import { CashflowsComponent } from './components/cashflows/cashflows.component';
 import { authGuard } from './guards/auth.guard';
 
 export const routes: Routes = [
@@ -18,6 +19,7 @@ export const routes: Routes = [
   { path: 'investments', component: InvestmentListComponent, canActivate: [authGuard] },
   { path: 'investments/new', component: InvestmentFormComponent, canActivate: [authGuard] },
   { path: 'investments/edit/:id', component: InvestmentFormComponent, canActivate: [authGuard] },
+  { path: 'cashflows', component: CashflowsComponent, canActivate: [authGuard] },
   { path: 'analytics', component: AnalyticsComponent, canActivate: [authGuard] },
   { path: 'asset-tracker', component: AssetTrackerComponent, canActivate: [authGuard] },
   { path: 'banking', component: BankingComponent, canActivate: [authGuard] },

@@ -427,6 +427,172 @@ async function getCollectionCounts() {
   return counts;
 }
 
+const TXN_INFLOW_TYPES = new Set(['dividend', 'interest', 'sell', 'withdrawal', 'transfer_out']);
+const TXN_OUTFLOW_TYPES = new Set(['buy', 'fee', 'deposit', 'transfer_in']);
+const VALID_TXN_TYPES = new Set([...TXN_INFLOW_TYPES, ...TXN_OUTFLOW_TYPES]);
+
+function normalizeCashflowAmount(txnType, amount) {
+  const abs = Math.abs(Number(amount));
+  if (!Number.isFinite(abs)) {
+    throw new Error('cashflow_amount must be a valid number');
+  }
+  if (TXN_OUTFLOW_TYPES.has(txnType)) return -abs;
+  if (TXN_INFLOW_TYPES.has(txnType)) return abs;
+  throw new Error(`Invalid txn_type: ${txnType}`);
+}
+
+function buildTxnFilter(filters = {}) {
+  const filter = {};
+  if (filters.investment_id) filter.investment_id = Number(filters.investment_id);
+  if (filters.txn_type) filter.txn_type = filters.txn_type;
+  if (filters.from || filters.to) {
+    filter.txn_date = {};
+    if (filters.from) filter.txn_date.$gte = filters.from;
+    if (filters.to) filter.txn_date.$lte = filters.to;
+  }
+  const limit = Math.min(Math.max(Number(filters.limit) || 100, 1), 500);
+  const offset = Math.max(Number(filters.offset) || 0, 0);
+  return { filter, limit, offset };
+}
+
+async function enrichTransaction(doc) {
+  if (!doc) return null;
+  const formatted = formatDoc(doc);
+  const investment = await getInvestmentById(formatted.investment_id);
+  return {
+    ...formatted,
+    cashflow_amount: formatted.cashflow_amount != null ? Number(formatted.cashflow_amount) : formatted.cashflow_amount,
+    units: formatted.units != null ? Number(formatted.units) : formatted.units,
+    price: formatted.price != null ? Number(formatted.price) : formatted.price,
+    website_app_name: investment?.website_app_name || null,
+    investment_type: investment?.investment_type || null,
+    sub_type_name: investment?.sub_type_name || null,
+    sub_type_category: investment?.sub_type_category || null
+  };
+}
+
+async function listTransactions(filters = {}) {
+  const db = getDb();
+  const { filter, limit, offset } = buildTxnFilter(filters);
+  const col = db.collection('investment_transactions');
+
+  const [total, rows, sumAgg] = await Promise.all([
+    col.countDocuments(filter),
+    col.find(filter).sort({ txn_date: -1, id: -1 }).skip(offset).limit(limit).toArray(),
+    col.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          total_inflow: {
+            $sum: { $cond: [{ $gt: ['$cashflow_amount', 0] }, '$cashflow_amount', 0] }
+          },
+          total_outflow: {
+            $sum: { $cond: [{ $lt: ['$cashflow_amount', 0] }, { $abs: '$cashflow_amount' }, 0] }
+          },
+          net_cashflow: { $sum: '$cashflow_amount' }
+        }
+      }
+    ]).toArray()
+  ]);
+
+  const totals = sumAgg[0] || { total_inflow: 0, total_outflow: 0, net_cashflow: 0 };
+  const enriched = await Promise.all(rows.map((r) => enrichTransaction(r)));
+
+  return {
+    rows: enriched,
+    meta: {
+      total,
+      limit,
+      offset,
+      total_inflow: Number(totals.total_inflow || 0),
+      total_outflow: Number(totals.total_outflow || 0),
+      net_cashflow: Number(totals.net_cashflow || 0)
+    }
+  };
+}
+
+async function getTransactionById(id) {
+  const doc = await getDb().collection('investment_transactions').findOne({ id: Number(id) });
+  return enrichTransaction(doc);
+}
+
+async function createTransaction(data) {
+  const investmentId = Number(data.investment_id);
+  if (!investmentId) throw new Error('investment_id is required');
+  if (!data.txn_date) throw new Error('txn_date is required');
+  if (!VALID_TXN_TYPES.has(data.txn_type)) {
+    throw new Error(`Invalid txn_type: ${data.txn_type}`);
+  }
+
+  const investment = await getInvestmentById(investmentId);
+  if (!investment) throw new Error('Investment not found');
+
+  const cashflowAmount = normalizeCashflowAmount(data.txn_type, data.cashflow_amount);
+  const id = await nextId('investment_transactions');
+  const now = new Date();
+  const doc = {
+    id,
+    investment_id: investmentId,
+    txn_date: toDateString(data.txn_date),
+    txn_type: data.txn_type,
+    units: data.units != null && data.units !== '' ? Number(data.units) : null,
+    price: data.price != null && data.price !== '' ? Number(data.price) : null,
+    cashflow_amount: cashflowAmount,
+    notes: data.notes || null,
+    created_at: now
+  };
+  await getDb().collection('investment_transactions').insertOne(doc);
+  return getTransactionById(id);
+}
+
+async function updateTransaction(id, data) {
+  const existing = await getTransactionById(id);
+  if (!existing) return null;
+
+  const investmentId = data.investment_id != null ? Number(data.investment_id) : Number(existing.investment_id);
+  const txnType = data.txn_type || existing.txn_type;
+  const txnDate = data.txn_date || existing.txn_date;
+  const amountInput = data.cashflow_amount != null ? data.cashflow_amount : existing.cashflow_amount;
+
+  if (!VALID_TXN_TYPES.has(txnType)) {
+    throw new Error(`Invalid txn_type: ${txnType}`);
+  }
+
+  const investment = await getInvestmentById(investmentId);
+  if (!investment) throw new Error('Investment not found');
+
+  const cashflowAmount = normalizeCashflowAmount(txnType, amountInput);
+  const units = data.units !== undefined
+    ? (data.units != null && data.units !== '' ? Number(data.units) : null)
+    : existing.units;
+  const price = data.price !== undefined
+    ? (data.price != null && data.price !== '' ? Number(data.price) : null)
+    : existing.price;
+  const notes = data.notes !== undefined ? (data.notes || null) : existing.notes;
+
+  await getDb().collection('investment_transactions').updateOne(
+    { id: Number(id) },
+    {
+      $set: {
+        investment_id: investmentId,
+        txn_date: toDateString(txnDate),
+        txn_type: txnType,
+        units,
+        price,
+        cashflow_amount: cashflowAmount,
+        notes
+      }
+    }
+  );
+  return getTransactionById(id);
+}
+
+async function deleteTransaction(id) {
+  const result = await getDb().collection('investment_transactions').deleteOne({ id: Number(id) });
+  return result.deletedCount > 0;
+}
+
 module.exports = {
   INVESTMENT_TYPES,
   formatDoc,
@@ -451,5 +617,11 @@ module.exports = {
   clearAllCollections,
   importCollectionData,
   getCollectionCounts,
-  syncCounter
+  syncCounter,
+  listTransactions,
+  getTransactionById,
+  createTransaction,
+  updateTransaction,
+  deleteTransaction,
+  VALID_TXN_TYPES
 };

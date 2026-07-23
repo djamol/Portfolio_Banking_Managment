@@ -107,7 +107,7 @@
 
   <div class="card" style="margin-top: 20px;">
     <h3>Cashflow by Month</h3>
-    <p class="section-hint">Inflow, outflow, and net from investment history (unique to Analytics)</p>
+    <p class="section-hint">Inflow, outflow, and net from investment cashflows (unique to Analytics)</p>
     <div *ngIf="cashflowChartData.labels && cashflowChartData.labels.length > 0" class="chart-container">
       <canvas baseChart
         [data]="cashflowChartData"
@@ -117,6 +117,9 @@
     </div>
     <div *ngIf="!cashflowChartData.labels || cashflowChartData.labels.length === 0" style="text-align: center; padding: 40px; color: #6b7280;">
       <p>No cashflow data available</p>
+      <p style="margin-top: 8px; font-size: 14px;">
+        <a routerLink="/cashflows">Add investment cashflows</a> to populate this chart.
+      </p>
     </div>
   </div>
 

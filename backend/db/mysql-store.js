@@ -241,6 +241,181 @@ async function upsertImportedInvestment(investment) {
   return { action: 'imported', id: result.insertId };
 }
 
+const TXN_INFLOW_TYPES = new Set(['dividend', 'interest', 'sell', 'withdrawal', 'transfer_out']);
+const TXN_OUTFLOW_TYPES = new Set(['buy', 'fee', 'deposit', 'transfer_in']);
+const VALID_TXN_TYPES = new Set([...TXN_INFLOW_TYPES, ...TXN_OUTFLOW_TYPES]);
+
+function normalizeCashflowAmount(txnType, amount) {
+  const abs = Math.abs(Number(amount));
+  if (!Number.isFinite(abs)) {
+    throw new Error('cashflow_amount must be a valid number');
+  }
+  if (TXN_OUTFLOW_TYPES.has(txnType)) return -abs;
+  if (TXN_INFLOW_TYPES.has(txnType)) return abs;
+  throw new Error(`Invalid txn_type: ${txnType}`);
+}
+
+function parseTxnFilters(filters = {}) {
+  const where = ['1=1'];
+  const params = [];
+
+  if (filters.investment_id) {
+    where.push('t.investment_id = ?');
+    params.push(Number(filters.investment_id));
+  }
+  if (filters.from) {
+    where.push('t.txn_date >= ?');
+    params.push(filters.from);
+  }
+  if (filters.to) {
+    where.push('t.txn_date <= ?');
+    params.push(filters.to);
+  }
+  if (filters.txn_type) {
+    where.push('t.txn_type = ?');
+    params.push(filters.txn_type);
+  }
+
+  const limit = Math.min(Math.max(Number(filters.limit) || 100, 1), 500);
+  const offset = Math.max(Number(filters.offset) || 0, 0);
+  return { where: where.join(' AND '), params, limit, offset };
+}
+
+async function listTransactions(filters = {}) {
+  const pool = getPool();
+  const { where, params, limit, offset } = parseTxnFilters(filters);
+
+  const [countRows] = await pool.query(
+    `SELECT COUNT(*) AS total FROM investment_transactions t WHERE ${where}`,
+    params
+  );
+  const [sumRows] = await pool.query(
+    `SELECT
+       COALESCE(SUM(CASE WHEN t.cashflow_amount > 0 THEN t.cashflow_amount ELSE 0 END), 0) AS total_inflow,
+       COALESCE(SUM(CASE WHEN t.cashflow_amount < 0 THEN -t.cashflow_amount ELSE 0 END), 0) AS total_outflow,
+       COALESCE(SUM(t.cashflow_amount), 0) AS net_cashflow
+     FROM investment_transactions t
+     WHERE ${where}`,
+    params
+  );
+  const [rows] = await pool.query(
+    `SELECT
+       t.*,
+       i.website_app_name,
+       i.investment_type,
+       i.sub_type_name,
+       i.sub_type_category
+     FROM investment_transactions t
+     LEFT JOIN investments i ON i.id = t.investment_id
+     WHERE ${where}
+     ORDER BY t.txn_date DESC, t.id DESC
+     LIMIT ? OFFSET ?`,
+    [...params, limit, offset]
+  );
+
+  const totals = sumRows[0] || { total_inflow: 0, total_outflow: 0, net_cashflow: 0 };
+  return {
+    rows,
+    meta: {
+      total: Number(countRows[0]?.total || 0),
+      limit,
+      offset,
+      total_inflow: Number(totals.total_inflow || 0),
+      total_outflow: Number(totals.total_outflow || 0),
+      net_cashflow: Number(totals.net_cashflow || 0)
+    }
+  };
+}
+
+async function getTransactionById(id) {
+  const pool = getPool();
+  const [rows] = await pool.query(
+    `SELECT
+       t.*,
+       i.website_app_name,
+       i.investment_type,
+       i.sub_type_name,
+       i.sub_type_category
+     FROM investment_transactions t
+     LEFT JOIN investments i ON i.id = t.investment_id
+     WHERE t.id = ?`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+async function createTransaction(data) {
+  const pool = getPool();
+  const investmentId = Number(data.investment_id);
+  if (!investmentId) throw new Error('investment_id is required');
+  if (!data.txn_date) throw new Error('txn_date is required');
+  if (!VALID_TXN_TYPES.has(data.txn_type)) {
+    throw new Error(`Invalid txn_type: ${data.txn_type}`);
+  }
+
+  const investment = await getInvestmentById(investmentId);
+  if (!investment) throw new Error('Investment not found');
+
+  const cashflowAmount = normalizeCashflowAmount(data.txn_type, data.cashflow_amount);
+  const [result] = await pool.query(
+    `INSERT INTO investment_transactions
+       (investment_id, txn_date, txn_type, units, price, cashflow_amount, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      investmentId,
+      data.txn_date,
+      data.txn_type,
+      data.units != null && data.units !== '' ? Number(data.units) : null,
+      data.price != null && data.price !== '' ? Number(data.price) : null,
+      cashflowAmount,
+      data.notes || null
+    ]
+  );
+  return getTransactionById(result.insertId);
+}
+
+async function updateTransaction(id, data) {
+  const pool = getPool();
+  const existing = await getTransactionById(id);
+  if (!existing) return null;
+
+  const investmentId = data.investment_id != null ? Number(data.investment_id) : Number(existing.investment_id);
+  const txnType = data.txn_type || existing.txn_type;
+  const txnDate = data.txn_date || existing.txn_date;
+  const amountInput = data.cashflow_amount != null ? data.cashflow_amount : existing.cashflow_amount;
+
+  if (!VALID_TXN_TYPES.has(txnType)) {
+    throw new Error(`Invalid txn_type: ${txnType}`);
+  }
+
+  const investment = await getInvestmentById(investmentId);
+  if (!investment) throw new Error('Investment not found');
+
+  const cashflowAmount = normalizeCashflowAmount(txnType, amountInput);
+  const units = data.units !== undefined
+    ? (data.units != null && data.units !== '' ? Number(data.units) : null)
+    : existing.units;
+  const price = data.price !== undefined
+    ? (data.price != null && data.price !== '' ? Number(data.price) : null)
+    : existing.price;
+  const notes = data.notes !== undefined ? (data.notes || null) : existing.notes;
+
+  await pool.query(
+    `UPDATE investment_transactions
+     SET investment_id = ?, txn_date = ?, txn_type = ?, units = ?, price = ?,
+         cashflow_amount = ?, notes = ?
+     WHERE id = ?`,
+    [investmentId, txnDate, txnType, units, price, cashflowAmount, notes, id]
+  );
+  return getTransactionById(id);
+}
+
+async function deleteTransaction(id) {
+  const pool = getPool();
+  const [result] = await pool.query('DELETE FROM investment_transactions WHERE id = ?', [id]);
+  return result.affectedRows > 0;
+}
+
 module.exports = {
   getAllInvestments,
   searchInvestments,
@@ -257,5 +432,11 @@ module.exports = {
   getAllCategories,
   deleteCategory,
   findInvestmentByKey,
-  upsertImportedInvestment
+  upsertImportedInvestment,
+  listTransactions,
+  getTransactionById,
+  createTransaction,
+  updateTransaction,
+  deleteTransaction,
+  VALID_TXN_TYPES
 };
