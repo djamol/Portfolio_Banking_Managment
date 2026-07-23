@@ -117,24 +117,134 @@ function buildFingerprint({
   return crypto.createHash('sha256').update(payload).digest('hex');
 }
 
+// Specific merchants / types before generic UPI so brokers are not lumped as "UPI"
 const CATEGORY_RULES = [
-  { category: 'Interest Income', patterns: [/INTEREST\s*CREDIT/i, /Int\.Pd/i, /MONTHLY INTEREST/i, /SAVING.*INTEREST/i, /\bFD\s*Int\b/i, /FD Int/i] },
-  { category: 'TDS / Tax', patterns: [/TAX\s*RECOVERED/i, /TDS/i, /INCOME\s*TAX/i, /DTAX/i] },
-  { category: 'Fixed Deposit', patterns: [/FD\s*BOOKED/i, /FD\s*PREMATURE/i, /FD\s*CLOSURE/i, /FIXED\s*DEPOSIT/i] },
-  { category: 'Salary / Income', patterns: [/SALARY/i, /PAYROLL/i, /NEFT\s*CR.*SAL/i] },
-  { category: 'UPI', patterns: [/\bUPI\b/i, /@upi/i, /UPI-/i, /UPI:PAY/i, /UPI:COLLECT/i] },
-  { category: 'ATM / Cash', patterns: [/\bATM\b/i, /CASH\s*WDL/i, /CASH\s*DEP/i, /NWD-/i, /EAW-/i, /CCWD/i] },
+  {
+    category: 'Interest Income',
+    patterns: [
+      /INTEREST\s*CREDIT/i,
+      /CREDIT\s*INTEREST/i,
+      /Int\.Pd/i,
+      /MONTHLY INTEREST/i,
+      /SAVING.*INTEREST/i,
+      /\bFD\s*Int\b/i,
+      /FD Int/i,
+      /Int\s+on\s+FD/i,
+      /Int\s+on\s+RD/i
+    ]
+  },
+  { category: 'TDS / Tax', patterns: [/TAX\s*RECOVERED/i, /MONTHLY\s*TAX/i, /\bTDS\b/i, /INCOME\s*TAX/i, /DTAX/i] },
+  {
+    category: 'Fixed Deposit',
+    patterns: [/FD\s*BOOKED/i, /FD\s*PREMATURE/i, /FD\s*CLOSURE/i, /FIXED\s*DEPOSIT/i]
+  },
+  { category: 'Salary / Income', patterns: [/SALARY/i, /PAYROLL/i, /NEFT\s*CR.*SAL/i, /\bMYSAL\b/i] },
+  {
+    category: 'Investment / Broker',
+    patterns: [
+      /ZERODHA/i,
+      /GROWW/i,
+      /\bDHAN\b/i,
+      /\bPAYOUT\b/i,
+      /\bACTIVITY\b/i,
+      /MUTUAL\s*FUND/i,
+      /MUTUALFUND/i,
+      /MFPAYMENT/i,
+      /CAMS/i,
+      /KARVY/i,
+      /KFINTECH/i,
+      /MONEYLICIO/i,
+      /RAISE\s*SECUR/i,
+      /RAISESECURITIES/i,
+      /BSESTARMF/i,
+      /INDIANCLEARING/i,
+      /INDIAN\s*CLEA/i,
+      /CLEARING\s*CORPORATION/i,
+      /SHRIRAM\s*TRANSPORT/i,
+      /\bNSE\b|\bBSE\b/i
+    ]
+  },
+  {
+    category: 'Bill Payment',
+    patterns: [/\bBIL\//i, /BILLPAY/i, /HDFCBILLPAY/i, /BBPS/i, /ELECTRICITY/i, /GAS\s*BILL/i, /WATER\s*BILL/i]
+  },
+  { category: 'PayPal / International', patterns: [/PAYPAL/i, /OPGSP/i] },
+  {
+    category: 'ATM / Cash',
+    patterns: [/\bATM\b/i, /CASH\s*WDL/i, /CASH\s*DEP/i, /\bNWD-/i, /\bEAW-/i, /\bATW-/i, /\bCCWD\b/i]
+  },
   { category: 'Card Payment', patterns: [/\bPOS\b/i, /CREDIT\s*CARD/i, /VISA/i, /MASTERCARD/i, /CRV\s*POS/i] },
-  { category: 'Bill Payment', patterns: [/\bBIL\//i, /BILLPAY/i, /BBPS/i, /ELECTRICITY/i, /GAS\s*BILL/i, /WATER\s*BILL/i] },
-  { category: 'Recharge', patterns: [/RECHARGE/i, /OXIGEN/i, /PREPAID/i, /RCHG/i, /MOBILE/i] },
-  { category: 'Shopping / Online', patterns: [/AMAZON/i, /FLIPKART/i, /EBAY/i, /PAYU/i, /SWIGGY/i, /ZOMATO/i, /ONL\b/i] },
-  { category: 'Investment / Broker', patterns: [/ZERODHA/i, /GROWW/i, /DHAN/i, /PAYOUT/i, /NSE|BSE/i, /MUTUAL\s*FUND/i, /CAMS/i, /KARVY/i, /MONEYLICIOUS/i, /RAISE SECURITIES/i] },
-  { category: 'Transfer In', patterns: [/NEFT\s*CR/i, /IMPS.*CR/i, /IFT.*CR/i, /INTERNAL\s*TRANSFER/i, /INF\//i, /NACH-CR/i, /NEFT\//i] },
-  { category: 'Transfer Out', patterns: [/NEFT\s*DR/i, /IMPS.*DR/i, /IB\s*FUNDS\s*TRANSFER\s*DR/i, /TPT-/i] },
-  { category: 'Cheque', patterns: [/CHQ\s*PAID/i, /CHEQUE/i, /MICR/i] },
-  { category: 'Bank Charges', patterns: [/CHGS/i, /CHARGES/i, /Nchg/i, /SMS\s*ALERT/i, /AMCB/i, /FEE/i] },
-  { category: 'PayPal / International', patterns: [/PAYPAL/i, /OPGSP/i] }
+  { category: 'Recharge', patterns: [/RECHARGE/i, /OXIGEN/i, /PREPAID/i, /\bRCHG\b/i, /JIORECHARGE/i] },
+  {
+    category: 'Shopping / Online',
+    patterns: [/AMAZON/i, /FLIPKART/i, /EBAY/i, /PAYU/i, /SWIGGY/i, /ZOMATO/i, /\bONL\b/i]
+  },
+  {
+    category: 'Transfer In',
+    patterns: [
+      /NEFT\s*CR/i,
+      /IMPS.*\bCR\b/i,
+      /IFT.*CR/i,
+      /IB\s*FUNDS\s*TRANSFER\s*CR/i,
+      /INTERNAL\s*TRANSFER/i,
+      /INF\//i,
+      /NACH-CR/i
+    ]
+  },
+  {
+    category: 'Transfer Out',
+    patterns: [/NEFT\s*DR/i, /IMPS.*\bDR\b/i, /IB\s*FUNDS\s*TRANSFER\s*DR/i, /TPT-/i]
+  },
+  { category: 'UPI', patterns: [/\bUPI\b/i, /@upi/i, /UPI-/i, /UPI\//i, /UPI:PAY/i, /UPI:COLLECT/i] },
+  { category: 'Cheque', patterns: [/CHQ\s*PAID/i, /CHEQUE/i, /\bMICR\b/i] },
+  {
+    category: 'Bank Charges',
+    patterns: [/CHGS/i, /CHARGES/i, /Nchg/i, /SMS\s*ALERT/i, /AMCB/i, /\bFEE\b/i, /SER\s*TAX/i, /ED\s*CESS/i]
+  }
 ];
+
+/** Canonical merchant names for fragmented bank truncations */
+const PAYEE_ALIASES = [
+  { canonical: 'Raise Securities', patterns: [/raise\s*secu/i, /raisesecurities/i] },
+  { canonical: 'Moneylicious Securities', patterns: [/moneylicio/i] },
+  {
+    canonical: 'Indian Clearing Corporation',
+    patterns: [/indian\s*clea/i, /indianclearing/i, /clearing\s*corporation/i, /bsestarmf/i]
+  },
+  {
+    canonical: 'Amol Vishnu Patil',
+    patterns: [/\bamol\s*vishnu\s*pati?l?\b/i, /\bamolvishnupatil\b/i, /\bamol\s*vishn\b/i, /^amol$/i]
+  },
+  {
+    canonical: 'Shriram Transport Finance',
+    patterns: [/shriram\s*transport/i, /transport\s*fi(nance)?/i, /finance\s*ltd\s*erstwhile\s*shri/i]
+  },
+  { canonical: 'Suryoday Small Finance Bank', patterns: [/suryoday/i] },
+  { canonical: 'PhonePe', patterns: [/phonepe/i] },
+  { canonical: 'HDFC BillPay', patterns: [/hdfcbillpay/i] },
+  { canonical: 'djamolgroup', patterns: [/djamolgroup/i] },
+  { canonical: 'Bank Interest', patterns: [/^bank interest$/i] },
+  { canonical: 'Fixed Deposit', patterns: [/^fixed deposit$/i] },
+  { canonical: 'Internal Transfer', patterns: [/^internal transfer$/i] },
+  { canonical: 'Broker Payout', patterns: [/^broker payout$/i] },
+  { canonical: 'ATM Withdrawal', patterns: [/^atm withdrawal$/i] }
+];
+
+function cleanPayeeToken(value) {
+  return normalizeWhitespace(String(value || '').replace(/\s+/g, ' '))
+    .replace(/[-\/]+$/g, '')
+    .trim();
+}
+
+function normalizePayee(payee, narration = '') {
+  const hay = `${payee || ''} ${narration || ''}`;
+  for (const alias of PAYEE_ALIASES) {
+    if (alias.patterns.some((re) => re.test(hay))) return alias.canonical;
+  }
+  if (!payee) return null;
+  const cleaned = cleanPayeeToken(payee);
+  return cleaned ? cleaned.slice(0, 120) : null;
+}
 
 /**
  * Extract merchant / UPI counterparty from Indian bank narrations.
@@ -143,26 +253,78 @@ function extractPayee(narration) {
   const text = normalizeWhitespace(narration);
   if (!text) return null;
 
-  // UPI-NAME/… or UPI/NAME/…
-  let m = text.match(/\bUPI[-:\/]\s*([A-Za-z0-9 .&'_-]{2,60})/i);
+  if (/INTEREST\s*CREDIT|MONTHLY\s*INTEREST|CREDIT\s*INTEREST|Int\s+on\s+FD|Int\s+on\s+RD/i.test(text)) {
+    return 'Bank Interest';
+  }
+  if (/FD\s*BOOKED|FIXED\s*DEPOSIT/i.test(text)) return 'Fixed Deposit';
+  if (/^IO\s+For\b/i.test(text) || /IB\s*FUNDS\s*TRANSFER/i.test(text)) return 'Internal Transfer';
+  if (/\bPAYOUT\b/i.test(text) && !/HYPTO/i.test(text)) return 'Broker Payout';
+  if (/\b(?:ATW|EAW|NWD|CCWD)-/i.test(text)) return 'ATM Withdrawal';
+  if (/PHONEPE/i.test(text)) return 'PhonePe';
+  if (/HDFCBILLPAY/i.test(text)) return 'HDFC BillPay';
+
+  // UPI/NAME/... (slash style, e.g. Kotak)
+  let m = text.match(/\bUPI\/([A-Za-z][^\/]{1,50})\//i);
   if (m) {
-    const name = normalizeWhitespace(m[1].split(/[\/\-]/)[0]);
-    if (name && !/^(PAY|COLLECT|IN|DR|CR)$/i.test(name)) return name.slice(0, 120);
+    const name = cleanPayeeToken(m[1]);
+    if (name && !/^(PAY|COLLECT|IN|DR|CR|UPI)$/i.test(name)) return name.slice(0, 120);
+  }
+
+  // UPI-NAME-VPA-... ; if NAME is numeric account, prefer meaningful note / VPA merchant
+  m = text.match(/\bUPI[-:]\s*([A-Za-z0-9 .&'_-]{2,60})/i);
+  if (m) {
+    const first = cleanPayeeToken(m[1].split(/[\/\-]/)[0]);
+    if (first && /^\d{6,}$/.test(first)) {
+      if (/PHONEPE/i.test(text)) return 'PhonePe';
+      const vpa = text.match(/\b([A-Za-z][A-Za-z0-9._-]{2,40}@[A-Za-z0-9.]{2,40})\b/);
+      if (vpa) {
+        const local = vpa[1].split('@')[0];
+        if (!/^\d+$/.test(local)) return cleanPayeeToken(local).slice(0, 120);
+      }
+    } else if (first && !/^(PAY|COLLECT|IN|DR|CR)$/i.test(first)) {
+      return first.slice(0, 120);
+    }
   }
 
   // VPA: name@bank
-  m = text.match(/\b([A-Za-z0-9._-]{3,40}@[A-Za-z]{2,20})\b/);
+  m = text.match(/\b([A-Za-z][A-Za-z0-9._-]{2,40}@[A-Za-z0-9.]{2,40})\b/);
   if (m) return m[1].slice(0, 120);
 
-  // NEFT/IMPS … - NAME -
+  // NEFT CR/DR-IFSC-NAME-...
+  m = text.match(/\bNEFT\s+(?:CR|DR)-[A-Z0-9]+-([^-]+?)-/i);
+  if (m) {
+    const name = cleanPayeeToken(m[1]);
+    if (name && !/^(NETBANK|MUM)/i.test(name)) return name.slice(0, 120);
+  }
+
+  // NEFT-REF-NAME-- (Shriram style)
+  m = text.match(/\bNEFT-[A-Z0-9]+-([^-]+?)(?:--|-)/i);
+  if (m) {
+    const name = cleanPayeeToken(m[1]);
+    if (name) return name.slice(0, 120);
+  }
+
+  // IMPS-ref-NAME-BANK... or IMPS-P2A-ref-BANK-NAME
+  m = text.match(/\bIMPS-(?:P2A-)?[0-9]+-([A-Za-z][A-Za-z0-9 .&']{2,55})-/i);
+  if (m) {
+    const name = cleanPayeeToken(m[1]);
+    if (name && !/^(UTI\s*B|HDFC|ICIC|YESB|SBIN|FUNDS)$/i.test(name)) return name.slice(0, 120);
+  }
+
+  // legacy spaced NEFT/IMPS … NAME
   m = text.match(/\b(?:NEFT|IMPS|RTGS)[-\/A-Z0-9]*\s+([A-Za-z][A-Za-z0-9 .&']{2,50})/i);
-  if (m) return normalizeWhitespace(m[1]).slice(0, 120);
+  if (m) return cleanPayeeToken(m[1]).slice(0, 120);
 
   // POS MERCHANT
-  m = text.match(/\bPOS\s+\S+\s+(.+?)(?:\s+\d|$)/i);
-  if (m) return normalizeWhitespace(m[1]).slice(0, 120);
+  m = text.match(/\bPOS\s+\S+\s+(.+)$/i);
+  if (m) return cleanPayeeToken(m[1]).slice(0, 120);
 
   return null;
+}
+
+function resolvePayee(narration, existingPayee = null) {
+  const extracted = extractPayee(narration);
+  return normalizePayee(extracted || existingPayee, narration);
 }
 
 function matchCustomRules(narration, payee, customRules = [], accountId = null) {
@@ -199,6 +361,41 @@ function suggestCategory(narration, withdrawal = 0, deposit = 0, customRules = [
   if (custom) return custom;
 
   const text = normalizeWhitespace(narration);
+  const resolvedPayee = normalizePayee(payee, text) || payee;
+
+  // Directional internal transfers
+  if (/^IO\s+For\b/i.test(text) || /IB\s*FUNDS\s*TRANSFER/i.test(text)) {
+    if (Number(deposit) > 0 && Number(withdrawal) <= 0) {
+      return { category: 'Transfer In', source: 'auto' };
+    }
+    if (Number(withdrawal) > 0) {
+      return { category: 'Transfer Out', source: 'auto' };
+    }
+  }
+
+  // Prefer payee-based investment match when narration is generic UPI
+  if (resolvedPayee) {
+    const payeeInvestment = [
+      /raise securities/i,
+      /moneylicious/i,
+      /indian clearing/i,
+      /shriram transport/i,
+      /broker payout/i
+    ];
+    if (payeeInvestment.some((re) => re.test(resolvedPayee))) {
+      return { category: 'Investment / Broker', source: 'auto' };
+    }
+    if (/bank interest/i.test(resolvedPayee)) {
+      return { category: 'Interest Income', source: 'auto' };
+    }
+    if (/^fixed deposit$/i.test(resolvedPayee)) {
+      return { category: 'Fixed Deposit', source: 'auto' };
+    }
+    if (/hdfc billpay/i.test(resolvedPayee)) {
+      return { category: 'Bill Payment', source: 'auto' };
+    }
+  }
+
   for (const rule of CATEGORY_RULES) {
     if (rule.patterns.some((re) => re.test(text))) {
       return { category: rule.category, source: 'auto' };
@@ -234,7 +431,7 @@ function finalizeParsedTxn(txn, accountId, customRules = []) {
   const valueDate = txn.valueDate || txnDate;
   const refNo = normalizeWhitespace(txn.refNo);
   const balance = txn.balance === null || txn.balance === undefined ? null : Number(txn.balance);
-  const payee = txn.payee || extractPayee(narration);
+  const payee = resolvePayee(narration, txn.payee || null);
   let category = txn.category || null;
   let categorySource = txn.categorySource || txn.category_source || null;
 
@@ -283,9 +480,12 @@ module.exports = {
   parseBankDate,
   buildFingerprint,
   extractPayee,
+  normalizePayee,
+  resolvePayee,
   matchCustomRules,
   suggestCategory,
   detectTxnType,
   finalizeParsedTxn,
-  CATEGORY_RULES
+  CATEGORY_RULES,
+  PAYEE_ALIASES
 };

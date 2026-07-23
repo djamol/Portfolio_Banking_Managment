@@ -1,7 +1,7 @@
 const { isMongoDb, getPool, getMongoDb } = require('../config/index');
 const {
   suggestCategory,
-  extractPayee,
+  resolvePayee,
   buildFingerprint,
   detectTxnType
 } = require('../utils/bank-parsers/common');
@@ -372,17 +372,17 @@ async function mysqlRecategorizeAll(accountId, { mode = 'auto_only', customRules
   let updated = 0;
   for (const row of rows) {
     if (mode !== 'all' && row.category_source === 'manual') continue;
+    const payee = resolvePayee(row.narration, row.payee);
     const suggested = categoryResult(
       row.narration,
       row.withdrawal,
       row.deposit,
       customRules,
       row.account_id,
-      row.payee
+      payee
     );
-    const payee = row.payee || extractPayee(row.narration);
     const [result] = await pool.query(
-      'UPDATE bank_transactions SET category = ?, category_source = ?, payee = COALESCE(payee, ?) WHERE id = ?',
+      'UPDATE bank_transactions SET category = ?, category_source = ?, payee = ? WHERE id = ?',
       [suggested.category, suggested.source, payee, row.id]
     );
     updated += result.affectedRows;
@@ -979,22 +979,22 @@ async function mongoRecategorizeAll(accountId, { mode = 'auto_only', customRules
   let updated = 0;
   for (const row of rows) {
     if (mode !== 'all' && row.category_source === 'manual') continue;
+    const payee = resolvePayee(row.narration, row.payee);
     const suggested = categoryResult(
       row.narration,
       row.withdrawal,
       row.deposit,
       customRules,
       row.account_id,
-      row.payee
+      payee
     );
-    const payee = row.payee || extractPayee(row.narration);
     await db.collection('bank_transactions').updateOne(
       { id: row.id },
       {
         $set: {
           category: suggested.category,
           category_source: suggested.source,
-          payee: row.payee || payee,
+          payee,
           updated_at: new Date()
         }
       }
