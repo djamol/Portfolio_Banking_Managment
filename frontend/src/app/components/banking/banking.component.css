@@ -179,6 +179,47 @@
   height: 380px;
 }
 
+.chart-box-lg {
+  height: 340px;
+}
+
+.charts-page .hint {
+  margin: 0 0 12px;
+}
+
+.charts-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.chart-card h3 {
+  margin: 0 0 2px;
+  font-size: 1.05rem;
+}
+
+.chart-sub {
+  margin: 0 0 10px;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.chart-card-wide {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 900px) {
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-card-wide {
+    grid-column: auto;
+  }
+
+  .chart-box-lg {
+    height: 280px;
+  }
+}
+
 .period-section {
   margin-bottom: 16px;
 }

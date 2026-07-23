@@ -16,12 +16,13 @@
     <button [class.active]="activeTab==='transactions'" (click)="setTab('transactions')">Transactions</button>
     <button [class.active]="activeTab==='rules'" (click)="setTab('rules')">Rules</button>
     <button [class.active]="activeTab==='analytics'" (click)="setTab('analytics')">Analytics</button>
+    <button [class.active]="activeTab==='charts'" (click)="setTab('charts')">Charts</button>
     <button [class.active]="activeTab==='cashflow'" (click)="setTab('cashflow')">Cashflow</button>
     <button [class.active]="activeTab==='interest'" (click)="setTab('interest')">Interest & FD</button>
     <button [class.active]="activeTab==='insights'" (click)="setTab('insights')">Insights</button>
   </div>
 
-  <div class="filter-bar card-lite" *ngIf="activeTab==='overview' || activeTab==='transactions' || activeTab==='analytics' || activeTab==='cashflow' || activeTab==='interest' || activeTab==='insights'">
+  <div class="filter-bar card-lite" *ngIf="activeTab==='overview' || activeTab==='transactions' || activeTab==='analytics' || activeTab==='charts' || activeTab==='cashflow' || activeTab==='interest' || activeTab==='insights'">
     <select [(ngModel)]="filterAccountId" (ngModelChange)="applyFilters()">
       <option value="">All accounts</option>
       <option *ngFor="let a of accounts" [ngValue]="a.id">
@@ -1168,6 +1169,98 @@
         </tbody>
       </table>
     </div>
+  </section>
+
+  <!-- CHARTS -->
+  <section *ngIf="activeTab==='charts'" class="charts-page">
+    <p class="hint">
+      Line and category charts for the selected account and date range. Respects <strong>Exclude transfers</strong>.
+    </p>
+
+    <div class="stat-grid" *ngIf="analytics">
+      <div class="stat-card">
+        <div class="stat-label">Transactions</div>
+        <div class="stat-value">{{ analytics.summary?.txn_count || 0 }}</div>
+      </div>
+      <div class="stat-card credit">
+        <div class="stat-label">Credits</div>
+        <div class="stat-value">₹{{ formatMoney(analytics.summary?.total_credit) }}</div>
+      </div>
+      <div class="stat-card debit">
+        <div class="stat-label">Debits</div>
+        <div class="stat-value">₹{{ formatMoney(analytics.summary?.total_debit) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Net cashflow</div>
+        <div class="stat-value" [class.credit]="(analytics.summary?.net_cashflow||0) >= 0" [class.debit]="(analytics.summary?.net_cashflow||0) < 0">
+          ₹{{ formatMoney(analytics.summary?.net_cashflow) }}
+        </div>
+      </div>
+    </div>
+
+    <div class="chart-grid charts-grid" *ngIf="analytics; else noChartsData">
+      <div class="card chart-card">
+        <h3>Transaction volume</h3>
+        <p class="chart-sub">Monthly transaction count</p>
+        <div class="chart-box chart-box-lg">
+          <canvas baseChart [data]="txnVolumeChartData" [options]="countLineOptions" type="line"></canvas>
+        </div>
+      </div>
+
+      <div class="card chart-card">
+        <h3>Debit vs credit flow</h3>
+        <p class="chart-sub">Monthly money in and out</p>
+        <div class="chart-box chart-box-lg">
+          <canvas baseChart [data]="flowLineChartData" [options]="netLineOptions" type="line"></canvas>
+        </div>
+      </div>
+
+      <div class="card chart-card">
+        <h3>Net cashflow</h3>
+        <p class="chart-sub">Credits minus debits by month</p>
+        <div class="chart-box chart-box-lg">
+          <canvas baseChart [data]="netChartData" [options]="netLineOptions" type="line"></canvas>
+        </div>
+      </div>
+
+      <div class="card chart-card">
+        <h3>Account balance</h3>
+        <p class="chart-sub">Running balance from statement rows</p>
+        <div class="chart-box chart-box-lg">
+          <canvas baseChart [data]="balanceChartData" [options]="lineOptions" type="line"></canvas>
+        </div>
+      </div>
+
+      <div class="card chart-card chart-card-wide">
+        <h3>Top category trends</h3>
+        <p class="chart-sub">Monthly spend for the top 5 debit categories</p>
+        <div class="chart-box chart-box-lg">
+          <canvas baseChart [data]="categoryTrendChartData" [options]="netLineOptions" type="line"></canvas>
+        </div>
+      </div>
+
+      <div class="card chart-card">
+        <h3>Spend by category</h3>
+        <p class="chart-sub">Highest debit categories in range</p>
+        <div class="chart-box chart-box-lg">
+          <canvas baseChart [data]="spendBarChartData" [options]="horizontalBarOptions" type="bar"></canvas>
+        </div>
+      </div>
+
+      <div class="card chart-card">
+        <h3>Category mix</h3>
+        <p class="chart-sub">Share of activity by category</p>
+        <div class="chart-box chart-box-lg">
+          <canvas baseChart [data]="chartsMixChartData" [options]="doughnutOptions" type="doughnut"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <ng-template #noChartsData>
+      <div class="card">
+        <p class="empty">No analytics data for this filter range yet. Import statements or widen the date range.</p>
+      </div>
+    </ng-template>
   </section>
 
   <!-- CASHFLOW -->

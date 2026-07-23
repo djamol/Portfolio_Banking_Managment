@@ -15,6 +15,7 @@ type TabId =
   | 'transactions'
   | 'rules'
   | 'analytics'
+  | 'charts'
   | 'cashflow'
   | 'interest'
   | 'insights';
@@ -143,6 +144,11 @@ export class BankingComponent implements OnInit {
   interestChartData: ChartConfiguration<'bar'>['data'] = { labels: [], datasets: [] };
   netChartData: ChartConfiguration<'line'>['data'] = { labels: [], datasets: [] };
   balanceChartData: ChartConfiguration<'line'>['data'] = { labels: [], datasets: [] };
+  txnVolumeChartData: ChartConfiguration<'line'>['data'] = { labels: [], datasets: [] };
+  flowLineChartData: ChartConfiguration<'line'>['data'] = { labels: [], datasets: [] };
+  categoryTrendChartData: ChartConfiguration<'line'>['data'] = { labels: [], datasets: [] };
+  spendBarChartData: ChartConfiguration<'bar'>['data'] = { labels: [], datasets: [] };
+  chartsMixChartData: ChartConfiguration<'doughnut'>['data'] = { labels: [], datasets: [] };
 
   cashflowGrain: PeriodGrain = 'month';
   periodRows: PeriodRow[] = [];
@@ -198,6 +204,30 @@ export class BankingComponent implements OnInit {
     plugins: { legend: { display: true, position: 'top' } },
     scales: {
       y: {
+        ticks: { callback: (v) => '₹' + Number(v).toLocaleString('en-IN') }
+      }
+    }
+  };
+
+  countLineOptions: ChartOptions<'line'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: true, position: 'top' } },
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: { precision: 0, callback: (v) => Number(v).toLocaleString('en-IN') }
+      }
+    }
+  };
+
+  horizontalBarOptions: ChartOptions<'bar'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    indexAxis: 'y',
+    plugins: { legend: { display: false } },
+    scales: {
+      x: {
         ticks: { callback: (v) => '₹' + Number(v).toLocaleString('en-IN') }
       }
     }
@@ -346,7 +376,7 @@ export class BankingComponent implements OnInit {
   setTab(tab: TabId) {
     this.activeTab = tab;
     if (tab === 'transactions') this.loadTransactions();
-    if (tab === 'analytics' || tab === 'overview' || tab === 'cashflow' || tab === 'interest') {
+    if (tab === 'analytics' || tab === 'overview' || tab === 'cashflow' || tab === 'interest' || tab === 'charts') {
       this.loadAnalytics();
     }
     if (tab === 'rules') this.loadRules();
@@ -558,6 +588,110 @@ export class BankingComponent implements OnInit {
 
     this.buildPeriodCharts();
     this.buildInterestCharts();
+    this.buildExploreCharts();
+  }
+
+  buildExploreCharts() {
+    if (!this.analytics) return;
+
+    const months = (this.analytics.byMonth || []).slice(-24);
+
+    this.txnVolumeChartData = {
+      labels: months.map((m: any) => m.month),
+      datasets: [
+        {
+          label: 'Transactions',
+          data: months.map((m: any) => Number(m.txn_count) || 0),
+          borderColor: '#6366f1',
+          backgroundColor: 'rgba(99,102,241,0.12)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 2
+        }
+      ]
+    };
+
+    this.flowLineChartData = {
+      labels: months.map((m: any) => m.month),
+      datasets: [
+        {
+          label: 'Credits',
+          data: months.map((m: any) => Number(m.total_credit) || 0),
+          borderColor: '#10b981',
+          backgroundColor: 'transparent',
+          tension: 0.3,
+          pointRadius: 2
+        },
+        {
+          label: 'Debits',
+          data: months.map((m: any) => Number(m.total_debit) || 0),
+          borderColor: '#ef4444',
+          backgroundColor: 'transparent',
+          tension: 0.3,
+          pointRadius: 2
+        }
+      ]
+    };
+
+    const expenseCats = (this.analytics.expenseByCategory || []).slice(0, 12);
+    this.spendBarChartData = {
+      labels: expenseCats.map((c: any) => c.category),
+      datasets: [
+        {
+          label: 'Spend',
+          data: expenseCats.map((c: any) => Number(c.total_debit) || 0),
+          backgroundColor: expenseCats.map((_: any, i: number) => this.chartColors[i % this.chartColors.length])
+        }
+      ]
+    };
+
+    const mixCats = (this.analytics.byCategory || []).slice(0, 10);
+    this.chartsMixChartData = {
+      labels: mixCats.map((c: any) => c.category),
+      datasets: [
+        {
+          data: mixCats.map((c: any) => Number(c.total_debit) + Number(c.total_credit)),
+          backgroundColor: this.chartColors
+        }
+      ]
+    };
+
+    const catMonthRows: any[] = this.analytics.byCategoryMonth || [];
+    const debitByCat: Record<string, number> = {};
+    for (const row of catMonthRows) {
+      const cat = row.category || 'Uncategorized';
+      debitByCat[cat] = (debitByCat[cat] || 0) + (Number(row.total_debit) || 0);
+    }
+    const topCats = Object.entries(debitByCat)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([cat]) => cat);
+
+    const monthLabels = [
+      ...new Set(
+        catMonthRows
+          .map((r) => r.month)
+          .filter(Boolean)
+          .sort()
+      )
+    ].slice(-24) as string[];
+
+    const lookup = new Map<string, number>();
+    for (const row of catMonthRows) {
+      lookup.set(`${row.month}::${row.category}`, Number(row.total_debit) || 0);
+    }
+
+    this.categoryTrendChartData = {
+      labels: monthLabels,
+      datasets: topCats.map((cat, i) => ({
+        label: cat,
+        data: monthLabels.map((m) => lookup.get(`${m}::${cat}`) || 0),
+        borderColor: this.chartColors[i % this.chartColors.length],
+        backgroundColor: 'transparent',
+        tension: 0.3,
+        pointRadius: 2
+      }))
+    };
   }
 
   setCashflowGrain(grain: PeriodGrain) {

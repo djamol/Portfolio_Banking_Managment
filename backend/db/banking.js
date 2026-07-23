@@ -429,6 +429,19 @@ async function mysqlGetAnalytics(filters = {}) {
     params
   );
 
+  const [byCategoryMonth] = await pool.query(
+    `SELECT DATE_FORMAT(txn_date, '%Y-%m') AS month,
+            COALESCE(category,'Uncategorized') AS category,
+            COUNT(*) AS txn_count,
+            COALESCE(SUM(withdrawal),0) AS total_debit,
+            COALESCE(SUM(deposit),0) AS total_credit
+     FROM bank_transactions
+     WHERE ${whereSql}
+     GROUP BY DATE_FORMAT(txn_date, '%Y-%m'), COALESCE(category,'Uncategorized')
+     ORDER BY month ASC, total_debit DESC`,
+    params
+  );
+
   const [interestByMonth] = await pool.query(
     `SELECT DATE_FORMAT(txn_date, '%Y-%m') AS month,
             COALESCE(SUM(CASE WHEN category = 'Interest Income' OR txn_type = 'interest' THEN deposit ELSE 0 END),0) AS interest,
@@ -526,6 +539,7 @@ async function mysqlGetAnalytics(filters = {}) {
     byCategory,
     expenseByCategory: extras.expenseByCategory,
     byMonth,
+    byCategoryMonth,
     interestByMonth,
     topExpenses,
     topCredits,
@@ -1003,6 +1017,7 @@ async function mongoGetAnalytics(filters = {}) {
   };
   const catMap = {};
   const monthMap = {};
+  const catMonthMap = {};
   for (const r of rows) {
     summary.total_debit += num(r.withdrawal);
     summary.total_credit += num(r.deposit);
@@ -1017,6 +1032,19 @@ async function mongoGetAnalytics(filters = {}) {
     monthMap[month].total_debit += num(r.withdrawal);
     monthMap[month].total_credit += num(r.deposit);
     monthMap[month].net += num(r.deposit) - num(r.withdrawal);
+    const cmKey = `${month}::${cat}`;
+    if (!catMonthMap[cmKey]) {
+      catMonthMap[cmKey] = {
+        month,
+        category: cat,
+        txn_count: 0,
+        total_debit: 0,
+        total_credit: 0
+      };
+    }
+    catMonthMap[cmKey].txn_count += 1;
+    catMonthMap[cmKey].total_debit += num(r.withdrawal);
+    catMonthMap[cmKey].total_credit += num(r.deposit);
   }
   summary.net_cashflow = summary.total_credit - summary.total_debit;
 
@@ -1070,6 +1098,9 @@ async function mongoGetAnalytics(filters = {}) {
     (a, b) => b.total_debit + b.total_credit - (a.total_debit + a.total_credit)
   );
   const byMonth = Object.values(monthMap).sort((a, b) => a.month.localeCompare(b.month));
+  const byCategoryMonth = Object.values(catMonthMap).sort(
+    (a, b) => a.month.localeCompare(b.month) || b.total_debit - a.total_debit
+  );
 
   const interestMonthMap = {};
   for (const r of rows) {
@@ -1103,6 +1134,7 @@ async function mongoGetAnalytics(filters = {}) {
     byCategory,
     expenseByCategory: extras.expenseByCategory,
     byMonth,
+    byCategoryMonth,
     interestByMonth,
     topExpenses,
     topCredits,
