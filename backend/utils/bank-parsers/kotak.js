@@ -23,19 +23,38 @@ function detectKotak(textOrBuffer) {
   ) {
     return true;
   }
+  // Online/netbanking CSV: Sl. No. + Amount + Dr / Cr + Balance
+  if (
+    sample.includes('account statement') &&
+    sample.includes('transaction date') &&
+    sample.includes('dr / cr') &&
+    (sample.includes('chq /ref') || sample.includes('description'))
+  ) {
+    return true;
+  }
   return /transaction date.*debit.*credit/i.test(text);
 }
 
 function looksLikeKotakHeader(row) {
   const cells = (row || []).map((c) => normalizeWhitespace(c).toLowerCase());
   const joined = cells.join('|');
-  return (
-    cells.includes('date') &&
+  if (
+    (joined.includes('transaction date') || cells.includes('date')) &&
     (cells.includes('description') || joined.includes('narration')) &&
-    (joined.includes('withdrawal') || joined.includes('debit')) &&
-    (joined.includes('deposit') || joined.includes('credit')) &&
     joined.includes('balance')
-  );
+  ) {
+    // Classic: separate withdrawal + deposit columns
+    if (
+      (joined.includes('withdrawal') || joined.includes('debit')) &&
+      (joined.includes('deposit') || joined.includes('credit'))
+    ) {
+      return true;
+    }
+    // Netbanking CSV: Amount + Dr / Cr
+    if (joined.includes('amount') && joined.includes('dr / cr')) return true;
+    if (joined.includes('sl. no') && joined.includes('amount') && joined.includes('dr')) return true;
+  }
+  return false;
 }
 
 function isEmptyRow(row) {
@@ -167,13 +186,31 @@ function extractAccountMeta(rows) {
       meta.statementTo = parseBankDate(period[2]);
     }
 
-    for (const cell of cells) {
+    // "Period","From 24/04/2026 To 25/07/2026"
+    const periodFromTo = joined.match(
+      /From\s+(\d{1,2}[\/\-,\.]\d{1,2}[\/\-,\.]\d{2,4})\s+To\s+(\d{1,2}[\/\-,\.]\d{1,2}[\/\-,\.]\d{2,4})/i
+    );
+    if (periodFromTo) {
+      meta.statementFrom = parseBankDate(periodFromTo[1]);
+      meta.statementTo = parseBankDate(periodFromTo[2]);
+    }
+
+    for (let i = 0; i < cells.length; i++) {
+      const cell = cells[i];
+      const next = cells[i + 1] || '';
+
       const ac = cell.match(/Account No\.?\s*([0-9Xx]+)/i);
       if (ac) meta.accountNumber = ac[1];
+      if (/^Account No\.?$/i.test(cell) && /^\d{6,18}$/.test(next)) {
+        meta.accountNumber = next;
+      }
 
       const ifsc =
         cell.match(/IFSC Code\s*(KKBK[0-9A-Z]+)/i) || cell.match(/\b(KKBK[0-9]{4,})\b/i);
       if (ifsc) meta.ifsc = ifsc[1].toUpperCase();
+      if (/^IFSC$/i.test(cell) && /^KKBK/i.test(next)) {
+        meta.ifsc = next.toUpperCase();
+      }
     }
   }
 
@@ -185,13 +222,48 @@ function mapHeaderIndexes(headerRow) {
   const find = (...needles) =>
     headers.findIndex((h) => needles.some((n) => h === n || h.includes(n)));
 
+  const dateIdx = find('transaction date', 'txn date', 'date');
+  const valueDateIdx = find('value date');
+  const narrationIdx = find('description', 'narration', 'particulars');
+  const refIdx = find('chq /ref', 'chq/ref', 'chq', 'ref no', 'ref');
+  const withdrawalIdx = find('withdrawal');
+  const depositIdx = find('deposit');
+  // Prefer a true debit/credit amount column over generic "amount" when both exist
+  let amountIdx = -1;
+  let amountDrCrIdx = -1;
+  let balanceIdx = find('balance');
+  let balanceDrCrIdx = -1;
+
+  headers.forEach((h, i) => {
+    if (h === 'amount' || h === 'txn amount' || h === 'transaction amount') {
+      if (amountIdx < 0) amountIdx = i;
+    }
+    if (h === 'dr / cr' || h === 'dr/cr' || h === 'type') {
+      if (amountIdx >= 0 && i > amountIdx && amountDrCrIdx < 0 && (balanceIdx < 0 || i < balanceIdx)) {
+        amountDrCrIdx = i;
+      } else if (balanceIdx >= 0 && i > balanceIdx && balanceDrCrIdx < 0) {
+        balanceDrCrIdx = i;
+      } else if (amountDrCrIdx < 0) {
+        amountDrCrIdx = i;
+      }
+    }
+  });
+
+  // Debit/Credit as separate columns (some exports)
+  const debitIdx = find('debit');
+  const creditIdx = find('credit');
+
   return {
-    dateIdx: find('date'),
-    narrationIdx: find('description', 'narration', 'particulars'),
-    refIdx: find('chq/ref', 'chq', 'ref'),
-    withdrawalIdx: find('withdrawal'),
-    depositIdx: find('deposit'),
-    balanceIdx: find('balance')
+    dateIdx,
+    valueDateIdx,
+    narrationIdx,
+    refIdx,
+    withdrawalIdx: withdrawalIdx >= 0 ? withdrawalIdx : debitIdx,
+    depositIdx: depositIdx >= 0 ? depositIdx : creditIdx,
+    amountIdx,
+    amountDrCrIdx,
+    balanceIdx,
+    balanceDrCrIdx
   };
 }
 
@@ -245,12 +317,33 @@ function parseKotakRows(rows, accountId) {
 
     const dateRaw = indexes.dateIdx >= 0 ? normalizeWhitespace(row[indexes.dateIdx]) : '';
     const txnDate = parseBankDate(dateRaw);
+    const valueDateRaw =
+      indexes.valueDateIdx >= 0 ? normalizeWhitespace(row[indexes.valueDateIdx]) : '';
+    const valueDate = parseBankDate(valueDateRaw) || txnDate;
     const narrationPart =
       indexes.narrationIdx >= 0 ? normalizeWhitespace(row[indexes.narrationIdx]) : '';
     const refNo = indexes.refIdx >= 0 ? normalizeWhitespace(row[indexes.refIdx]) : '';
-    const withdrawal =
-      indexes.withdrawalIdx >= 0 ? parseIndianAmount(row[indexes.withdrawalIdx]) : 0;
-    const deposit = indexes.depositIdx >= 0 ? parseIndianAmount(row[indexes.depositIdx]) : 0;
+
+    let withdrawal = 0;
+    let deposit = 0;
+    if (indexes.withdrawalIdx >= 0 || indexes.depositIdx >= 0) {
+      withdrawal = indexes.withdrawalIdx >= 0 ? parseIndianAmount(row[indexes.withdrawalIdx]) : 0;
+      deposit = indexes.depositIdx >= 0 ? parseIndianAmount(row[indexes.depositIdx]) : 0;
+    } else if (indexes.amountIdx >= 0) {
+      const amount = parseIndianAmount(row[indexes.amountIdx]);
+      const drCr = normalizeWhitespace(
+        indexes.amountDrCrIdx >= 0 ? row[indexes.amountDrCrIdx] : ''
+      ).toUpperCase();
+      if (drCr === 'DR' || drCr === 'DEBIT' || drCr.startsWith('D')) {
+        withdrawal = amount;
+      } else if (drCr === 'CR' || drCr === 'CREDIT' || drCr.startsWith('C')) {
+        deposit = amount;
+      } else if (amount > 0) {
+        // Unknown flag — leave as deposit only if CR-like narration, else skip mis-assign
+        deposit = amount;
+      }
+    }
+
     const balanceRaw =
       indexes.balanceIdx >= 0 ? normalizeWhitespace(row[indexes.balanceIdx]) : '';
     const balance = balanceRaw && balanceRaw !== '-' ? parseIndianAmount(balanceRaw) : null;
@@ -265,7 +358,7 @@ function parseKotakRows(rows, accountId) {
     flushCurrent();
     current = {
       txnDate,
-      valueDate: txnDate,
+      valueDate,
       narration: narrationPart,
       refNo: refNo && refNo !== '-' ? refNo : '',
       withdrawal,

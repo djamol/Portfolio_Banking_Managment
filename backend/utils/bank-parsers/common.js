@@ -55,16 +55,19 @@ function parseBankDate(value) {
   const raw = String(value).trim();
   if (!raw || raw === '-') return null;
 
-  let m = raw.match(/^(\d{1,2})[\/\-,\.](\d{1,2})[\/\-,\.](\d{2,4})$/);
+  // Strip trailing time: 24-07-2026 20:14:18 / 24/07/2026T20:14:18
+  const dateOnly = raw.replace(/[ T]\d{1,2}:\d{2}(:\d{2})?(\.\d+)?$/, '').trim();
+
+  let m = dateOnly.match(/^(\d{1,2})[\/\-,\.](\d{1,2})[\/\-,\.](\d{2,4})$/);
   if (m) {
     return ymdFromParts(m[1], m[2], m[3]);
   }
 
-  m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (m) return raw.slice(0, 10);
+  m = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return dateOnly.slice(0, 10);
 
   // 01-May-2022 / 01/May/2022 / 01,May,2022
-  m = raw.match(/^(\d{1,2})[\/\-,\.]([A-Za-z]{3,9})[\/\-,\.](\d{2,4})$/);
+  m = dateOnly.match(/^(\d{1,2})[\/\-,\.]([A-Za-z]{3,9})[\/\-,\.](\d{2,4})$/);
   if (m) {
     const mi = MONTH_MAP[m[2].toLowerCase()];
     if (mi) return ymdFromParts(m[1], mi, m[3]);
@@ -72,23 +75,23 @@ function parseBankDate(value) {
 
   // Kotak CSV: 01 May 2022
   // Axis Excel: 06 Jan '14 / 06 Jan ’14
-  m = raw.match(/^(\d{1,2})\s+([A-Za-z]{3,9})\s+['\u2019]?(\d{2,4})$/);
+  m = dateOnly.match(/^(\d{1,2})\s+([A-Za-z]{3,9})\s+['\u2019]?(\d{2,4})$/);
   if (m) {
     const mi = MONTH_MAP[m[2].toLowerCase()];
     if (mi) return ymdFromParts(m[1], mi, m[3]);
   }
 
   // May 1, 2022 / May 01 2022
-  m = raw.match(/^([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{2,4})$/);
+  m = dateOnly.match(/^([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{2,4})$/);
   if (m) {
     const mi = MONTH_MAP[m[1].toLowerCase()];
     if (mi) return ymdFromParts(m[2], mi, m[3]);
   }
 
   // Reject bare numbers / codes (e.g. "0", account balances) that Date() misparses
-  if (/^\d+(\.\d+)?$/.test(raw)) return null;
+  if (/^\d+(\.\d+)?$/.test(dateOnly)) return null;
 
-  const parsed = new Date(raw);
+  const parsed = new Date(dateOnly);
   if (!Number.isNaN(parsed.getTime())) {
     // Prefer local Y-M-D to avoid UTC off-by-one for date-only strings
     return ymdFromParts(parsed.getDate(), parsed.getMonth() + 1, parsed.getFullYear());
@@ -253,7 +256,7 @@ function extractPayee(narration) {
   const text = normalizeWhitespace(narration);
   if (!text) return null;
 
-  if (/INTEREST\s*CREDIT|MONTHLY\s*INTEREST|CREDIT\s*INTEREST|Int\s+on\s+FD|Int\s+on\s+RD/i.test(text)) {
+  if (/INTEREST\s*CREDIT|MONTHLY\s*INTEREST|CREDIT\s*INTEREST|Int\.Pd|Int\s+on\s+FD|Int\s+on\s+RD/i.test(text)) {
     return 'Bank Interest';
   }
   if (/FD\s*BOOKED|FIXED\s*DEPOSIT/i.test(text)) return 'Fixed Deposit';
