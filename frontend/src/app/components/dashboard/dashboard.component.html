@@ -82,21 +82,44 @@
   <div class="two-col holdings-movers">
     <div class="panel">
       <div class="panel-head">
-        <h3>Top holdings</h3>
+        <h3>Platform concentration</h3>
       </div>
-      <div class="list" *ngIf="insights?.topHoldings?.length; else noHoldings">
-        <div class="list-row" *ngFor="let h of insights?.topHoldings">
-          <div>
-            <div class="title">{{ h.sub_type_name || h.website_app_name }}</div>
-            <div class="meta">{{ h.investment_type }} · {{ h.website_app_name }}</div>
-          </div>
-          <div class="right">
-            <div class="strong">{{ toNumber(h.pct_of_portfolio) | number:'1.1-1' }}%</div>
-            <div class="meta">₹{{ toNumber(h.amount) | number:'1.0-0' }}</div>
+      <div class="conc-summary" *ngIf="platformGroups.length">
+        <span>{{ platformCount }} platform(s)</span>
+        <span>Top 3 = {{ top3ConcentrationPct | number:'1.0-0' }}%</span>
+      </div>
+      <div class="conc-scroll" style="    max-height: 29.5rem;" *ngIf="platformGroups.length; else noHoldings" [class.scrollable]="platformGroups.length > 10">
+        <div class="conc-platform" *ngFor="let g of platformGroups">
+          <button
+            type="button"
+            class="list-row conc-platform-btn"
+            (click)="togglePlatform(g.platform)"
+            [attr.aria-expanded]="expandedPlatform === g.platform"
+          >
+            <div class="conc-main">
+              <div class="title">{{ g.platform }}</div>
+              <div class="meta">{{ g.items.length }} holding(s)</div>
+              <div class="conc-bar" aria-hidden="true">
+                <div class="conc-bar-fill" [style.width.%]="g.pct"></div>
+              </div>
+            </div>
+            <div class="right">
+              <div class="strong">{{ g.pct | number:'1.1-1' }}%</div>
+              <div class="meta">₹{{ g.amount | number:'1.0-0' }}</div>
+              <span class="chevron">{{ expandedPlatform === g.platform ? '▾' : '▸' }}</span>
+            </div>
+          </button>
+          <div class="mover-items" *ngIf="expandedPlatform === g.platform">
+            <div class="list-row mover-item" *ngFor="let r of g.items">
+              <div class="title">{{ holdingLabel(r) }}</div>
+              <div class="right">
+                <div class="strong">₹{{ r.amount | number:'1.0-0' }}</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-      <ng-template #noHoldings><div class="empty">No holdings insight</div></ng-template>
+      <ng-template #noHoldings><div class="empty">No platform data</div></ng-template>
     </div>
 
     <div class="panel">
@@ -128,7 +151,7 @@
           <span class="meta">{{ loserCount }} loser(s)</span>
         </div>
       </div>
-      <div class="movers" *ngIf="gainerPlatforms.length || loserPlatforms.length; else noMovers">
+      <div class="movers conc-scroll" *ngIf="gainerPlatforms.length || loserPlatforms.length; else noMovers" [class.scrollable]="gainerPlatforms.length+loserPlatforms.length  > 5 ">
         <div>
           <h4 class="pos-title">Gainers</h4>
           <div class="movers-scroll" [class.scrollable]="gainerPlatforms.length > 10">

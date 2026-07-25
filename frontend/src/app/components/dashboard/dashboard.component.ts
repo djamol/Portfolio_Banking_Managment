@@ -37,6 +37,13 @@ type MoverPlatformGroup = {
   items: DeltaRow[];
 };
 
+type PlatformConcentrationGroup = {
+  platform: string;
+  amount: number;
+  pct: number;
+  items: SummaryRow[];
+};
+
 @Component({
   selector: 'app-dashboard',
   templateUrl: './dashboard.component.html',
@@ -54,6 +61,11 @@ export class DashboardComponent implements OnInit {
   daysSinceSnapshot: number | null = null;
 
   summaryRows: SummaryRow[] = [];
+
+  platformGroups: PlatformConcentrationGroup[] = [];
+  expandedPlatform: string | null = null;
+  top3ConcentrationPct = 0;
+  platformCount = 0;
 
   gainerPlatforms: MoverPlatformGroup[] = [];
   loserPlatforms: MoverPlatformGroup[] = [];
@@ -140,6 +152,10 @@ export class DashboardComponent implements OnInit {
   refresh() {
     this.loading = true;
     this.errorMessage = '';
+    this.platformGroups = [];
+    this.expandedPlatform = null;
+    this.top3ConcentrationPct = 0;
+    this.platformCount = 0;
     this.gainerPlatforms = [];
     this.loserPlatforms = [];
     this.expandedGainerPlatform = null;
@@ -159,7 +175,10 @@ export class DashboardComponent implements OnInit {
         this.totalAmount = this.toNumber(res.data?.total_amount);
         this.totalInvestments = this.toNumber(res.data?.total_investments);
         this.totalBreakdown = getIndianAmountBreakdown(this.totalAmount);
-        if (this.summaryRows.length) this.buildTaxBuckets();
+        if (this.summaryRows.length) {
+          this.buildTaxBuckets();
+          this.buildPlatformConcentration();
+        }
         done();
       },
       error: () => {
@@ -232,9 +251,21 @@ export class DashboardComponent implements OnInit {
         }));
         this.buildTaxBuckets();
         this.buildMaturityWatch();
+        this.buildPlatformConcentration();
       },
       error: () => { /* non-blocking */ }
     });
+  }
+
+  togglePlatform(platform: string) {
+    this.expandedPlatform = this.expandedPlatform === platform ? null : platform;
+  }
+
+  holdingLabel(row: SummaryRow): string {
+    return [row.investment_type, row.sub_type_name, row.sub_type_category]
+      .map((part) => (part == null ? '' : String(part).trim()))
+      .filter(Boolean)
+      .join(' · ') || 'Unknown';
   }
 
   applyMoversDates() {
@@ -416,6 +447,37 @@ export class DashboardComponent implements OnInit {
       }
     }
     return s.slice(0, 10);
+  }
+
+  private buildPlatformConcentration() {
+    const map = new Map<string, PlatformConcentrationGroup>();
+    for (const row of this.summaryRows) {
+      const platform = String(row.website_app_name || '').trim() || 'Unknown';
+      let group = map.get(platform);
+      if (!group) {
+        group = { platform, amount: 0, pct: 0, items: [] };
+        map.set(platform, group);
+      }
+      group.amount += row.amount;
+      group.items.push(row);
+    }
+    const portfolioBase = this.totalAmount > 0
+      ? this.totalAmount
+      : this.summaryRows.reduce((s, r) => s + r.amount, 0);
+    const groups = [...map.values()]
+      .map((g) => {
+        g.items = [...g.items].sort((a, b) => b.amount - a.amount);
+        g.pct = portfolioBase > 0 ? (g.amount / portfolioBase) * 100 : 0;
+        return g;
+      })
+      .sort((a, b) => b.amount - a.amount);
+    this.platformGroups = groups;
+    this.platformCount = groups.length;
+    const top3 = groups.slice(0, 3).reduce((s, g) => s + g.amount, 0);
+    this.top3ConcentrationPct = portfolioBase > 0 ? (top3 / portfolioBase) * 100 : 0;
+    if (this.expandedPlatform && !groups.some((g) => g.platform === this.expandedPlatform)) {
+      this.expandedPlatform = null;
+    }
   }
 
   private buildTaxBuckets() {
