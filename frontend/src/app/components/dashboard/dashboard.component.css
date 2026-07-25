@@ -392,14 +392,14 @@
 }
 
 .movers-dates {
-  display: flex;
+ /* display: flex;*/
   flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 12px;
 }
 
 .movers-dates label {
-  display: flex;
+  /*display: flex;*/
   flex-direction: column;
   gap: 4px;
   font-size: 0.78rem;

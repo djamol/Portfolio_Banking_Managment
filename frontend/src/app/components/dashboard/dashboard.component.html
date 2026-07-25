@@ -126,13 +126,8 @@
     </div>
 
     <div class="panel">
-      <div class="panel-head">
-        <h3>Movers</h3>
-        <button type="button" class="mini" (click)="applyMoversDates()" [disabled]="!moversFrom || !moversTo || moversLoading">
-          {{ moversLoading ? 'Loading…' : 'Apply' }}
-        </button>
-      </div>
       <div class="movers-dates">
+        <b>Movers  :</b>
         <label>
           Start
           <input type="date" [(ngModel)]="moversFrom" />
@@ -141,6 +136,9 @@
           End
           <input type="date" [(ngModel)]="moversTo" />
         </label>
+        <button type="button" class="mini" (click)="applyMoversDates()" [disabled]="!moversFrom || !moversTo || moversLoading">
+          {{ moversLoading ? 'Loading…' : 'Apply' }}
+        </button>
       </div>
       <div class="movers-totals" *ngIf="gainerPlatforms.length || loserPlatforms.length">
         <div class="movers-total pos">
