@@ -3,8 +3,6 @@ import { AnalyticsService, DeltaRow, InsightsResponse, ValueSeriesResponse } fro
 import { ChartConfiguration, ChartOptions } from 'chart.js';
 import { getIndianAmountBreakdown, IndianAmountBreakdown } from '../../utils/indian-number.util';
 
-const WATCHLIST_KEY = 'investment-tracker-watchlist';
-
 type SummaryRow = {
   id: number;
   website_app_name: string;
@@ -33,6 +31,12 @@ type TaxBucket = {
   count: number;
 };
 
+type MoverPlatformGroup = {
+  platform: string;
+  delta: number;
+  items: DeltaRow[];
+};
+
 @Component({
   selector: 'app-dashboard',
   templateUrl: './dashboard.component.html',
@@ -50,13 +54,18 @@ export class DashboardComponent implements OnInit {
   daysSinceSnapshot: number | null = null;
 
   summaryRows: SummaryRow[] = [];
-  watchlistIds: number[] = [];
-  watchlistRows: SummaryRow[] = [];
 
-  topGainers: DeltaRow[] = [];
-  topLosers: DeltaRow[] = [];
-  deltaFrom = '';
-  deltaTo = '';
+  gainerPlatforms: MoverPlatformGroup[] = [];
+  loserPlatforms: MoverPlatformGroup[] = [];
+  expandedGainerPlatform: string | null = null;
+  expandedLoserPlatform: string | null = null;
+  moversFrom = '';
+  moversTo = '';
+  moversLoading = false;
+  totalGain = 0;
+  totalLoss = 0;
+  gainerCount = 0;
+  loserCount = 0;
 
   maturityItems: MaturityItem[] = [];
   taxBuckets: TaxBucket[] = [];
@@ -125,17 +134,20 @@ export class DashboardComponent implements OnInit {
   constructor(private analyticsService: AnalyticsService) {}
 
   ngOnInit() {
-    this.loadWatchlistIds();
     this.refresh();
   }
 
   refresh() {
     this.loading = true;
     this.errorMessage = '';
-    this.deltaFrom = '';
-    this.deltaTo = '';
-    this.topGainers = [];
-    this.topLosers = [];
+    this.gainerPlatforms = [];
+    this.loserPlatforms = [];
+    this.expandedGainerPlatform = null;
+    this.expandedLoserPlatform = null;
+    this.totalGain = 0;
+    this.totalLoss = 0;
+    this.gainerCount = 0;
+    this.loserCount = 0;
     let pending = 4;
     const done = () => {
       pending -= 1;
@@ -164,8 +176,8 @@ export class DashboardComponent implements OnInit {
         const from = this.dateKey(res.data?.prevDate);
         const to = this.dateKey(res.data?.latestDate);
         if (from && to && from !== to) {
-          this.deltaFrom = from;
-          this.deltaTo = to;
+          this.moversFrom = from;
+          this.moversTo = to;
           this.loadMovers();
         }
         done();
@@ -195,9 +207,9 @@ export class DashboardComponent implements OnInit {
       next: (res) => {
         this.buildSparkline(res.data);
         // Fallback only when insights did not supply a snapshot pair.
-        if (!this.deltaFrom || !this.deltaTo) {
+        if (!this.moversFrom || !this.moversTo) {
           this.setupDeltaDates(res.data);
-          if (this.deltaFrom && this.deltaTo) {
+          if (this.moversFrom && this.moversTo) {
             this.loadMovers();
           }
         }
@@ -218,7 +230,6 @@ export class DashboardComponent implements OnInit {
           investment_date: new Date(item.investment_date),
           notes: item.notes ?? null
         }));
-        this.rebuildWatchlistRows();
         this.buildTaxBuckets();
         this.buildMaturityWatch();
       },
@@ -226,35 +237,14 @@ export class DashboardComponent implements OnInit {
     });
   }
 
-  toggleWatchlist(id: number) {
-    if (this.watchlistIds.includes(id)) {
-      this.watchlistIds = this.watchlistIds.filter((x) => x !== id);
-    } else {
-      this.watchlistIds = [...this.watchlistIds, id];
+  applyMoversDates() {
+    if (!this.moversFrom || !this.moversTo) return;
+    if (this.moversFrom > this.moversTo) {
+      const tmp = this.moversFrom;
+      this.moversFrom = this.moversTo;
+      this.moversTo = tmp;
     }
-    this.persistWatchlist();
-    this.rebuildWatchlistRows();
-  }
-
-  isWatched(id: number): boolean {
-    return this.watchlistIds.includes(id);
-  }
-
-  pinTopHoldings() {
-    const tops = (this.insights?.topHoldings || []).slice(0, 5);
-    for (const h of tops) {
-      if (!this.watchlistIds.includes(h.investment_id)) {
-        this.watchlistIds.push(h.investment_id);
-      }
-    }
-    this.persistWatchlist();
-    this.rebuildWatchlistRows();
-  }
-
-  clearWatchlist() {
-    this.watchlistIds = [];
-    this.persistWatchlist();
-    this.watchlistRows = [];
+    this.loadMovers();
   }
 
   freshnessTone(): string {
@@ -273,30 +263,78 @@ export class DashboardComponent implements OnInit {
     return 0;
   }
 
-  /** Platform-Type-SubType-Category label for movers. */
-  moverLabel(row: DeltaRow): string {
-    return [row.website_app_name, row.investment_type, row.sub_type_name, row.sub_type_category]
+  /** Type · SubType · Category under a platform. */
+  moverItemLabel(row: DeltaRow): string {
+    return [row.investment_type, row.sub_type_name, row.sub_type_category]
       .map((part) => (part == null ? '' : String(part).trim()))
       .filter(Boolean)
-      .join('-') || 'Unknown';
+      .join(' · ') || 'Unknown';
+  }
+
+  toggleGainerPlatform(platform: string) {
+    this.expandedGainerPlatform = this.expandedGainerPlatform === platform ? null : platform;
+  }
+
+  toggleLoserPlatform(platform: string) {
+    this.expandedLoserPlatform = this.expandedLoserPlatform === platform ? null : platform;
+  }
+
+  private groupByPlatform(rows: DeltaRow[], sortDesc: boolean): MoverPlatformGroup[] {
+    const map = new Map<string, MoverPlatformGroup>();
+    for (const row of rows) {
+      const platform = String(row.website_app_name || '').trim() || 'Unknown';
+      let group = map.get(platform);
+      if (!group) {
+        group = { platform, delta: 0, items: [] };
+        map.set(platform, group);
+      }
+      group.delta += this.toNumber(row.delta);
+      group.items.push(row);
+    }
+    for (const group of map.values()) {
+      group.items.sort((a, b) =>
+        sortDesc
+          ? this.toNumber(b.delta) - this.toNumber(a.delta)
+          : this.toNumber(a.delta) - this.toNumber(b.delta)
+      );
+    }
+    return [...map.values()].sort((a, b) =>
+      sortDesc ? b.delta - a.delta : a.delta - b.delta
+    );
   }
 
   private loadMovers() {
-    this.analyticsService.getDelta(this.deltaFrom, this.deltaTo).subscribe({
+    if (!this.moversFrom || !this.moversTo) return;
+    this.moversLoading = true;
+    this.analyticsService.getDelta(this.moversFrom, this.moversTo).subscribe({
       next: (res) => {
         const rows = (res.data || []).filter((r) => this.toNumber(r.delta) !== 0);
-        this.topGainers = [...rows]
+        const gainers = [...rows]
           .filter((r) => this.toNumber(r.delta) > 0)
-          .sort((a, b) => this.toNumber(b.delta) - this.toNumber(a.delta))
-          .slice(0, 5);
-        this.topLosers = [...rows]
+          .sort((a, b) => this.toNumber(b.delta) - this.toNumber(a.delta));
+        const losers = [...rows]
           .filter((r) => this.toNumber(r.delta) < 0)
-          .sort((a, b) => this.toNumber(a.delta) - this.toNumber(b.delta))
-          .slice(0, 5);
+          .sort((a, b) => this.toNumber(a.delta) - this.toNumber(b.delta));
+        this.totalGain = gainers.reduce((s, r) => s + this.toNumber(r.delta), 0);
+        this.totalLoss = losers.reduce((s, r) => s + Math.abs(this.toNumber(r.delta)), 0);
+        this.gainerCount = gainers.length;
+        this.loserCount = losers.length;
+        this.gainerPlatforms = this.groupByPlatform(gainers, true);
+        this.loserPlatforms = this.groupByPlatform(losers, false);
+        this.expandedGainerPlatform = null;
+        this.expandedLoserPlatform = null;
+        this.moversLoading = false;
       },
       error: () => {
-        this.topGainers = [];
-        this.topLosers = [];
+        this.gainerPlatforms = [];
+        this.loserPlatforms = [];
+        this.expandedGainerPlatform = null;
+        this.expandedLoserPlatform = null;
+        this.totalGain = 0;
+        this.totalLoss = 0;
+        this.gainerCount = 0;
+        this.loserCount = 0;
+        this.moversLoading = false;
       }
     });
   }
@@ -349,11 +387,11 @@ export class DashboardComponent implements OnInit {
     const dates = [...new Set((payload?.rows || []).map((r) => this.dateKey(r.change_date)).filter(Boolean))]
       .sort((a, b) => a.localeCompare(b));
     if (dates.length >= 2) {
-      this.deltaFrom = dates[dates.length - 2];
-      this.deltaTo = dates[dates.length - 1];
+      this.moversFrom = dates[dates.length - 2];
+      this.moversTo = dates[dates.length - 1];
     } else if (dates.length === 1) {
-      this.deltaFrom = dates[0];
-      this.deltaTo = dates[0];
+      this.moversFrom = dates[0];
+      this.moversTo = dates[0];
     }
   }
 
@@ -486,28 +524,6 @@ export class DashboardComponent implements OnInit {
     if (row.investment_type === 'FD') return 12;
     if (row.investment_type === 'Bond') return 36;
     return null;
-  }
-
-  private loadWatchlistIds() {
-    try {
-      const raw = localStorage.getItem(WATCHLIST_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        this.watchlistIds = parsed.map(Number).filter((n) => Number.isFinite(n));
-      }
-    } catch { /* ignore */ }
-  }
-
-  private persistWatchlist() {
-    try {
-      localStorage.setItem(WATCHLIST_KEY, JSON.stringify(this.watchlistIds));
-    } catch { /* ignore */ }
-  }
-
-  private rebuildWatchlistRows() {
-    const set = new Set(this.watchlistIds);
-    this.watchlistRows = this.summaryRows.filter((r) => set.has(r.id));
   }
 
   private monthsAgoKey(months: number): string {

@@ -79,13 +79,10 @@
     </div>
   </div>
 
-  <div class="three-col">
+  <div class="two-col holdings-movers">
     <div class="panel">
       <div class="panel-head">
         <h3>Top holdings</h3>
-        <button type="button" class="mini" (click)="pinTopHoldings()" [disabled]="!insights?.topHoldings?.length">
-          Pin to watchlist
-        </button>
       </div>
       <div class="list" *ngIf="insights?.topHoldings?.length; else noHoldings">
         <div class="list-row" *ngFor="let h of insights?.topHoldings">
@@ -96,9 +93,6 @@
           <div class="right">
             <div class="strong">{{ toNumber(h.pct_of_portfolio) | number:'1.1-1' }}%</div>
             <div class="meta">₹{{ toNumber(h.amount) | number:'1.0-0' }}</div>
-            <button type="button" class="pin" (click)="toggleWatchlist(h.investment_id)">
-              {{ isWatched(h.investment_id) ? 'Unpin' : 'Pin' }}
-            </button>
           </div>
         </div>
       </div>
@@ -107,46 +101,94 @@
 
     <div class="panel">
       <div class="panel-head">
-        <h3>Recent movers</h3>
-        <span class="meta" *ngIf="deltaFrom && deltaTo">{{ deltaFrom }} → {{ deltaTo }}</span>
+        <h3>Movers</h3>
+        <button type="button" class="mini" (click)="applyMoversDates()" [disabled]="!moversFrom || !moversTo || moversLoading">
+          {{ moversLoading ? 'Loading…' : 'Apply' }}
+        </button>
       </div>
-      <div class="movers" *ngIf="topGainers.length || topLosers.length; else noMovers">
+      <div class="movers-dates">
+        <label>
+          Start
+          <input type="date" [(ngModel)]="moversFrom" />
+        </label>
+        <label>
+          End
+          <input type="date" [(ngModel)]="moversTo" />
+        </label>
+      </div>
+      <div class="movers-totals" *ngIf="gainerPlatforms.length || loserPlatforms.length">
+        <div class="movers-total pos">
+          <span class="meta">Total gain</span>
+          <span class="strong">₹{{ totalGain | number:'1.0-0' }}</span>
+          <span class="meta">{{ gainerCount }} gainer(s)</span>
+        </div>
+        <div class="movers-total neg">
+          <span class="meta">Total loss</span>
+          <span class="strong">₹{{ totalLoss | number:'1.0-0' }}</span>
+          <span class="meta">{{ loserCount }} loser(s)</span>
+        </div>
+      </div>
+      <div class="movers" *ngIf="gainerPlatforms.length || loserPlatforms.length; else noMovers">
         <div>
           <h4 class="pos-title">Gainers</h4>
-          <div class="list-row" *ngFor="let r of topGainers">
-            <div class="title">{{ moverLabel(r) }}</div>
-            <div class="right pos">₹{{ toNumber(r.delta) | number:'1.0-0' }}</div>
+          <div class="movers-scroll" [class.scrollable]="gainerPlatforms.length > 10">
+            <div class="mover-platform" *ngFor="let g of gainerPlatforms">
+              <button
+                type="button"
+                class="list-row mover-platform-btn"
+                (click)="toggleGainerPlatform(g.platform)"
+                [attr.aria-expanded]="expandedGainerPlatform === g.platform"
+              >
+                <div>
+                  <div class="title">{{ g.platform }}</div>
+                  <div class="meta">{{ g.items.length }} item(s)</div>
+                </div>
+                <div class="right pos">
+                  ₹{{ g.delta | number:'1.0-0' }}
+                  <span class="chevron">{{ expandedGainerPlatform === g.platform ? '▾' : '▸' }}</span>
+                </div>
+              </button>
+              <div class="mover-items" *ngIf="expandedGainerPlatform === g.platform">
+                <div class="list-row mover-item" *ngFor="let r of g.items">
+                  <div class="title">{{ moverItemLabel(r) }}</div>
+                  <div class="right pos">₹{{ toNumber(r.delta) | number:'1.0-0' }}</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div>
           <h4 class="neg-title">Losers</h4>
-          <div class="list-row" *ngFor="let r of topLosers">
-            <div class="title">{{ moverLabel(r) }}</div>
-            <div class="right neg">₹{{ toNumber(r.delta) | number:'1.0-0' }}</div>
+          <div class="movers-scroll" [class.scrollable]="loserPlatforms.length > 10">
+            <div class="mover-platform" *ngFor="let g of loserPlatforms">
+              <button
+                type="button"
+                class="list-row mover-platform-btn"
+                (click)="toggleLoserPlatform(g.platform)"
+                [attr.aria-expanded]="expandedLoserPlatform === g.platform"
+              >
+                <div>
+                  <div class="title">{{ g.platform }}</div>
+                  <div class="meta">{{ g.items.length }} item(s)</div>
+                </div>
+                <div class="right neg">
+                  ₹{{ g.delta | number:'1.0-0' }}
+                  <span class="chevron">{{ expandedLoserPlatform === g.platform ? '▾' : '▸' }}</span>
+                </div>
+              </button>
+              <div class="mover-items" *ngIf="expandedLoserPlatform === g.platform">
+                <div class="list-row mover-item" *ngFor="let r of g.items">
+                  <div class="title">{{ moverItemLabel(r) }}</div>
+                  <div class="right neg">₹{{ toNumber(r.delta) | number:'1.0-0' }}</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-      <ng-template #noMovers><div class="empty">No mover data for recent snapshots</div></ng-template>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head">
-        <h3>Watchlist</h3>
-        <button type="button" class="mini" (click)="clearWatchlist()" [disabled]="!watchlistRows.length">Clear</button>
-      </div>
-      <div class="list" *ngIf="watchlistRows.length; else noWatch">
-        <div class="list-row" *ngFor="let w of watchlistRows">
-          <div>
-            <div class="title">{{ w.website_app_name }}</div>
-            <div class="meta">{{ w.investment_type }} · {{ w.sub_type_name || '—' }}</div>
-          </div>
-          <div class="right">
-            <div class="strong">₹{{ w.amount | number:'1.0-0' }}</div>
-            <button type="button" class="pin" (click)="toggleWatchlist(w.id)">Unpin</button>
-          </div>
-        </div>
-      </div>
-      <ng-template #noWatch><div class="empty">Pin holdings from Top holdings to track them here</div></ng-template>
+      <ng-template #noMovers>
+        <div class="empty">Pick a start and end date, then Apply to see gainers and losers.</div>
+      </ng-template>
     </div>
   </div>
 
