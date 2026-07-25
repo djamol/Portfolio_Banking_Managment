@@ -2,7 +2,7 @@
   <div class="dash-header">
     <div>
       <h2>Dashboard</h2>
-      <p class="subtitle">Portfolio overview — net worth, allocation, movers, tax &amp; maturity watch</p>
+      <p class="subtitle">Portfolio overview — net worth, allocation, movers &amp; maturity watch</p>
     </div>
     <button type="button" class="refresh-btn" (click)="refresh()" [disabled]="loading">
       {{ loading ? 'Loading…' : 'Refresh' }}
@@ -41,9 +41,12 @@
       </span>
     </div>
     <div class="kpi">
-      <span class="kpi-label">Tax-oriented</span>
-      <span class="kpi-value">₹{{ taxTotal | number:'1.0-0' }}</span>
-      <span class="kpi-meta">{{ taxPercentOfPortfolio | number:'1.1-1' }}% of portfolio</span>
+      <span class="kpi-label">Largest holding</span>
+      <span class="kpi-value">{{ largestHoldingPct | number:'1.1-1' }}%</span>
+      <span class="kpi-meta" *ngIf="largestHoldingLabel">
+        {{ largestHoldingLabel }} · ₹{{ largestHoldingAmount | number:'1.0-0' }}
+      </span>
+      <span class="kpi-meta" *ngIf="!largestHoldingLabel">Of portfolio</span>
     </div>
   </div>
 
@@ -218,23 +221,26 @@
   <div class="two-col">
     <div class="panel">
       <div class="panel-head">
-        <h3>Tax-oriented holdings</h3>
-        <a routerLink="/investment-summary" class="link-btn">Summary report</a>
+        <h3>Largest holdings</h3>
+        <a routerLink="/investments" class="link-btn">All investments</a>
       </div>
-      <p class="hint">ELSS, Tax Saving FD/Bond, PPF and Tax Saving categories (informational only).</p>
-      <div class="list" *ngIf="taxBuckets.length; else noTax">
-        <div class="list-row" *ngFor="let t of taxBuckets">
-          <div>
-            <div class="title">{{ t.label }}</div>
-            <div class="meta">{{ t.count }} holding(s)</div>
+      <p class="hint">Biggest individual positions by current amount.</p>
+      <div class="conc-scroll" *ngIf="largestHoldings.length; else noLargest" [class.scrollable]="largestHoldings.length > 10">
+        <div class="list-row largest-row" *ngFor="let h of largestHoldings">
+          <div class="conc-main">
+            <div class="title">{{ h.title }}</div>
+            <div class="meta">{{ h.meta }}</div>
+            <div class="conc-bar" aria-hidden="true">
+              <div class="conc-bar-fill" [style.width.%]="h.pct"></div>
+            </div>
           </div>
           <div class="right">
-            <div class="strong">₹{{ t.amount | number:'1.0-0' }}</div>
-            <div class="meta">{{ t.percent | number:'1.1-1' }}% of tax bucket</div>
+            <div class="strong">{{ h.pct | number:'1.1-1' }}%</div>
+            <div class="meta">₹{{ h.amount | number:'1.0-0' }}</div>
           </div>
         </div>
       </div>
-      <ng-template #noTax><div class="empty">No tax-oriented holdings detected</div></ng-template>
+      <ng-template #noLargest><div class="empty">No holdings yet</div></ng-template>
     </div>
 
     <div class="panel">

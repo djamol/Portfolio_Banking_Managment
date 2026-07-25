@@ -383,6 +383,14 @@
   min-width: 0;
 }
 
+.largest-row {
+  align-items: flex-start;
+}
+
+.largest-row .conc-main {
+  margin-right: 8px;
+}
+
 .movers-dates {
   display: flex;
   flex-wrap: wrap;

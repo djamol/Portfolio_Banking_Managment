@@ -24,11 +24,12 @@ type MaturityItem = {
   source: 'notes' | 'estimate';
 };
 
-type TaxBucket = {
-  label: string;
+type LargestHolding = {
+  id: number;
+  title: string;
+  meta: string;
   amount: number;
-  percent: number;
-  count: number;
+  pct: number;
 };
 
 type MoverPlatformGroup = {
@@ -80,9 +81,10 @@ export class DashboardComponent implements OnInit {
   loserCount = 0;
 
   maturityItems: MaturityItem[] = [];
-  taxBuckets: TaxBucket[] = [];
-  taxTotal = 0;
-  taxPercentOfPortfolio = 0;
+  largestHoldings: LargestHolding[] = [];
+  largestHoldingPct = 0;
+  largestHoldingAmount = 0;
+  largestHoldingLabel = '';
 
   allocationChartData: ChartConfiguration<'doughnut'>['data'] = {
     labels: [],
@@ -176,7 +178,7 @@ export class DashboardComponent implements OnInit {
         this.totalInvestments = this.toNumber(res.data?.total_investments);
         this.totalBreakdown = getIndianAmountBreakdown(this.totalAmount);
         if (this.summaryRows.length) {
-          this.buildTaxBuckets();
+          this.buildLargestHoldings();
           this.buildPlatformConcentration();
         }
         done();
@@ -249,7 +251,7 @@ export class DashboardComponent implements OnInit {
           investment_date: new Date(item.investment_date),
           notes: item.notes ?? null
         }));
-        this.buildTaxBuckets();
+        this.buildLargestHoldings();
         this.buildMaturityWatch();
         this.buildPlatformConcentration();
       },
@@ -480,45 +482,28 @@ export class DashboardComponent implements OnInit {
     }
   }
 
-  private buildTaxBuckets() {
-    const taxLike = this.summaryRows.filter((r) => this.isTaxRelated(r));
-    this.taxTotal = taxLike.reduce((s, r) => s + r.amount, 0);
+  private buildLargestHoldings() {
     const portfolioBase = this.totalAmount > 0
       ? this.totalAmount
       : this.summaryRows.reduce((s, r) => s + r.amount, 0);
-    this.taxPercentOfPortfolio = portfolioBase > 0 ? (this.taxTotal / portfolioBase) * 100 : 0;
-
-    const map = new Map<string, { amount: number; count: number }>();
-    for (const row of taxLike) {
-      const label = row.sub_type_name || row.investment_type;
-      const cur = map.get(label) || { amount: 0, count: 0 };
-      cur.amount += row.amount;
-      cur.count += 1;
-      map.set(label, cur);
-    }
-    this.taxBuckets = [...map.entries()]
-      .map(([label, v]) => ({
-        label,
-        amount: v.amount,
-        count: v.count,
-        percent: this.taxTotal > 0 ? (v.amount / this.taxTotal) * 100 : 0
-      }))
+    const rows = [...this.summaryRows]
       .sort((a, b) => b.amount - a.amount)
-      .slice(0, 8);
-  }
-
-  private isTaxRelated(row: SummaryRow): boolean {
-    const blob = [
-      row.investment_type,
-      row.sub_type_name || '',
-      row.sub_type_category || ''
-    ].join(' ').toLowerCase();
-    return (
-      blob.includes('tax') ||
-      blob.includes('elss') ||
-      blob.includes('ppf') ||
-      row.investment_type === 'PPF'
-    );
+      .slice(0, 12)
+      .map((row) => ({
+        id: row.id,
+        title: row.sub_type_name || row.website_app_name || 'Unknown',
+        meta: [row.website_app_name, row.investment_type, row.sub_type_category]
+          .map((p) => (p == null ? '' : String(p).trim()))
+          .filter(Boolean)
+          .join(' · '),
+        amount: row.amount,
+        pct: portfolioBase > 0 ? (row.amount / portfolioBase) * 100 : 0
+      }));
+    this.largestHoldings = rows;
+    const top = rows[0];
+    this.largestHoldingAmount = top?.amount ?? 0;
+    this.largestHoldingPct = top?.pct ?? 0;
+    this.largestHoldingLabel = top?.title ?? '';
   }
 
   private buildMaturityWatch() {
