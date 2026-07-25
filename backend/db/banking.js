@@ -11,6 +11,89 @@ function num(v, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/** a then b in statement order if a.closing + b.net ≈ b.closing */
+function balancePrecedes(a, b, eps = 0.051) {
+  if (a.balance == null || b.balance == null) return false;
+  const expected = num(a.balance) + num(b.deposit) - num(b.withdrawal);
+  return Math.abs(expected - num(b.balance)) < eps;
+}
+
+/**
+ * Order same-day transactions by closing-balance chain (statement sequence).
+ * newestFirst=true → reverse chrono (end-of-day first).
+ */
+function orderSameDayByBalanceChain(txns, newestFirst) {
+  if (!Array.isArray(txns) || txns.length <= 2) return txns;
+
+  const withBal = [];
+  const noBal = [];
+  for (const t of txns) {
+    if (t.balance !== null && t.balance !== undefined && Number.isFinite(Number(t.balance))) {
+      withBal.push(t);
+    } else {
+      noBal.push(t);
+    }
+  }
+  if (withBal.length <= 2) return txns;
+
+  const hasPred = new Set();
+  for (const a of withBal) {
+    for (const b of withBal) {
+      if (a === b) continue;
+      if (balancePrecedes(a, b)) hasPred.add(b);
+    }
+  }
+  let starts = withBal.filter((t) => !hasPred.has(t));
+  if (!starts.length) starts = [withBal[0]];
+
+  function walk(start) {
+    const chain = [start];
+    const used = new Set([start]);
+    let cur = start;
+    while (true) {
+      const next = withBal.find((x) => !used.has(x) && balancePrecedes(cur, x));
+      if (!next) break;
+      chain.push(next);
+      used.add(next);
+      cur = next;
+    }
+    return chain;
+  }
+
+  let best = [];
+  for (const s of starts) {
+    const c = walk(s);
+    if (c.length > best.length) best = c;
+  }
+  const inBest = new Set(best);
+  const leftovers = withBal.filter((t) => !inBest.has(t));
+  const chrono = [...best, ...leftovers, ...noBal];
+  return newestFirst ? chrono.reverse() : chrono;
+}
+
+/** After date sort, reorder groups of 3+ same-account/same-day txns via balance chain */
+function reorderRowsByDateBalance(rows, sort) {
+  if (!Array.isArray(rows) || !rows.length) return rows;
+  if (sort !== 'date_desc' && sort !== 'date_asc') return rows;
+  const newestFirst = sort === 'date_desc';
+  const out = [];
+  let i = 0;
+  while (i < rows.length) {
+    const key = `${rows[i].account_id}|${String(rows[i].txn_date).slice(0, 10)}`;
+    let j = i + 1;
+    while (
+      j < rows.length &&
+      `${rows[j].account_id}|${String(rows[j].txn_date).slice(0, 10)}` === key
+    ) {
+      j += 1;
+    }
+    const group = rows.slice(i, j);
+    out.push(...(group.length > 2 ? orderSameDayByBalanceChain(group, newestFirst) : group));
+    i = j;
+  }
+  return out;
+}
+
 function categoryResult(narration, withdrawal, deposit, customRules, accountId, payee) {
   const result = suggestCategory(narration, withdrawal, deposit, customRules, accountId, payee);
   if (typeof result === 'string') return { category: result, source: 'auto' };
@@ -261,8 +344,8 @@ async function mysqlGetTransactions(filters = {}) {
   const offset = Math.max(Number(filters.offset) || 0, 0);
   const sort = String(filters.sort || 'date_desc');
   const orderMap = {
-    date_desc: 't.txn_date DESC, t.id DESC',
-    date_asc: 't.txn_date ASC, t.id ASC',
+    date_desc: 't.txn_date DESC, (t.balance IS NULL), t.balance ASC, t.id DESC',
+    date_asc: 't.txn_date ASC, (t.balance IS NULL), t.balance DESC, t.id ASC',
     account_asc: 'a.bank_name ASC, a.account_name ASC, t.txn_date DESC',
     account_desc: 'a.bank_name DESC, a.account_name DESC, t.txn_date DESC',
     narration_asc: 't.narration ASC, t.txn_date DESC',
@@ -300,7 +383,7 @@ async function mysqlGetTransactions(filters = {}) {
   );
   const totals = countRows[0];
   return {
-    rows,
+    rows: reorderRowsByDateBalance(rows, sort),
     total: totals.total,
     total_debit: totals.total_debit,
     total_credit: totals.total_credit,
@@ -917,12 +1000,15 @@ async function mongoGetTransactions(filters = {}) {
   const accountMap = Object.fromEntries(accounts.map((a) => [a.id, a]));
 
   return {
-    rows: rows.map((r) => ({
-      ...formatBankDoc(r),
-      bank_name: accountMap[r.account_id]?.bank_name,
-      account_name: accountMap[r.account_id]?.account_name,
-      account_number: accountMap[r.account_id]?.account_number
-    })),
+    rows: reorderRowsByDateBalance(
+      rows.map((r) => ({
+        ...formatBankDoc(r),
+        bank_name: accountMap[r.account_id]?.bank_name,
+        account_name: accountMap[r.account_id]?.account_name,
+        account_number: accountMap[r.account_id]?.account_number
+      })),
+      sort
+    ),
     total: totals.total,
     total_debit: totals.total_debit,
     total_credit: totals.total_credit,
