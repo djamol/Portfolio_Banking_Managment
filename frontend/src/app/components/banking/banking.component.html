@@ -649,7 +649,7 @@
           </tr>
         </thead>
         <tbody>
-          <ng-container *ngFor="let t of transactions">
+          <ng-container *ngFor="let t of transactions; trackBy: trackTxn">
             <tr [class.selected-row]="selectedIds.has(t.id)" [class.expanded-row]="expandedTxnId === t.id">
               <td><input type="checkbox" [checked]="selectedIds.has(t.id)" (change)="toggleSelect(t.id)" /></td>
               <td class="nowrap">{{ t.txn_date }}</td>
@@ -659,11 +659,23 @@
               <td class="credit num">{{ t.deposit ? formatMoney(t.deposit) : '' }}</td>
               <td class="num">{{ t.balance != null ? formatMoney(t.balance) : '—' }}</td>
               <td class="cat-cell">
+                <button
+                  *ngIf="categoryEditTxnId !== t.id"
+                  type="button"
+                  class="cat-display-btn"
+                  [title]="formatCat(t.category)"
+                  (click)="openCategoryEditor(t, $event)"
+                >
+                  {{ formatCat(t.category) }}
+                </button>
                 <app-hierarchical-category-picker
+                  *ngIf="categoryEditTxnId === t.id"
                   [options]="categories"
                   [value]="t.category"
+                  [autoOpen]="true"
                   placeholder="Set category"
-                  (valueChange)="updateRowCategory(t, $event)">
+                  (valueChange)="onRowCategoryPicked(t, $event)"
+                  (dismissed)="closeCategoryEditor()">
                 </app-hierarchical-category-picker>
               </td>
               <td><button class="link-btn danger" (click)="deleteTxn(t)" title="Delete">×</button></td>

@@ -1,7 +1,12 @@
-.cat-picker {
-  position: relative;
-  min-width: 160px;
-  max-width: 280px;
+.cat-picker.auto-open {
+  min-width: 0;
+}
+
+.cat-picker.auto-open .cat-picker-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: auto;
 }
 
 .cat-picker-trigger {

@@ -63,7 +63,10 @@ export class BankingComponent implements OnInit {
   filterMinAmount: number | '' = '';
   filterMaxAmount: number | '' = '';
   filterSort = 'date_desc';
-  filterLimit = Number(localStorage.getItem('bank-txn-page-size') || 100) || 100;
+  filterLimit = Math.min(
+    200,
+    Number(localStorage.getItem('bank-txn-page-size') || 50) || 50
+  );
   filterOffset = 0;
   datePreset: DatePreset = 'all';
   excludeTransfers = true;
@@ -83,6 +86,8 @@ export class BankingComponent implements OnInit {
   lastImportResult: any = null;
 
   selectedIds = new Set<number>();
+  selectedSummaryCache = { count: 0, debit: 0, credit: 0 };
+  categoryEditTxnId: number | null = null;
   bulkCategory = '';
   expandedTxnId: number | null = null;
   exporting = false;
@@ -238,7 +243,7 @@ export class BankingComponent implements OnInit {
   };
 
   readonly bankOptions = ['HDFC', 'ICICI', 'DCB', 'SBI', 'Axis', 'Kotak', 'Other'];
-  readonly pageSizeOptions = [50, 100, 200, 500];
+  readonly pageSizeOptions = [25, 50, 100, 200];
   readonly sortOptions = [
     { value: 'date_desc', label: 'Newest first' },
     { value: 'date_asc', label: 'Oldest first' },
@@ -358,6 +363,10 @@ export class BankingComponent implements OnInit {
   }
 
   get selectedSummary(): { count: number; debit: number; credit: number } {
+    return this.selectedSummaryCache;
+  }
+
+  private refreshSelectedSummary() {
     let debit = 0;
     let credit = 0;
     for (const t of this.transactions) {
@@ -365,7 +374,25 @@ export class BankingComponent implements OnInit {
       debit += Number(t.withdrawal) || 0;
       credit += Number(t.deposit) || 0;
     }
-    return { count: this.selectedIds.size, debit, credit };
+    this.selectedSummaryCache = { count: this.selectedIds.size, debit, credit };
+  }
+
+  trackTxn(_: number, t: BankTransaction): number {
+    return t.id;
+  }
+
+  openCategoryEditor(txn: BankTransaction, event: Event) {
+    event.stopPropagation();
+    this.categoryEditTxnId = txn.id;
+  }
+
+  closeCategoryEditor() {
+    this.categoryEditTxnId = null;
+  }
+
+  onRowCategoryPicked(txn: BankTransaction, category: string) {
+    this.categoryEditTxnId = null;
+    this.updateRowCategory(txn, category);
   }
 
   emptyAccountForm(): Partial<BankAccount> {
@@ -525,6 +552,8 @@ export class BankingComponent implements OnInit {
           net_cashflow: Number(res.net_cashflow) || 0
         };
         this.selectedIds.clear();
+        this.refreshSelectedSummary();
+        this.categoryEditTxnId = null;
         this.expandedTxnId = null;
         this.txnLoading = false;
         done?.();
@@ -983,6 +1012,7 @@ export class BankingComponent implements OnInit {
   }
 
   changePageSize() {
+    this.filterLimit = Math.min(200, Number(this.filterLimit) || 50);
     this.filterOffset = 0;
     localStorage.setItem('bank-txn-page-size', String(this.filterLimit));
     this.loadTransactions();
@@ -1519,14 +1549,16 @@ export class BankingComponent implements OnInit {
   toggleSelect(id: number) {
     if (this.selectedIds.has(id)) this.selectedIds.delete(id);
     else this.selectedIds.add(id);
+    this.refreshSelectedSummary();
   }
 
   toggleSelectAll() {
     if (this.selectedIds.size === this.transactions.length) {
       this.selectedIds.clear();
-      return;
+    } else {
+      this.transactions.forEach((t) => this.selectedIds.add(t.id));
     }
-    this.transactions.forEach((t) => this.selectedIds.add(t.id));
+    this.refreshSelectedSummary();
   }
 
   applyBulkCategory() {

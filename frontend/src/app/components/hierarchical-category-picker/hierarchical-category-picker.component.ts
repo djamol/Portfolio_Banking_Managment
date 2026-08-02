@@ -5,6 +5,7 @@ import {
   HostListener,
   Input,
   OnChanges,
+  OnInit,
   Output,
   SimpleChanges
 } from '@angular/core';
@@ -22,27 +23,43 @@ import {
   styleUrls: ['./hierarchical-category-picker.component.css'],
   standalone: false
 })
-export class HierarchicalCategoryPickerComponent implements OnChanges {
+export class HierarchicalCategoryPickerComponent implements OnChanges, OnInit {
   @Input() options: string[] = [];
+  /** Optional shared tree — avoids rebuilding per instance. */
+  @Input() treeInput: CategoryTreeNode[] | null = null;
   @Input() value: string | null | undefined = '';
   @Input() placeholder = 'Select category';
   @Input() allowClear = true;
+  /** Open immediately (for row edit-in-place). */
+  @Input() autoOpen = false;
   @Output() valueChange = new EventEmitter<string>();
+  @Output() dismissed = new EventEmitter<void>();
 
   isOpen = false;
   tree: CategoryTreeNode[] = [];
-  /** Currently highlighted path while browsing (labels). */
   browsePath: string[] = [];
 
   constructor(private elementRef: ElementRef) {}
 
+  ngOnInit(): void {
+    this.refreshTree();
+    this.browsePath = splitCategoryParts(this.value || '');
+    if (this.autoOpen) {
+      this.isOpen = true;
+    }
+  }
+
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['options']) {
-      this.tree = buildCategoryTree(this.options || []);
+    if (changes['options'] || changes['treeInput']) {
+      this.refreshTree();
     }
     if (changes['value'] && !this.isOpen) {
       this.browsePath = splitCategoryParts(this.value || '');
     }
+  }
+
+  private refreshTree(): void {
+    this.tree = this.treeInput?.length ? this.treeInput : buildCategoryTree(this.options || []);
   }
 
   get displayText(): string {
@@ -52,6 +69,7 @@ export class HierarchicalCategoryPickerComponent implements OnChanges {
   }
 
   get columns(): CategoryTreeNode[][] {
+    if (!this.isOpen) return [];
     const cols: CategoryTreeNode[][] = [];
     let nodes = this.tree;
     cols.push(nodes);
@@ -70,6 +88,8 @@ export class HierarchicalCategoryPickerComponent implements OnChanges {
     this.isOpen = !this.isOpen;
     if (this.isOpen) {
       this.browsePath = splitCategoryParts(this.value || '');
+    } else {
+      this.dismissed.emit();
     }
   }
 
@@ -81,18 +101,15 @@ export class HierarchicalCategoryPickerComponent implements OnChanges {
     event.stopPropagation();
     this.browsePath = [...this.browsePath.slice(0, colIndex), node.label];
 
-    // Leaf: commit the stored category value
     if (!node.children.length) {
       const leaf = node.leaves[0] || joinCategoryParts(this.browsePath);
       this.commit(leaf);
       return;
     }
 
-    // Branch with a single concrete value and no further useful choice
     if (node.leaves.length === 1) {
       this.commit(node.leaves[0]);
     }
-    // else keep open so user can pick the next level
   }
 
   clear(event: Event): void {
@@ -108,8 +125,10 @@ export class HierarchicalCategoryPickerComponent implements OnChanges {
 
   @HostListener('document:click', ['$event'])
   onDocumentClick(event: MouseEvent): void {
+    if (!this.isOpen) return;
     if (!this.elementRef.nativeElement.contains(event.target)) {
       this.isOpen = false;
+      this.dismissed.emit();
     }
   }
 }
