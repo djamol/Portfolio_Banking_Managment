@@ -5,6 +5,7 @@ import {
   HostListener,
   Input,
   OnChanges,
+  OnDestroy,
   OnInit,
   Output,
   SimpleChanges
@@ -23,7 +24,7 @@ import {
   styleUrls: ['./hierarchical-category-picker.component.css'],
   standalone: false
 })
-export class HierarchicalCategoryPickerComponent implements OnChanges, OnInit {
+export class HierarchicalCategoryPickerComponent implements OnChanges, OnInit, OnDestroy {
   @Input() options: string[] = [];
   /** Optional shared tree — avoids rebuilding per instance. */
   @Input() treeInput: CategoryTreeNode[] | null = null;
@@ -38,15 +39,22 @@ export class HierarchicalCategoryPickerComponent implements OnChanges, OnInit {
   isOpen = false;
   tree: CategoryTreeNode[] = [];
   browsePath: string[] = [];
+  panelStyle: Record<string, string> = {};
 
-  constructor(private elementRef: ElementRef) {}
+  private scrollParents: EventTarget[] = [];
+
+  constructor(private elementRef: ElementRef<HTMLElement>) {}
 
   ngOnInit(): void {
     this.refreshTree();
     this.browsePath = splitCategoryParts(this.value || '');
     if (this.autoOpen) {
-      this.isOpen = true;
+      this.openPanel();
     }
+  }
+
+  ngOnDestroy(): void {
+    this.detachScrollListeners();
   }
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -85,11 +93,10 @@ export class HierarchicalCategoryPickerComponent implements OnChanges, OnInit {
 
   toggle(event: Event): void {
     event.stopPropagation();
-    this.isOpen = !this.isOpen;
     if (this.isOpen) {
-      this.browsePath = splitCategoryParts(this.value || '');
+      this.closePanel(true);
     } else {
-      this.dismissed.emit();
+      this.openPanel();
     }
   }
 
@@ -109,6 +116,9 @@ export class HierarchicalCategoryPickerComponent implements OnChanges, OnInit {
 
     if (node.leaves.length === 1) {
       this.commit(node.leaves[0]);
+    } else {
+      // Expand columns may change panel width — re-anchor
+      requestAnimationFrame(() => this.updatePanelPosition());
     }
   }
 
@@ -119,16 +129,99 @@ export class HierarchicalCategoryPickerComponent implements OnChanges, OnInit {
 
   commit(value: string): void {
     this.valueChange.emit(value);
-    this.isOpen = false;
+    this.closePanel(false);
     this.browsePath = splitCategoryParts(value);
   }
+
+  private openPanel(): void {
+    this.isOpen = true;
+    this.browsePath = splitCategoryParts(this.value || '');
+    this.attachScrollListeners();
+    requestAnimationFrame(() => this.updatePanelPosition());
+  }
+
+  private closePanel(emitDismiss: boolean): void {
+    this.isOpen = false;
+    this.panelStyle = {};
+    this.detachScrollListeners();
+    if (emitDismiss) this.dismissed.emit();
+  }
+
+  updatePanelPosition(): void {
+    if (!this.isOpen) return;
+    const host = this.elementRef.nativeElement;
+    const anchor =
+      (host.querySelector('.cat-picker-trigger') as HTMLElement | null) || host;
+    const rect = anchor.getBoundingClientRect();
+    const estimatedWidth = Math.min(520, Math.max(280, rect.width, 280));
+    const estimatedHeight = 300;
+    const gap = 4;
+    const margin = 8;
+
+    let left = rect.right - estimatedWidth;
+    left = Math.max(margin, Math.min(left, window.innerWidth - estimatedWidth - margin));
+
+    const spaceBelow = window.innerHeight - rect.bottom - margin;
+    const spaceAbove = rect.top - margin;
+    const openUp = spaceBelow < estimatedHeight && spaceAbove > spaceBelow;
+
+    let top: number;
+    if (openUp) {
+      top = Math.max(margin, rect.top - gap - estimatedHeight);
+    } else {
+      top = Math.min(rect.bottom + gap, window.innerHeight - estimatedHeight - margin);
+      top = Math.max(margin, top);
+    }
+
+    this.panelStyle = {
+      position: 'fixed',
+      top: `${Math.round(top)}px`,
+      left: `${Math.round(left)}px`,
+      right: 'auto',
+      zIndex: '2000',
+      maxWidth: `min(92vw, 520px)`,
+      minWidth: `${Math.min(estimatedWidth, window.innerWidth - margin * 2)}px`
+    };
+  }
+
+  private attachScrollListeners(): void {
+    this.detachScrollListeners();
+    const parents: EventTarget[] = [window];
+    let el: HTMLElement | null = this.elementRef.nativeElement.parentElement;
+    while (el) {
+      const style = getComputedStyle(el);
+      const overflow = `${style.overflow}|${style.overflowX}|${style.overflowY}`;
+      if (/(auto|scroll|overlay)/.test(overflow)) {
+        parents.push(el);
+      }
+      el = el.parentElement;
+    }
+    this.scrollParents = parents;
+    for (const t of parents) {
+      t.addEventListener('scroll', this.onReposition, true);
+    }
+    window.addEventListener('resize', this.onReposition);
+  }
+
+  private detachScrollListeners(): void {
+    for (const t of this.scrollParents) {
+      t.removeEventListener('scroll', this.onReposition, true);
+    }
+    window.removeEventListener('resize', this.onReposition);
+    this.scrollParents = [];
+  }
+
+  private onReposition = (): void => {
+    this.updatePanelPosition();
+  };
 
   @HostListener('document:click', ['$event'])
   onDocumentClick(event: MouseEvent): void {
     if (!this.isOpen) return;
-    if (!this.elementRef.nativeElement.contains(event.target)) {
-      this.isOpen = false;
-      this.dismissed.emit();
+    const target = event.target as Node;
+    if (!this.elementRef.nativeElement.contains(target)) {
+      // Panel is inside host, so contains works
+      this.closePanel(true);
     }
   }
 }

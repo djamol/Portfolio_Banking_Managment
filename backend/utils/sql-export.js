@@ -3,14 +3,14 @@ const mongoStore = require('../db/mongo-store');
 
 const TABLES = [
   'bank_accounts',
-  ' bank_budgets',
-  ' bank_category_rules',
-  ' bank_transactions',
-  ' investment_history',
-  ' investment_transactions', 
-  ' investments',
-  ' sub_type_categories',
-  ' sub_type_names'
+  'bank_budgets',
+  'bank_category_rules',
+  'bank_transactions',
+  'investment_history',
+  'investment_transactions', 
+  'investments',
+  'sub_type_categories',
+  'sub_type_names'
 ];
 
 

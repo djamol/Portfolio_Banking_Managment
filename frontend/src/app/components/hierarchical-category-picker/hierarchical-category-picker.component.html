@@ -10,7 +10,12 @@
     <span class="cat-picker-arrow">▼</span>
   </button>
 
-  <div class="cat-picker-panel" *ngIf="isOpen" (click)="$event.stopPropagation()">
+  <div
+    class="cat-picker-panel"
+    *ngIf="isOpen"
+    [ngStyle]="panelStyle"
+    (click)="$event.stopPropagation()"
+  >
     <div class="cat-picker-toolbar">
       <button type="button" class="cat-clear" *ngIf="allowClear" (click)="clear($event)">Clear</button>
       <span class="cat-path-preview">{{ browsePath.length ? browsePath.join(' → ') : displayText }}</span>
