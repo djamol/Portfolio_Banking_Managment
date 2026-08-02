@@ -464,41 +464,72 @@ function drawStatementPage(doc, account, rows, meta, pageNo, isFirst) {
     { key: 'bal', label: 'Closing Balance', w: 70 }
   ];
   const tableWidth = cols.reduce((a, c) => a + c.w, 0);
-  const rowH = 14;
+  const minRowH = 12;
+  const cellPadY = 2;
+  const fontSize = 7;
+  const narrColW = cols[1].w - 4;
 
-  doc.rect(left, y, tableWidth, 18).fillAndStroke('#d9e8f5', '#333');
-  doc.fillColor('#000').font('Helvetica-Bold').fontSize(7);
-  let x = left;
-  for (const c of cols) {
-    doc.text(c.label, x + 2, y + 5, { width: c.w - 4, align: c.key === 'narration' ? 'left' : 'center' });
-    x += c.w;
+  /** Soft-break long UPI/ref tokens so PDFKit can wrap without spaces. */
+  function wrapFriendly(text, chunk = 26) {
+    return String(text || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/(\S{26})(?=\S)/g, `$1\u200b`);
   }
-  y += 18;
 
-  doc.font('Helvetica').fontSize(7);
+  function drawTableHeader() {
+    doc.rect(left, y, tableWidth, 18).fillAndStroke('#d9e8f5', '#333');
+    doc.fillColor('#000').font('Helvetica-Bold').fontSize(fontSize);
+    let hx = left;
+    for (const c of cols) {
+      doc.text(c.label, hx + 2, y + 5, {
+        width: c.w - 4,
+        align: c.key === 'narration' ? 'left' : 'center'
+      });
+      hx += c.w;
+    }
+    y += 18;
+  }
+
+  drawTableHeader();
+
   const bottomLimit = doc.page.height - 120;
 
-  const drawRow = (cells, bold = false) => {
-    if (y + rowH > bottomLimit) {
-      doc.addPage();
-      y = 40;
-      doc.font('Helvetica-Bold').fontSize(8).text(`${bank} — continued`, left, y);
-      y += 20;
-      doc.rect(left, y, tableWidth, 18).fillAndStroke('#d9e8f5', '#333');
-      doc.fillColor('#000').font('Helvetica-Bold').fontSize(7);
-      let hx = left;
-      for (const c of cols) {
-        doc.text(c.label, hx + 2, y + 5, { width: c.w - 4, align: 'center' });
-        hx += c.w;
-      }
-      y += 18;
-      doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(7);
-    }
-    doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fillColor('#000');
+  const ensureSpace = (needed) => {
+    if (y + needed <= bottomLimit) return;
+    doc.addPage();
+    y = 40;
+    doc.font('Helvetica-Bold').fontSize(8).text(`${bank} — continued`, left, y);
+    y += 20;
+    drawTableHeader();
+  };
+
+  const drawRow = (cells) => {
+    doc.font('Helvetica').fontSize(fontSize).fillColor('#000');
+    const narr = wrapFriendly(cells[1]);
+    const narrH = Math.max(
+      minRowH - cellPadY * 2,
+      doc.heightOfString(narr, { width: narrColW, lineGap: 1 })
+    );
+    const rowH = Math.max(minRowH, Math.ceil(narrH + cellPadY * 2));
+
+    ensureSpace(rowH + 2);
+
+    doc.font('Helvetica').fontSize(fontSize).fillColor('#000');
     let cx = left;
     cells.forEach((text, i) => {
       const align = i === 1 ? 'left' : i >= 4 ? 'right' : 'center';
-      doc.text(String(text || ''), cx + 2, y + 3, { width: cols[i].w - 4, align });
+      const raw = i === 1 ? narr : String(text || '');
+      const opts = {
+        width: cols[i].w - 4,
+        align,
+        lineGap: 1
+      };
+      if (i === 1) {
+        doc.text(raw, cx + 2, y + cellPadY, opts);
+      } else {
+        doc.text(raw, cx + 2, y + cellPadY, { ...opts, lineBreak: false });
+      }
       cx += cols[i].w;
     });
     doc
@@ -511,8 +542,8 @@ function drawStatementPage(doc, account, rows, meta, pageNo, isFirst) {
   for (const r of s.rows) {
     drawRow([
       fmtDateDmy(r.txn_date, true),
-      String(r.narration || '').replace(/\s+/g, ' ').trim().slice(0, 80),
-      String(r.ref_no || '').slice(0, 22),
+      String(r.narration || '').replace(/\s+/g, ' ').trim(),
+      String(r.ref_no || '').slice(0, 28),
       fmtDateDmy(r.value_date || r.txn_date, true),
       num(r.withdrawal) > 0 ? fmtAmt(r.withdrawal) : '',
       num(r.deposit) > 0 ? fmtAmt(r.deposit) : '',
