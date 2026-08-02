@@ -6,6 +6,7 @@ const { appendIgnorePlatformClause } = require('../utils/ignore-platform');
 const {
   amountAsOfSubquery,
   amountAsOfHistorySubquery,
+  currentAmountSubquery,
   buildInvestmentFilterClauses,
   buildAmountFilterClauses,
   resolveSeriesBreakdown
@@ -28,11 +29,17 @@ router.get('/total', async (req, res) => {
       return res.json({ success: true, data: await mongoAnalytics.getTotal() });
     }
     const pool = getPool();
-    const ignore = defaultIgnoreWhere();
+    const ignore = defaultIgnoreWhere('curr');
     const [rows] = await pool.query(
       `
-      SELECT SUM(amount) as total_amount, COUNT(*) as total_investments
-      FROM investments
+      SELECT SUM(curr.amount) as total_amount, COUNT(*) as total_investments
+      FROM (
+        SELECT
+          i.id,
+          i.website_app_name,
+          ${currentAmountSubquery('i')} AS amount
+        FROM investments i
+      ) curr
       ${ignore.sql}
       `,
       ignore.params
@@ -50,17 +57,23 @@ router.get('/by-type', async (req, res) => {
       return res.json({ success: true, data: await mongoAnalytics.getByType() });
     }
     const pool = getPool();
-    const ignore = defaultIgnoreWhere();
+    const ignore = defaultIgnoreWhere('curr');
     const [rows] = await pool.query(
       `
       SELECT 
-        investment_type,
+        curr.investment_type,
         COUNT(*) as count,
-        SUM(amount) as total_amount,
-        AVG(amount) as avg_amount
-      FROM investments
+        SUM(curr.amount) as total_amount,
+        AVG(curr.amount) as avg_amount
+      FROM (
+        SELECT
+          i.investment_type,
+          i.website_app_name,
+          ${currentAmountSubquery('i')} AS amount
+        FROM investments i
+      ) curr
       ${ignore.sql}
-      GROUP BY investment_type
+      GROUP BY curr.investment_type
       ORDER BY total_amount DESC
       `,
       ignore.params
@@ -78,16 +91,22 @@ router.get('/by-month', async (req, res) => {
       return res.json({ success: true, data: await mongoAnalytics.getByMonth() });
     }
     const pool = getPool();
-    const ignore = defaultIgnoreWhere();
+    const ignore = defaultIgnoreWhere('curr');
     const [rows] = await pool.query(
       `
       SELECT 
-        DATE_FORMAT(investment_date, '%Y-%m') as month,
-        SUM(amount) as total_amount,
+        DATE_FORMAT(curr.investment_date, '%Y-%m') as month,
+        SUM(curr.amount) as total_amount,
         COUNT(*) as count
-      FROM investments
+      FROM (
+        SELECT
+          i.investment_date,
+          i.website_app_name,
+          ${currentAmountSubquery('i')} AS amount
+        FROM investments i
+      ) curr
       ${ignore.sql}
-      GROUP BY DATE_FORMAT(investment_date, '%Y-%m')
+      GROUP BY DATE_FORMAT(curr.investment_date, '%Y-%m')
       ORDER BY month DESC
       `,
       ignore.params
@@ -105,16 +124,22 @@ router.get('/by-year', async (req, res) => {
       return res.json({ success: true, data: await mongoAnalytics.getByYear() });
     }
     const pool = getPool();
-    const ignore = defaultIgnoreWhere();
+    const ignore = defaultIgnoreWhere('curr');
     const [rows] = await pool.query(
       `
       SELECT 
-        YEAR(investment_date) as year,
-        SUM(amount) as total_amount,
+        YEAR(curr.investment_date) as year,
+        SUM(curr.amount) as total_amount,
         COUNT(*) as count
-      FROM investments
+      FROM (
+        SELECT
+          i.investment_date,
+          i.website_app_name,
+          ${currentAmountSubquery('i')} AS amount
+        FROM investments i
+      ) curr
       ${ignore.sql}
-      GROUP BY YEAR(investment_date)
+      GROUP BY YEAR(curr.investment_date)
       ORDER BY year DESC
       `,
       ignore.params
@@ -191,16 +216,21 @@ router.get('/by-platform', async (req, res) => {
       return res.json({ success: true, data: await mongoAnalytics.getByPlatform() });
     }
     const pool = getPool();
-    const ignore = defaultIgnoreWhere();
+    const ignore = defaultIgnoreWhere('curr');
     const [rows] = await pool.query(
       `
       SELECT 
-        website_app_name,
+        curr.website_app_name,
         COUNT(*) as count,
-        SUM(amount) as total_amount
-      FROM investments
+        SUM(curr.amount) as total_amount
+      FROM (
+        SELECT
+          i.website_app_name,
+          ${currentAmountSubquery('i')} AS amount
+        FROM investments i
+      ) curr
       ${ignore.sql}
-      GROUP BY website_app_name
+      GROUP BY curr.website_app_name
       ORDER BY total_amount DESC
       `,
       ignore.params
@@ -218,15 +248,21 @@ router.get('/growth', async (req, res) => {
       return res.json({ success: true, data: await mongoAnalytics.getGrowth() });
     }
     const pool = getPool();
-    const ignore = defaultIgnoreWhere();
+    const ignore = defaultIgnoreWhere('curr');
     const [rows] = await pool.query(
       `
       SELECT 
-        DATE_FORMAT(investment_date, '%Y-%m') as month,
-        SUM(amount) OVER (ORDER BY DATE_FORMAT(investment_date, '%Y-%m') ASC) as cumulative_amount
-      FROM investments
+        DATE_FORMAT(curr.investment_date, '%Y-%m') as month,
+        SUM(curr.amount) OVER (ORDER BY DATE_FORMAT(curr.investment_date, '%Y-%m') ASC) as cumulative_amount
+      FROM (
+        SELECT
+          i.investment_date,
+          i.website_app_name,
+          ${currentAmountSubquery('i')} AS amount
+        FROM investments i
+      ) curr
       ${ignore.sql}
-      GROUP BY DATE_FORMAT(investment_date, '%Y-%m')
+      GROUP BY DATE_FORMAT(curr.investment_date, '%Y-%m')
       ORDER BY month ASC
       `,
       ignore.params
@@ -341,8 +377,7 @@ router.get('/allocation-latest', async (req, res) => {
     }
 
     const pool = getPool();
-    // Live allocation uses current holdings, not history as-of (avoids missing
-    // brand-new investments that have no history row yet).
+    // Live allocation = latest history amount (same as Investment Summary /total).
     const investmentParams = [];
     const investmentWhere = buildInvestmentFilterClauses(req.query, investmentParams);
     const amountParams = [];
@@ -358,7 +393,7 @@ router.get('/allocation-latest', async (req, res) => {
       FROM (
         SELECT
           i.investment_type,
-          i.amount AS amount_at_date
+          ${currentAmountSubquery('i')} AS amount_at_date
         FROM investments i
         ${investmentSql}
       ) vals
@@ -593,20 +628,26 @@ router.get('/by-sub-type-name', async (req, res) => {
     }
 
     const pool = getPool();
-    const ignore = defaultIgnoreWhere();
-    const whereParts = [`sub_type_name IS NOT NULL AND sub_type_name != ''`];
+    const ignore = defaultIgnoreWhere('curr');
+    const whereParts = [`curr.sub_type_name IS NOT NULL AND curr.sub_type_name != ''`];
     if (ignore.sql) {
       whereParts.push(ignore.sql.replace(/^WHERE\s+/i, ''));
     }
     const [rows] = await pool.query(
       `
       SELECT 
-        sub_type_name,
+        curr.sub_type_name,
         COUNT(*) as count,
-        SUM(amount) as total_amount
-      FROM investments
+        SUM(curr.amount) as total_amount
+      FROM (
+        SELECT
+          i.sub_type_name,
+          i.website_app_name,
+          ${currentAmountSubquery('i')} AS amount
+        FROM investments i
+      ) curr
       WHERE ${whereParts.join(' AND ')}
-      GROUP BY sub_type_name
+      GROUP BY curr.sub_type_name
       ORDER BY total_amount DESC
       `,
       ignore.params
@@ -625,20 +666,26 @@ router.get('/by-sub-type-category', async (req, res) => {
     }
 
     const pool = getPool();
-    const ignore = defaultIgnoreWhere();
-    const whereParts = [`sub_type_category IS NOT NULL AND sub_type_category != ''`];
+    const ignore = defaultIgnoreWhere('curr');
+    const whereParts = [`curr.sub_type_category IS NOT NULL AND curr.sub_type_category != ''`];
     if (ignore.sql) {
       whereParts.push(ignore.sql.replace(/^WHERE\s+/i, ''));
     }
     const [rows] = await pool.query(
       `
       SELECT 
-        sub_type_category,
+        curr.sub_type_category,
         COUNT(*) as count,
-        SUM(amount) as total_amount
-      FROM investments
+        SUM(curr.amount) as total_amount
+      FROM (
+        SELECT
+          i.sub_type_category,
+          i.website_app_name,
+          ${currentAmountSubquery('i')} AS amount
+        FROM investments i
+      ) curr
       WHERE ${whereParts.join(' AND ')}
-      GROUP BY sub_type_category
+      GROUP BY curr.sub_type_category
       ORDER BY total_amount DESC
       `,
       ignore.params

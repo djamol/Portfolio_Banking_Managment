@@ -593,6 +593,39 @@ async function deleteTransaction(id) {
   return result.deletedCount > 0;
 }
 
+async function syncAmountsFromLatestHistory() {
+  const db = getDb();
+  const [investments, history] = await Promise.all([
+    db.collection('investments').find({}).toArray(),
+    db.collection('investment_history').find({}).toArray()
+  ]);
+  const latest = new Map();
+  for (const h of history) {
+    const prev = latest.get(h.investment_id);
+    const hd = String(h.change_date || '').slice(0, 10);
+    if (!prev) {
+      latest.set(h.investment_id, h);
+      continue;
+    }
+    const pd = String(prev.change_date || '').slice(0, 10);
+    if (hd > pd || (hd === pd && (h.id || 0) > (prev.id || 0))) {
+      latest.set(h.investment_id, h);
+    }
+  }
+  let updated = 0;
+  for (const inv of investments) {
+    const h = latest.get(inv.id);
+    if (!h) continue;
+    if (Math.abs(Number(inv.amount) - Number(h.amount)) <= 0.009) continue;
+    await db.collection('investments').updateOne(
+      { id: inv.id },
+      { $set: { amount: Number(h.amount), updated_at: new Date() } }
+    );
+    updated += 1;
+  }
+  return updated;
+}
+
 module.exports = {
   INVESTMENT_TYPES,
   formatDoc,
@@ -623,5 +656,6 @@ module.exports = {
   createTransaction,
   updateTransaction,
   deleteTransaction,
+  syncAmountsFromLatestHistory,
   VALID_TXN_TYPES
 };

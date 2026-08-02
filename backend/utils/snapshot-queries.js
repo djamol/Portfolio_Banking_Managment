@@ -25,7 +25,6 @@ function parseBoolParam(value) {
  *
  * Do NOT fall back to live investments.amount — that projects today's
  * holdings onto past snapshot dates and invents false peaks/growth.
- * Live totals should use SUM(investments.amount) directly.
  */
 function amountAsOfSubquery(investmentAlias, asOfDateExpr) {
   return `COALESCE(
@@ -53,6 +52,23 @@ function amountAsOfHistorySubquery(investmentAlias, asOfDateExpr) {
       LIMIT 1
     ),
     0
+  )`;
+}
+
+/**
+ * Current portfolio amount = latest history row, else investments.amount.
+ * Use for live totals (Dashboard / Analytics) so they match Investment Summary.
+ */
+function currentAmountSubquery(investmentAlias = 'i') {
+  return `COALESCE(
+    (
+      SELECT ih.amount
+      FROM investment_history ih
+      WHERE ih.investment_id = ${investmentAlias}.id
+      ORDER BY ih.change_date DESC, ih.id DESC
+      LIMIT 1
+    ),
+    ${investmentAlias}.amount
   )`;
 }
 
@@ -167,6 +183,7 @@ module.exports = {
   resolveSeriesBreakdown,
   amountAsOfSubquery,
   amountAsOfHistorySubquery,
+  currentAmountSubquery,
   buildInvestmentFilterClauses,
   buildAmountFilterClauses
 };

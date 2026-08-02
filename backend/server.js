@@ -93,7 +93,20 @@ logger.info('Initializing database before binding HTTP port', {
 });
 
 db.initializeDatabase()
-  .then(() => {
+  .then(async () => {
+    try {
+      const store = require('./db');
+      if (typeof store.syncAmountsFromLatestHistory === 'function') {
+        const n = await store.syncAmountsFromLatestHistory();
+        if (n > 0) {
+          logger.info('Synced investment amounts from latest history', { updated: n });
+        }
+      }
+    } catch (syncErr) {
+      logger.warn('Could not sync investment amounts from history', {
+        error: syncErr.message
+      });
+    }
     app.listen(PORT, HOST, () => {
       logger.info('Server is ready', {
         url: `http://${HOST}:${PORT}`,

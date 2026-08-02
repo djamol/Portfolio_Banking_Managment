@@ -416,6 +416,31 @@ async function deleteTransaction(id) {
   return result.affectedRows > 0;
 }
 
+/**
+ * Align investments.amount with the latest investment_history row.
+ * Keeps Investments list / CRUD in sync with Summary & Analytics.
+ */
+async function syncAmountsFromLatestHistory() {
+  const pool = getPool();
+  const [result] = await pool.query(`
+    UPDATE investments i
+    INNER JOIN (
+      SELECT investment_id, amount
+      FROM (
+        SELECT
+          investment_id,
+          amount,
+          ROW_NUMBER() OVER (PARTITION BY investment_id ORDER BY change_date DESC, id DESC) AS rn
+        FROM investment_history
+      ) ranked
+      WHERE rn = 1
+    ) h ON h.investment_id = i.id
+    SET i.amount = h.amount
+    WHERE ABS(i.amount - h.amount) > 0.009
+  `);
+  return result.affectedRows || 0;
+}
+
 module.exports = {
   getAllInvestments,
   searchInvestments,
@@ -438,5 +463,6 @@ module.exports = {
   createTransaction,
   updateTransaction,
   deleteTransaction,
+  syncAmountsFromLatestHistory,
   VALID_TXN_TYPES
 };
