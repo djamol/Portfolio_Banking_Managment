@@ -60,11 +60,13 @@ export class BankingComponent implements OnInit {
   filterQ = '';
   filterPayee = '';
   filterMinAmount: number | '' = '';
+  filterMaxAmount: number | '' = '';
   filterSort = 'date_desc';
   filterLimit = Number(localStorage.getItem('bank-txn-page-size') || 100) || 100;
   filterOffset = 0;
   datePreset: DatePreset = 'all';
   excludeTransfers = true;
+  showAdvancedFilters = false;
   jumpPage: number | null = null;
   private flashTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -453,12 +455,8 @@ export class BankingComponent implements OnInit {
     this.loadBudgets();
   }
 
-  private buildTxnFilters(forExport = false): Record<string, any> {
-    const filters: Record<string, any> = {
-      limit: forExport ? 5000 : this.filterLimit,
-      offset: forExport ? 0 : this.filterOffset,
-      sort: this.filterSort
-    };
+  private buildSharedFilters(): Record<string, any> {
+    const filters: Record<string, any> = {};
     if (this.filterAccountId) filters['account_id'] = this.filterAccountId;
     if (this.filterFrom) filters['from'] = this.filterFrom;
     if (this.filterTo) filters['to'] = this.filterTo;
@@ -467,11 +465,51 @@ export class BankingComponent implements OnInit {
     } else if (this.filterCategory) {
       filters['category'] = this.filterCategory;
     }
+    if (this.filterMinAmount !== '' && this.filterMinAmount != null) {
+      filters['min_amount'] = this.filterMinAmount;
+    }
+    if (this.filterMaxAmount !== '' && this.filterMaxAmount != null) {
+      filters['max_amount'] = this.filterMaxAmount;
+    }
+    if (this.excludeTransfers) filters['exclude_transfers'] = '1';
+    return filters;
+  }
+
+  private buildTxnFilters(forExport = false): Record<string, any> {
+    const filters: Record<string, any> = {
+      ...this.buildSharedFilters(),
+      limit: forExport ? 5000 : this.filterLimit,
+      offset: forExport ? 0 : this.filterOffset,
+      sort: this.filterSort
+    };
     if (this.filterFlow) filters['flow'] = this.filterFlow;
     if (this.filterQ) filters['q'] = this.filterQ;
     if (this.filterPayee) filters['payee'] = this.filterPayee;
-    if (this.filterMinAmount) filters['min_amount'] = this.filterMinAmount;
     return filters;
+  }
+
+  get usesCategoryFilter(): boolean {
+    return (
+      this.activeTab === 'transactions' ||
+      this.activeTab === 'analytics' ||
+      this.activeTab === 'charts' ||
+      this.activeTab === 'cashflow' ||
+      this.activeTab === 'insights'
+    );
+  }
+
+  get advancedFilterCount(): number {
+    let n = 0;
+    if (this.filterFlow) n += 1;
+    if (this.filterMinAmount !== '' && this.filterMinAmount != null) n += 1;
+    if (this.filterMaxAmount !== '' && this.filterMaxAmount != null) n += 1;
+    if (this.filterQ) n += 1;
+    if (this.filterPayee) n += 1;
+    return n;
+  }
+
+  toggleAdvancedFilters() {
+    this.showAdvancedFilters = !this.showAdvancedFilters;
   }
 
   loadTransactions(done?: () => void) {
@@ -499,18 +537,14 @@ export class BankingComponent implements OnInit {
   }
 
   loadAnalytics(done?: () => void) {
-    const filters: Record<string, any> = {};
-    if (this.filterAccountId) filters['account_id'] = this.filterAccountId;
-    if (this.filterFrom) filters['from'] = this.filterFrom;
-    if (this.filterTo) filters['to'] = this.filterTo;
-    if (this.excludeTransfers) filters['exclude_transfers'] = '1';
+    const filters = this.buildSharedFilters();
 
     this.bankingService.getAnalytics(filters).subscribe({
       next: (data) => {
         this.analytics = data;
         this.buildCharts();
         if (data?.categories?.length) {
-          this.categories = [...new Set([...this.defaultCategories, ...data.categories])].sort();
+          this.categories = [...new Set([...this.categories, ...this.defaultCategories, ...data.categories])].sort();
         }
         done?.();
       },
@@ -535,11 +569,7 @@ export class BankingComponent implements OnInit {
   }
 
   loadTopPayees(done?: () => void) {
-    const filters: Record<string, any> = { limit: 15 };
-    if (this.filterAccountId) filters['account_id'] = this.filterAccountId;
-    if (this.filterFrom) filters['from'] = this.filterFrom;
-    if (this.filterTo) filters['to'] = this.filterTo;
-    if (this.excludeTransfers) filters['exclude_transfers'] = '1';
+    const filters: Record<string, any> = { ...this.buildSharedFilters(), limit: 15 };
     this.bankingService.getAnalyticsByPayee(filters).subscribe({
       next: (rows) => {
         this.topPayees = rows || [];
@@ -916,10 +946,12 @@ export class BankingComponent implements OnInit {
     this.filterQ = '';
     this.filterPayee = '';
     this.filterMinAmount = '';
+    this.filterMaxAmount = '';
     this.filterSort = 'date_desc';
     this.filterOffset = 0;
     this.datePreset = 'all';
     this.excludeTransfers = true;
+    this.showAdvancedFilters = false;
     this.applyFilters();
   }
 

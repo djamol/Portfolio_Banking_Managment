@@ -289,8 +289,12 @@ function buildTxnWhere(filters = {}, table = 'bank_transactions') {
     params.push(`%${filters.payee}%`);
   }
   if (filters.min_amount) {
-    where.push(`(${col('withdrawal')} >= ? OR ${col('deposit')} >= ?)`);
-    params.push(num(filters.min_amount), num(filters.min_amount));
+    where.push(`GREATEST(${col('withdrawal')}, ${col('deposit')}) >= ?`);
+    params.push(num(filters.min_amount));
+  }
+  if (filters.max_amount) {
+    where.push(`GREATEST(${col('withdrawal')}, ${col('deposit')}) <= ?`);
+    params.push(num(filters.max_amount));
   }
   if (filters.flow === 'debit') where.push(`${col('withdrawal')} > 0`);
   if (filters.flow === 'credit') where.push(`${col('deposit')} > 0`);
@@ -935,12 +939,21 @@ function mongoTxnQuery(filters = {}) {
   }
   if (filters.flow === 'debit') q.withdrawal = { $gt: 0 };
   if (filters.flow === 'credit') q.deposit = { $gt: 0 };
-  if (filters.min_amount) {
-    q.$or = [{ withdrawal: { $gte: num(filters.min_amount) } }, { deposit: { $gte: num(filters.min_amount) } }];
+  if (filters.min_amount || filters.max_amount) {
+    const amountExpr = { $max: ['$withdrawal', '$deposit'] };
+    // Mongo filter uses $expr for amount range
+    const amountConds = [];
+    if (filters.min_amount) {
+      amountConds.push({ $gte: [amountExpr, num(filters.min_amount)] });
+    }
+    if (filters.max_amount) {
+      amountConds.push({ $lte: [amountExpr, num(filters.max_amount)] });
+    }
+    q.$expr = amountConds.length === 1 ? amountConds[0] : { $and: amountConds };
   }
   if (filters.q) {
     const re = new RegExp(String(filters.q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    q.$or = [{ narration: re }, { ref_no: re }, { notes: re }];
+    q.$or = [{ narration: re }, { ref_no: re }, { notes: re }, { payee: re }];
   }
   if (wantsExcludeTransfers(filters)) {
     q.$and = [

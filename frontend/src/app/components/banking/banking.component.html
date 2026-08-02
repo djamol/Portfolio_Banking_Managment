@@ -22,46 +22,94 @@
     <button [class.active]="activeTab==='insights'" (click)="setTab('insights')">Insights</button>
   </div>
 
-  <div class="filter-bar card-lite" *ngIf="activeTab==='overview' || activeTab==='transactions' || activeTab==='analytics' || activeTab==='charts' || activeTab==='cashflow' || activeTab==='interest' || activeTab==='insights'">
-    <select [(ngModel)]="filterAccountId" (ngModelChange)="applyFilters()">
-      <option value="">All accounts</option>
-      <option *ngFor="let a of accounts" [ngValue]="a.id">
-        {{ a.bank_name }} – {{ a.account_name }}{{ (a.is_active === 0 || a.is_active === false) ? ' (inactive)' : '' }}
-      </option>
-    </select>
-    <div class="preset-row">
-      <button type="button" class="preset-btn" [class.active]="datePreset==='1m'" (click)="applyDatePreset('1m')">1M</button>
-      <button type="button" class="preset-btn" [class.active]="datePreset==='3m'" (click)="applyDatePreset('3m')">3M</button>
-      <button type="button" class="preset-btn" [class.active]="datePreset==='6m'" (click)="applyDatePreset('6m')">6M</button>
-      <button type="button" class="preset-btn" [class.active]="datePreset==='ytd'" (click)="applyDatePreset('ytd')">YTD</button>
-      <button type="button" class="preset-btn" [class.active]="datePreset==='1y'" (click)="applyDatePreset('1y')">1Y</button>
-      <button type="button" class="preset-btn" [class.active]="datePreset==='all'" (click)="applyDatePreset('all')">All</button>
+  <div class="filters-shell" *ngIf="activeTab==='overview' || activeTab==='transactions' || activeTab==='analytics' || activeTab==='charts' || activeTab==='cashflow' || activeTab==='interest' || activeTab==='insights'">
+    <div class="filter-bar card-lite">
+      <div class="filter-primary">
+        <select [(ngModel)]="filterAccountId" (ngModelChange)="applyFilters()" class="filter-account">
+          <option value="">All accounts</option>
+          <option *ngFor="let a of accounts" [ngValue]="a.id">
+            {{ a.bank_name }} – {{ a.account_name }}{{ (a.is_active === 0 || a.is_active === false) ? ' (inactive)' : '' }}
+          </option>
+        </select>
+        <div class="preset-row">
+          <button type="button" class="preset-btn" [class.active]="datePreset==='1m'" (click)="applyDatePreset('1m')">1M</button>
+          <button type="button" class="preset-btn" [class.active]="datePreset==='3m'" (click)="applyDatePreset('3m')">3M</button>
+          <button type="button" class="preset-btn" [class.active]="datePreset==='6m'" (click)="applyDatePreset('6m')">6M</button>
+          <button type="button" class="preset-btn" [class.active]="datePreset==='ytd'" (click)="applyDatePreset('ytd')">YTD</button>
+          <button type="button" class="preset-btn" [class.active]="datePreset==='1y'" (click)="applyDatePreset('1y')">1Y</button>
+          <button type="button" class="preset-btn" [class.active]="datePreset==='all'" (click)="applyDatePreset('all')">All</button>
+        </div>
+        <input type="date" [(ngModel)]="filterFrom" (change)="onManualDateChange()" />
+        <input type="date" [(ngModel)]="filterTo" (change)="onManualDateChange()" />
+        <app-multi-select-filter
+          *ngIf="usesCategoryFilter"
+          class="cat-filter"
+          [hierarchical]="true"
+          [options]="categories"
+          [selected]="filterCategories"
+          allLabel="All categories"
+          placeholder="All categories"
+          (selectedChange)="onCategoryFilterChange($event)">
+        </app-multi-select-filter>
+        <button type="button" class="btn btn-ghost advanced-toggle" (click)="toggleAdvancedFilters()" [class.open]="showAdvancedFilters">
+          Advanced
+          <span class="adv-badge" *ngIf="advancedFilterCount">{{ advancedFilterCount }}</span>
+          <span class="adv-chevron">{{ showAdvancedFilters ? '▴' : '▾' }}</span>
+        </button>
+        <button class="btn btn-primary" (click)="applyFilters()">Apply</button>
+        <button class="btn btn-secondary" (click)="clearFilters()">Clear</button>
+      </div>
     </div>
-    <input type="date" [(ngModel)]="filterFrom" (change)="onManualDateChange()" />
-    <input type="date" [(ngModel)]="filterTo" (change)="onManualDateChange()" />
-    <app-multi-select-filter
-      *ngIf="activeTab==='transactions'"
-      class="cat-filter"
-      [hierarchical]="true"
-      [options]="categories"
-      [selected]="filterCategories"
-      allLabel="All categories"
-      placeholder="All categories"
-      (selectedChange)="onCategoryFilterChange($event)">
-    </app-multi-select-filter>
-    <select [(ngModel)]="filterFlow" *ngIf="activeTab==='transactions'">
-      <option value="">All flows</option>
-      <option value="credit">Credits only</option>
-      <option value="debit">Debits only</option>
-    </select>
-    <input type="number" min="0" placeholder="Min amount" [(ngModel)]="filterMinAmount" *ngIf="activeTab==='transactions'" class="min-amt" />
-    <input type="search" placeholder="Search narration / ref" [(ngModel)]="filterQ" *ngIf="activeTab==='transactions'" (keyup.enter)="applyFilters()" />
-    <label class="chk-inline" title="Hide Transfer In/Out and linked cross-account moves from spend analytics and budgets">
-      <input type="checkbox" [(ngModel)]="excludeTransfers" (ngModelChange)="applyFilters()" />
-      Exclude transfers
-    </label>
-    <button class="btn btn-primary" (click)="applyFilters()">Apply</button>
-    <button class="btn btn-secondary" (click)="clearFilters()">Clear</button>
+
+    <div class="advanced-filters" *ngIf="showAdvancedFilters">
+      <div class="advanced-filters-head">
+        <div>
+          <h4>Advanced filters</h4>
+          <p>Narrow by flow, amount range, search, and transfer handling.</p>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" (click)="showAdvancedFilters=false">Close</button>
+      </div>
+      <div class="advanced-filters-grid">
+        <label class="adv-field" *ngIf="activeTab==='transactions'">
+          <span>Flow</span>
+          <select [(ngModel)]="filterFlow">
+            <option value="">All flows</option>
+            <option value="credit">Credits only</option>
+            <option value="debit">Debits only</option>
+          </select>
+        </label>
+        <label class="adv-field">
+          <span>Min amount (₹)</span>
+          <input type="number" min="0" step="1" placeholder="0" [(ngModel)]="filterMinAmount" />
+        </label>
+        <label class="adv-field">
+          <span>Max amount (₹)</span>
+          <input type="number" min="0" step="1" placeholder="No max" [(ngModel)]="filterMaxAmount" />
+        </label>
+        <label class="adv-field adv-wide" *ngIf="activeTab==='transactions'">
+          <span>Search narration / ref / payee</span>
+          <input type="search" placeholder="Type and Apply" [(ngModel)]="filterQ" (keyup.enter)="applyFilters()" />
+        </label>
+        <label class="adv-check">
+          <input type="checkbox" [(ngModel)]="excludeTransfers" />
+          <span>
+            <strong>Exclude transfers</strong>
+            <small>Hide Transfer_* and linked cross-account moves from spend views</small>
+          </span>
+        </label>
+      </div>
+      <div class="advanced-quick" *ngIf="activeTab==='transactions'">
+        <span class="adv-quick-label">Quick</span>
+        <button type="button" class="chip" [class.active]="filterFlow==='' && !filterCategories.length" (click)="quickFilter('clear')">All</button>
+        <button type="button" class="chip" [class.active]="filterFlow==='debit'" (click)="quickFilter('debit')">Debits</button>
+        <button type="button" class="chip" [class.active]="filterFlow==='credit'" (click)="quickFilter('credit')">Credits</button>
+        <button type="button" class="chip" [class.active]="isInterestFilterActive()" (click)="quickFilter('interest')">Interest</button>
+        <button type="button" class="chip" [class.active]="isUncategorizedFilterActive()" (click)="quickFilter('uncategorized')">Uncategorized</button>
+      </div>
+      <div class="advanced-filters-actions">
+        <button class="btn btn-primary" (click)="applyFilters()">Apply filters</button>
+      </div>
+    </div>
   </div>
 
   <!-- OVERVIEW -->
@@ -492,7 +540,7 @@
       </div>
     </div>
 
-    <div class="quick-chips">
+    <div class="quick-chips" *ngIf="!showAdvancedFilters">
       <button type="button" class="chip" [class.active]="filterFlow==='' && !filterCategories.length" (click)="quickFilter('clear')">All</button>
       <button type="button" class="chip" [class.active]="filterFlow==='debit'" (click)="quickFilter('debit')">Debits</button>
       <button type="button" class="chip" [class.active]="filterFlow==='credit'" (click)="quickFilter('credit')">Credits</button>
