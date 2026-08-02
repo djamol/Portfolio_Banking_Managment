@@ -3,8 +3,28 @@ const {
   suggestCategory,
   resolvePayee,
   buildFingerprint,
-  detectTxnType
+  detectTxnType,
+  isTransferCategory,
+  isInterestCategory,
+  isTaxCategory,
+  isFdBookCategory
 } = require('../utils/bank-parsers/common');
+
+function sqlTransferExclude(colName = 'category') {
+  return `(${colName} IN ('Transfer In','Transfer Out') OR ${colName} LIKE 'Transfer\\_%' OR linked_transfer_id IS NOT NULL)`;
+}
+
+function sqlInterestCase(depositCol = 'deposit') {
+  return `CASE WHEN category IN ('Interest Income','Income_Interest_Bank','Income_Interest_Bond') OR category LIKE 'Income\\_Interest\\_%' OR txn_type = 'interest' THEN ${depositCol} ELSE 0 END`;
+}
+
+function sqlTaxCase(withdrawalCol = 'withdrawal') {
+  return `CASE WHEN category IN ('TDS / Tax','Expense_Tax_TDS') OR category LIKE 'Expense\\_Tax\\_%' OR txn_type = 'tax' THEN ${withdrawalCol} ELSE 0 END`;
+}
+
+function sqlFdBookCase(withdrawalCol = 'withdrawal') {
+  return `CASE WHEN category IN ('Fixed Deposit','Investment_FD_Book') OR txn_type = 'fd_book' THEN ${withdrawalCol} ELSE 0 END`;
+}
 
 function num(v, fallback = 0) {
   const n = Number(v);
@@ -241,8 +261,17 @@ function buildTxnWhere(filters = {}, table = 'bank_transactions') {
     params.push(filters.to);
   }
   if (filters.category) {
-    where.push(`${col('category')} = ?`);
-    params.push(filters.category);
+    const cats = String(filters.category)
+      .split(',')
+      .map((c) => c.trim())
+      .filter(Boolean);
+    if (cats.length === 1) {
+      where.push(`${col('category')} = ?`);
+      params.push(cats[0]);
+    } else if (cats.length > 1) {
+      where.push(`${col('category')} IN (${cats.map(() => '?').join(',')})`);
+      params.push(...cats);
+    }
   }
   if (filters.txn_type) {
     where.push(`${col('txn_type')} = ?`);
@@ -267,7 +296,7 @@ function buildTxnWhere(filters = {}, table = 'bank_transactions') {
   if (filters.flow === 'credit') where.push(`${col('deposit')} > 0`);
   if (wantsExcludeTransfers(filters)) {
     where.push(
-      `NOT (${col('category')} IN ('Transfer In','Transfer Out') OR ${col('linked_transfer_id')} IS NOT NULL)`
+      `NOT ${sqlTransferExclude(col('category'))}`
     );
   }
   return { whereSql: where.join(' AND '), params };
@@ -527,9 +556,9 @@ async function mysqlGetAnalytics(filters = {}) {
 
   const [interestByMonth] = await pool.query(
     `SELECT DATE_FORMAT(txn_date, '%Y-%m') AS month,
-            COALESCE(SUM(CASE WHEN category = 'Interest Income' OR txn_type = 'interest' THEN deposit ELSE 0 END),0) AS interest,
-            COALESCE(SUM(CASE WHEN category = 'TDS / Tax' OR txn_type = 'tax' THEN withdrawal ELSE 0 END),0) AS tax,
-            COALESCE(SUM(CASE WHEN category = 'Fixed Deposit' OR txn_type = 'fd_book' THEN withdrawal ELSE 0 END),0) AS fd_booked
+            COALESCE(SUM(${sqlInterestCase('deposit')}),0) AS interest,
+            COALESCE(SUM(${sqlTaxCase('withdrawal')}),0) AS tax,
+            COALESCE(SUM(${sqlFdBookCase('withdrawal')}),0) AS fd_booked
      FROM bank_transactions
      WHERE ${whereSql}
      GROUP BY DATE_FORMAT(txn_date, '%Y-%m')
@@ -565,9 +594,9 @@ async function mysqlGetAnalytics(filters = {}) {
 
   const [interestTax] = await pool.query(
     `SELECT
-      COALESCE(SUM(CASE WHEN category = 'Interest Income' OR txn_type = 'interest' THEN deposit ELSE 0 END),0) AS interest_earned,
-      COALESCE(SUM(CASE WHEN category = 'TDS / Tax' OR txn_type = 'tax' THEN withdrawal ELSE 0 END),0) AS tax_deducted,
-      COALESCE(SUM(CASE WHEN category = 'Fixed Deposit' OR txn_type = 'fd_book' THEN withdrawal ELSE 0 END),0) AS fd_booked,
+      COALESCE(SUM(${sqlInterestCase('deposit')}),0) AS interest_earned,
+      COALESCE(SUM(${sqlTaxCase('withdrawal')}),0) AS tax_deducted,
+      COALESCE(SUM(${sqlFdBookCase('withdrawal')}),0) AS fd_booked,
       COALESCE(SUM(CASE WHEN txn_type = 'fd_maturity' THEN deposit ELSE 0 END),0) AS fd_matured
      FROM bank_transactions
      WHERE ${whereSql}`,
@@ -892,7 +921,14 @@ function mongoTxnQuery(filters = {}) {
     if (filters.from) q.txn_date.$gte = filters.from;
     if (filters.to) q.txn_date.$lte = filters.to;
   }
-  if (filters.category) q.category = filters.category;
+  if (filters.category) {
+    const cats = String(filters.category)
+      .split(',')
+      .map((c) => c.trim())
+      .filter(Boolean);
+    if (cats.length === 1) q.category = cats[0];
+    else if (cats.length > 1) q.category = { $in: cats };
+  }
   if (filters.txn_type) q.txn_type = filters.txn_type;
   if (filters.payee) {
     q.payee = new RegExp(String(filters.payee).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
@@ -909,7 +945,7 @@ function mongoTxnQuery(filters = {}) {
   if (wantsExcludeTransfers(filters)) {
     q.$and = [
       ...(q.$and || []),
-      { category: { $nin: ['Transfer In', 'Transfer Out'] } },
+      { category: { $not: /^(Transfer In|Transfer Out|Transfer_)/ } },
       {
         $or: [{ linked_transfer_id: null }, { linked_transfer_id: { $exists: false } }]
       }
@@ -1148,13 +1184,13 @@ async function mongoGetAnalytics(filters = {}) {
 
   const interestTax = {
     interest_earned: rows
-      .filter((r) => r.category === 'Interest Income' || r.txn_type === 'interest')
+      .filter((r) => isInterestCategory(r.category) || r.txn_type === 'interest')
       .reduce((s, r) => s + num(r.deposit), 0),
     tax_deducted: rows
-      .filter((r) => r.category === 'TDS / Tax' || r.txn_type === 'tax')
+      .filter((r) => isTaxCategory(r.category) || r.txn_type === 'tax')
       .reduce((s, r) => s + num(r.withdrawal), 0),
     fd_booked: rows
-      .filter((r) => r.category === 'Fixed Deposit' || r.txn_type === 'fd_book')
+      .filter((r) => isFdBookCategory(r.category) || r.txn_type === 'fd_book')
       .reduce((s, r) => s + num(r.withdrawal), 0),
     fd_matured: rows
       .filter((r) => r.txn_type === 'fd_maturity')
@@ -1194,13 +1230,13 @@ async function mongoGetAnalytics(filters = {}) {
     if (!interestMonthMap[month]) {
       interestMonthMap[month] = { month, interest: 0, tax: 0, fd_booked: 0 };
     }
-    if (r.category === 'Interest Income' || r.txn_type === 'interest') {
+    if (isInterestCategory(r.category) || r.txn_type === 'interest') {
       interestMonthMap[month].interest += num(r.deposit);
     }
-    if (r.category === 'TDS / Tax' || r.txn_type === 'tax') {
+    if (isTaxCategory(r.category) || r.txn_type === 'tax') {
       interestMonthMap[month].tax += num(r.withdrawal);
     }
-    if (r.category === 'Fixed Deposit' || r.txn_type === 'fd_book') {
+    if (isFdBookCategory(r.category) || r.txn_type === 'fd_book') {
       interestMonthMap[month].fd_booked += num(r.withdrawal);
     }
   }
@@ -1210,7 +1246,17 @@ async function mongoGetAnalytics(filters = {}) {
 
   const uncategorizedCount = rows.filter((r) => {
     const c = r.category || 'Uncategorized';
-    return !r.category || c === 'Uncategorized' || c === 'Expense / Debit' || c === 'Income / Credit';
+    return (
+      !r.category ||
+      c === 'Uncategorized' ||
+      c === 'Expense / Debit' ||
+      c === 'Income / Credit' ||
+      c === 'Expense_Other_Debit' ||
+      c === 'Income_Other_Credit' ||
+      c === 'Expense_Peer_UPI' ||
+      c === 'Income_Peer_UPI' ||
+      c === 'UPI'
+    );
   }).length;
   const extras = buildAnalyticsExtras(summary, byMonth, byCategory, uncategorizedCount);
   const categories = [...new Set(rows.map((r) => r.category).filter(Boolean))].sort();

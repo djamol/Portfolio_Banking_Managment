@@ -107,6 +107,19 @@
   font-size: 0.9rem;
 }
 
+.filter-bar .cat-filter {
+  min-width: 220px;
+  max-width: 320px;
+  flex: 1 1 220px;
+}
+
+.filter-bar .cat-filter ::ng-deep .multi-select-trigger {
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));

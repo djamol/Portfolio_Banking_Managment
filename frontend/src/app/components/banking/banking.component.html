@@ -39,10 +39,16 @@
     </div>
     <input type="date" [(ngModel)]="filterFrom" (change)="onManualDateChange()" />
     <input type="date" [(ngModel)]="filterTo" (change)="onManualDateChange()" />
-    <select [(ngModel)]="filterCategory" *ngIf="activeTab==='transactions'">
-      <option value="">All categories</option>
-      <option *ngFor="let c of categories" [value]="c">{{ c }}</option>
-    </select>
+    <app-multi-select-filter
+      *ngIf="activeTab==='transactions'"
+      class="cat-filter"
+      [hierarchical]="true"
+      [options]="categories"
+      [selected]="filterCategories"
+      allLabel="All categories"
+      placeholder="All categories"
+      (selectedChange)="onCategoryFilterChange($event)">
+    </app-multi-select-filter>
     <select [(ngModel)]="filterFlow" *ngIf="activeTab==='transactions'">
       <option value="">All flows</option>
       <option value="credit">Credits only</option>
@@ -487,11 +493,11 @@
     </div>
 
     <div class="quick-chips">
-      <button type="button" class="chip" [class.active]="filterFlow==='' && filterCategory===''" (click)="quickFilter('clear')">All</button>
+      <button type="button" class="chip" [class.active]="filterFlow==='' && !filterCategories.length" (click)="quickFilter('clear')">All</button>
       <button type="button" class="chip" [class.active]="filterFlow==='debit'" (click)="quickFilter('debit')">Debits</button>
       <button type="button" class="chip" [class.active]="filterFlow==='credit'" (click)="quickFilter('credit')">Credits</button>
-      <button type="button" class="chip" [class.active]="filterCategory==='Interest Income'" (click)="quickFilter('interest')">Interest</button>
-      <button type="button" class="chip" [class.active]="filterCategory==='Uncategorized'" (click)="quickFilter('uncategorized')">Uncategorized</button>
+      <button type="button" class="chip" [class.active]="isInterestFilterActive()" (click)="quickFilter('interest')">Interest</button>
+      <button type="button" class="chip" [class.active]="isUncategorizedFilterActive()" (click)="quickFilter('uncategorized')">Uncategorized</button>
     </div>
 
     <div class="section-actions wrap">
@@ -674,7 +680,9 @@
       <button class="btn btn-secondary" (click)="recategorize()">Run auto-categorize now</button>
     </div>
     <p class="hint">
+      Categories use <code>Category_SubCategory_Detail</code> (purpose over rail — e.g. not bare “UPI”).
       Custom rules run before built-in patterns. Manual categories are preserved unless you choose “Overwrite all”.
+      Use Recategorize (auto only) to refresh older “UPI” / generic labels.
       Pattern can be plain text or a regex (e.g. <code>SWIGGY|ZOMATO</code>).
     </p>
 

@@ -120,10 +120,11 @@ function buildFingerprint({
   return crypto.createHash('sha256').update(payload).digest('hex');
 }
 
-// Specific merchants / types before generic UPI so brokers are not lumped as "UPI"
+// Hierarchical Category_SubCategory_Detail — prefer use/purpose over rail (UPI/NEFT).
+// Order: specific merchants / purpose first; generic UPI last.
 const CATEGORY_RULES = [
   {
-    category: 'Interest Income',
+    category: 'Income_Interest_Bank',
     patterns: [
       /INTEREST\s*CREDIT/i,
       /CREDIT\s*INTEREST/i,
@@ -133,26 +134,61 @@ const CATEGORY_RULES = [
       /\bFD\s*Int\b/i,
       /FD Int/i,
       /Int\s+on\s+FD/i,
-      /Int\s+on\s+RD/i
+      /Int\s+on\s+RD/i,
+      /IB\s*FD\s*PREMAT\s*INT\s*PAID/i,
+      /NCD\s*INT/i,
+      /INTRESET\s*PAYMENT/i
     ]
   },
-  { category: 'TDS / Tax', patterns: [/TAX\s*RECOVERED/i, /MONTHLY\s*TAX/i, /\bTDS\b/i, /INCOME\s*TAX/i, /DTAX/i] },
   {
-    category: 'Fixed Deposit',
-    patterns: [/FD\s*BOOKED/i, /FD\s*PREMATURE/i, /FD\s*CLOSURE/i, /FIXED\s*DEPOSIT/i]
+    category: 'Expense_Tax_TDS',
+    patterns: [
+      /TAX\s*RECOVERED/i,
+      /TAX\s*RECOVERY/i,
+      /INT\s*RECOVERY/i,
+      /MONTHLY\s*TAX/i,
+      /\bTDS\b/i,
+      /INCOME\s*TAX/i,
+      /DTAX/i,
+      /FD\s*PREMAT\s*TAX/i
+    ]
   },
-  { category: 'Salary / Income', patterns: [/SALARY/i, /PAYROLL/i, /NEFT\s*CR.*SAL/i, /\bMYSAL\b/i] },
   {
-    category: 'Investment / Broker',
+    category: 'Investment_FD_Book',
+    patterns: [
+      /FD\s*BOOKED/i,
+      /FD\s*THROUGH/i,
+      /TRF\s*TO\s*FD/i,
+      /FIXED\s*DEPOSIT/i,
+      /DIGITAL\s*FD/i,
+      /SELF\s*FOR\s*FD/i
+    ]
+  },
+  {
+    category: 'Investment_FD_Close',
+    patterns: [
+      /FD\s*PREMATURE/i,
+      /FD\s*CLOSURE/i,
+      /FD\s*PREMAT\s*PRINCIPAL/i,
+      /PRINCIPAL\s*AUTO\s*REDEEM/i,
+      /IB\s*FD\s*PREMAT\s*PRINCIPAL/i
+    ]
+  },
+  {
+    category: 'Income_Salary_Payroll',
+    patterns: [/SALARY/i, /PAYROLL/i, /NEFT\s*CR.*SAL/i, /\bMYSAL\b/i, /\bPersistent\b/i]
+  },
+  {
+    category: 'Investment_MutualFund_Purchase',
     patterns: [
       /ZERODHA/i,
       /GROWW/i,
       /\bDHAN\b/i,
-      /\bPAYOUT\b/i,
-      /\bACTIVITY\b/i,
       /MUTUAL\s*FUND/i,
       /MUTUALFUND/i,
       /MFPAYMENT/i,
+      /\bMFP-/i,
+      /EBA\/MFP/i,
       /CAMS/i,
       /KARVY/i,
       /KFINTECH/i,
@@ -160,49 +196,170 @@ const CATEGORY_RULES = [
       /RAISE\s*SECUR/i,
       /RAISESECURITIES/i,
       /BSESTARMF/i,
+      /bsestarmf/i,
       /INDIANCLEARING/i,
       /INDIAN\s*CLEA/i,
       /CLEARING\s*CORPORATION/i,
-      /SHRIRAM\s*TRANSPORT/i,
-      /\bNSE\b|\bBSE\b/i
+      /SHRIRAM\s*TRANSPORT/i
     ]
   },
   {
-    category: 'Bill Payment',
-    patterns: [/\bBIL\//i, /BILLPAY/i, /HDFCBILLPAY/i, /BBPS/i, /ELECTRICITY/i, /GAS\s*BILL/i, /WATER\s*BILL/i]
+    category: 'Investment_Broker_Trading',
+    patterns: [/\bPAYOUT\b/i, /\bACTIVITY\b/i, /\bNSE\b|\bBSE\b/i]
   },
-  { category: 'PayPal / International', patterns: [/PAYPAL/i, /OPGSP/i] },
   {
-    category: 'ATM / Cash',
+    category: 'Income_Insurance_Payout',
+    patterns: [/HDFCLIFE/i, /LIC\s*OF\s*INDIA/i, /INSURANCE\s*CLAIM/i]
+  },
+  {
+    category: 'Expense_Insurance_Premium',
+    patterns: [/INSUR/i, /PREMIUM/i, /HDFC\s*LIFE/i, /\bLIC\b.*PREM/i]
+  },
+  {
+    category: 'Expense_Loan_EMI',
+    patterns: [/\bACH\s*D[- ]/i, /\bEMI\b/i, /LOAN\s*EMI/i, /BILLDKHDFC/i]
+  },
+  {
+    category: 'Expense_Land_Purchase',
+    patterns: [/PLOT\s*AMOU/i, /LAND\s*PURCHASE/i, /P\s*B\s*DEVELOPERS/i]
+  },
+  {
+    category: 'Bills_Telecom_Mobile',
+    patterns: [
+      /JIOIN/i,
+      /\bMYJIO\b/i,
+      /JIORECHARGE/i,
+      /gpayrecharge/i,
+      /TATA\s*DOCOMO/i,
+      /UNINOR/i,
+      /\bAIRTEL\b/i,
+      /GOOGLE\s*IND.*RECHARGE/i
+    ]
+  },
+  {
+    category: 'Bills_Utility_Other',
+    patterns: [
+      /\bBIL\//i,
+      /BILLPAY/i,
+      /HDFCBILLPAY/i,
+      /BBPS/i,
+      /ELECTRICITY/i,
+      /GAS\s*BILL/i,
+      /WATER\s*BILL/i,
+      /BILLDESK/i,
+      /\bCHEQ\b/i,
+      /CHEQ\s*DIGITAL/i,
+      /CRED\s*Club/i,
+      /\bCRED\b/i
+    ]
+  },
+  {
+    category: 'Travel_Transit_Metro',
+    patterns: [/PUNE\s*METRO/i, /METRO\s*CCA/i]
+  },
+  {
+    category: 'Travel_Transit_Bus',
+    patterns: [/\bMSRTC\b/i, /\bPMPML\b/i]
+  },
+  {
+    category: 'Travel_Transit_Rail',
+    patterns: [/\bIRCTC\b/i]
+  },
+  {
+    category: 'Travel_Cab_Ride',
+    patterns: [/\bUBER\b/i, /\bOLA\b/i, /RAPIDO/i]
+  },
+  {
+    category: 'Travel_Fuel_Petrol',
+    patterns: [/PETROL/i, /\bBPCL\b/i, /\bHPCL\b/i, /\bIOCL\b/i, /FASTAG/i]
+  },
+  {
+    category: 'Food_Delivery_Online',
+    patterns: [/SWIGGY/i, /ZOMATO/i]
+  },
+  {
+    category: 'Food_Cafe_Snacks',
+    patterns: [/MEET\s*EAT/i, /JUICE\s*CENTER/i, /SNACKS/i]
+  },
+  {
+    category: 'Food_Dairy_Store',
+    patterns: [/DIARY/i, /DAIRY/i]
+  },
+  {
+    category: 'Food_Grocery_Store',
+    patterns: [/DMART/i, /BIGBASKET/i, /BLINKIT/i, /ZEPTO/i, /GENRAL\s*STORE/i, /GENERAL\s*STORE/i]
+  },
+  {
+    category: 'Shopping_Online_Amazon',
+    patterns: [/AMAZON/i, /PAYUAMAZON/i]
+  },
+  {
+    category: 'Shopping_Online_Flipkart',
+    patterns: [/FLIPKART/i]
+  },
+  {
+    category: 'Shopping_Online_Other',
+    patterns: [/EBAY/i, /PAYU/i, /\bONL\b/i, /NUCLEARTRIP/i]
+  },
+  {
+    category: 'Payment_International_PayPal',
+    patterns: [/PAYPAL/i, /OPGSP/i]
+  },
+  {
+    category: 'Expense_ATM_Cash',
     patterns: [/\bATM\b/i, /CASH\s*WDL/i, /CASH\s*DEP/i, /\bNWD-/i, /\bEAW-/i, /\bATW-/i, /\bCCWD\b/i]
   },
-  { category: 'Card Payment', patterns: [/\bPOS\b/i, /CREDIT\s*CARD/i, /VISA/i, /MASTERCARD/i, /CRV\s*POS/i] },
-  { category: 'Recharge', patterns: [/RECHARGE/i, /OXIGEN/i, /PREPAID/i, /\bRCHG\b/i, /JIORECHARGE/i] },
   {
-    category: 'Shopping / Online',
-    patterns: [/AMAZON/i, /FLIPKART/i, /EBAY/i, /PAYU/i, /SWIGGY/i, /ZOMATO/i, /\bONL\b/i]
+    category: 'Expense_Card_POS',
+    patterns: [/\bPOS\b/i, /CREDIT\s*CARD/i, /VISA/i, /MASTERCARD/i, /CRV\s*POS/i]
   },
   {
-    category: 'Transfer In',
+    category: 'Recharge_Mobile_Prepaid',
+    patterns: [/RECHARGE/i, /OXIGEN/i, /PREPAID/i, /\bRCHG\b/i]
+  },
+  {
+    category: 'Transfer_Internal_Bank',
+    patterns: [/IB\s*FUNDS\s*TRANSFER/i, /INTERNAL\s*TRANSFER/i, /^IO\s+For\b/i]
+  },
+  {
+    category: 'Transfer_Other_In',
     patterns: [
       /NEFT\s*CR/i,
       /IMPS.*\bCR\b/i,
       /IFT.*CR/i,
-      /IB\s*FUNDS\s*TRANSFER\s*CR/i,
-      /INTERNAL\s*TRANSFER/i,
       /INF\//i,
-      /NACH-CR/i
+      /NACH-CR/i,
+      /NACH-ECS-CR/i
     ]
   },
   {
-    category: 'Transfer Out',
-    patterns: [/NEFT\s*DR/i, /IMPS.*\bDR\b/i, /IB\s*FUNDS\s*TRANSFER\s*DR/i, /TPT-/i]
+    category: 'Transfer_Other_Out',
+    patterns: [/NEFT\s*DR/i, /IMPS.*\bDR\b/i, /IB\s*FUNDS\s*TRANSFER\s*DR/i, /TPT-/i, /\bRTGS\b.*DR/i]
   },
-  { category: 'UPI', patterns: [/\bUPI\b/i, /@upi/i, /UPI-/i, /UPI\//i, /UPI:PAY/i, /UPI:COLLECT/i] },
-  { category: 'Cheque', patterns: [/CHQ\s*PAID/i, /CHEQUE/i, /\bMICR\b/i] },
   {
-    category: 'Bank Charges',
-    patterns: [/CHGS/i, /CHARGES/i, /Nchg/i, /SMS\s*ALERT/i, /AMCB/i, /\bFEE\b/i, /SER\s*TAX/i, /ED\s*CESS/i]
+    category: 'Expense_Bank_Charges',
+    patterns: [
+      /CHGS/i,
+      /CHARGES/i,
+      /Nchg/i,
+      /SMS\s*ALERT/i,
+      /AMCB/i,
+      /\bFEE\b/i,
+      /SER\s*TAX/i,
+      /ED\s*CESS/i,
+      /\bDPCHG\b/i,
+      /ATMDEC\s*CHG/i,
+      /NWD\s*DECCHG/i
+    ]
+  },
+  {
+    category: 'Expense_Cheque_Paid',
+    patterns: [/CHQ\s*PAID/i, /CHEQUE/i, /\bMICR\b/i]
+  },
+  // Rail only — last resort when purpose unknown
+  {
+    category: 'Expense_Peer_UPI',
+    patterns: [/\bUPI\b/i, /@upi/i, /UPI-/i, /UPI\//i, /UPI:PAY/i, /UPI:COLLECT/i]
   }
 ];
 
@@ -216,22 +373,102 @@ const PAYEE_ALIASES = [
   },
   {
     canonical: 'Amol Vishnu Patil',
-    patterns: [/\bamol\s*vishnu\s*pati?l?\b/i, /\bamolvishnupatil\b/i, /\bamol\s*vishn\b/i, /^amol$/i]
+    patterns: [
+      /\bamol\s*vishnu\s*pati?l?\b/i,
+      /\bamol\s*vishnu\s*pa\b/i,
+      /\bamolvishnupatil\b/i,
+      /\bamol\s*vishn\b/i,
+      /^amol$/i,
+      /^amol\s*patil$/i
+    ]
+  },
+  {
+    canonical: 'Vishnu Karbhari Patil',
+    patterns: [/vishnu\s*kar/i, /vishnu\s*karbhari/i]
+  },
+  {
+    canonical: 'Prajakta Vishnu Patil',
+    patterns: [/prajakta/i]
+  },
+  {
+    canonical: 'Pratibha Vishnu Patil',
+    patterns: [/pratibha/i]
   },
   {
     canonical: 'Shriram Transport Finance',
     patterns: [/shriram\s*transport/i, /transport\s*fi(nance)?/i, /finance\s*ltd\s*erstwhile\s*shri/i]
   },
   { canonical: 'Suryoday Small Finance Bank', patterns: [/suryoday/i] },
+  { canonical: 'Utkarsh Small Finance Bank', patterns: [/utkarsh/i] },
+  { canonical: 'Shivalik Small Finance Bank', patterns: [/shivalik/i] },
   { canonical: 'PhonePe', patterns: [/phonepe/i] },
+  { canonical: 'Paytm', patterns: [/\bpaytm\b/i] },
   { canonical: 'HDFC BillPay', patterns: [/hdfcbillpay/i] },
   { canonical: 'djamolgroup', patterns: [/djamolgroup/i] },
   { canonical: 'Bank Interest', patterns: [/^bank interest$/i] },
   { canonical: 'Fixed Deposit', patterns: [/^fixed deposit$/i] },
   { canonical: 'Internal Transfer', patterns: [/^internal transfer$/i] },
   { canonical: 'Broker Payout', patterns: [/^broker payout$/i] },
-  { canonical: 'ATM Withdrawal', patterns: [/^atm withdrawal$/i] }
+  { canonical: 'ATM Withdrawal', patterns: [/^atm withdrawal$/i] },
+  { canonical: 'Pune Metro', patterns: [/pune\s*metro/i] },
+  { canonical: 'MSRTC', patterns: [/\bmsrtc\b/i] },
+  { canonical: 'PMPML', patterns: [/\bpmpml\b/i] },
+  { canonical: 'CRED', patterns: [/\bcred\s*club\b/i, /^cred$/i] },
+  { canonical: 'CHEQ', patterns: [/\bcheq\b/i] },
+  { canonical: 'Jio', patterns: [/\bjioin\b/i, /\bmyjio\b/i, /jio\.easebuzz/i] },
+  { canonical: 'Dhan', patterns: [/\bdhan\b/i] }
 ];
+
+const SELF_OWN_PAYEES = new Set([
+  'Amol Vishnu Patil',
+  'djamolgroup',
+  'Internal Transfer'
+]);
+
+const FAMILY_PAYEES = new Set([
+  'Vishnu Karbhari Patil',
+  'Prajakta Vishnu Patil',
+  'Pratibha Vishnu Patil'
+]);
+
+const INVESTMENT_PAYEES = [
+  /raise securities/i,
+  /moneylicious/i,
+  /indian clearing/i,
+  /shriram transport/i,
+  /broker payout/i,
+  /^dhan$/i
+];
+
+const SMALL_FINANCE_FD_PAYEES = [
+  /suryoday/i,
+  /utkarsh/i,
+  /shivalik/i
+];
+
+function isTransferCategory(category) {
+  const c = String(category || '');
+  return (
+    c === 'Transfer In' ||
+    c === 'Transfer Out' ||
+    c.startsWith('Transfer_')
+  );
+}
+
+function isInterestCategory(category) {
+  const c = String(category || '');
+  return c === 'Interest Income' || c.startsWith('Income_Interest');
+}
+
+function isTaxCategory(category) {
+  const c = String(category || '');
+  return c === 'TDS / Tax' || c.startsWith('Expense_Tax');
+}
+
+function isFdBookCategory(category) {
+  const c = String(category || '');
+  return c === 'Fixed Deposit' || c === 'Investment_FD_Book';
+}
 
 function cleanPayeeToken(value) {
   return normalizeWhitespace(String(value || '').replace(/\s+/g, ' '))
@@ -365,51 +602,98 @@ function suggestCategory(narration, withdrawal = 0, deposit = 0, customRules = [
 
   const text = normalizeWhitespace(narration);
   const resolvedPayee = normalizePayee(payee, text) || payee;
+  const isCredit = Number(deposit) > 0 && Number(withdrawal) <= 0;
+  const isDebit = Number(withdrawal) > 0;
 
-  // Directional internal transfers
+  // Directional internal bank transfers
   if (/^IO\s+For\b/i.test(text) || /IB\s*FUNDS\s*TRANSFER/i.test(text)) {
-    if (Number(deposit) > 0 && Number(withdrawal) <= 0) {
-      return { category: 'Transfer In', source: 'auto' };
+    if (isCredit) return { category: 'Transfer_Internal_Bank', source: 'auto' };
+    if (isDebit) return { category: 'Transfer_Internal_Bank', source: 'auto' };
+  }
+
+  // Rent between own/family accounts
+  if (/\brent\b/i.test(text) && resolvedPayee && (SELF_OWN_PAYEES.has(resolvedPayee) || FAMILY_PAYEES.has(resolvedPayee))) {
+    return { category: 'Transfer_Family_Rent', source: 'auto' };
+  }
+
+  // MF / broker narrations even when counterparty name is self (e.g. Axis InvestNow NEFT)
+  if (/MUTUAL\s*FUND|MUTUALFUND|INVESTNOW|MONEYLICIO|RAISE\s*SECU|INDIAN\s*CLEA|CLEARING\s*CORPORATION|BSESTARMF|EBA\/MFP|\bMFP-/i.test(text)) {
+    return {
+      category: isCredit ? 'Investment_MutualFund_Redemption' : 'Investment_MutualFund_Purchase',
+      source: 'auto'
+    };
+  }
+
+  // Self / family UPI & transfers (purpose > rail)
+  if (resolvedPayee && SELF_OWN_PAYEES.has(resolvedPayee)) {
+    if (/FD\s*THROUGH|TRF\s*TO\s*FD|FD\s*BOOKED|DIGITAL\s*FD|SELF\s*FOR\s*FD|FOR\s*FD/i.test(text)) {
+      return { category: 'Investment_FD_Book', source: 'auto' };
     }
-    if (Number(withdrawal) > 0) {
-      return { category: 'Transfer Out', source: 'auto' };
+    return { category: 'Transfer_Self_Own', source: 'auto' };
+  }
+  if (resolvedPayee && FAMILY_PAYEES.has(resolvedPayee)) {
+    return { category: isCredit ? 'Transfer_Family_In' : 'Transfer_Family_Out', source: 'auto' };
+  }
+
+  if (resolvedPayee) {
+    if (INVESTMENT_PAYEES.some((re) => re.test(resolvedPayee))) {
+      if (isCredit) return { category: 'Investment_MutualFund_Redemption', source: 'auto' };
+      return { category: 'Investment_MutualFund_Purchase', source: 'auto' };
+    }
+    if (SMALL_FINANCE_FD_PAYEES.some((re) => re.test(resolvedPayee))) {
+      return { category: isCredit ? 'Investment_FD_Close' : 'Investment_FD_Book', source: 'auto' };
+    }
+    if (/bank interest/i.test(resolvedPayee)) {
+      return { category: 'Income_Interest_Bank', source: 'auto' };
+    }
+    if (/^fixed deposit$/i.test(resolvedPayee)) {
+      return { category: 'Investment_FD_Book', source: 'auto' };
+    }
+    if (/hdfc billpay/i.test(resolvedPayee)) {
+      return { category: 'Bills_Utility_Other', source: 'auto' };
+    }
+    if (/^cred$/i.test(resolvedPayee) || /^cheq$/i.test(resolvedPayee)) {
+      return { category: 'Bills_Utility_Other', source: 'auto' };
+    }
+    if (/^jio$/i.test(resolvedPayee)) {
+      return { category: 'Bills_Telecom_Mobile', source: 'auto' };
+    }
+    if (/pune metro|msrtc|pmpml/i.test(resolvedPayee)) {
+      if (/metro/i.test(resolvedPayee)) return { category: 'Travel_Transit_Metro', source: 'auto' };
+      return { category: 'Travel_Transit_Bus', source: 'auto' };
     }
   }
 
-  // Prefer payee-based investment match when narration is generic UPI
-  if (resolvedPayee) {
-    const payeeInvestment = [
-      /raise securities/i,
-      /moneylicious/i,
-      /indian clearing/i,
-      /shriram transport/i,
-      /broker payout/i
-    ];
-    if (payeeInvestment.some((re) => re.test(resolvedPayee))) {
-      return { category: 'Investment / Broker', source: 'auto' };
-    }
-    if (/bank interest/i.test(resolvedPayee)) {
-      return { category: 'Interest Income', source: 'auto' };
-    }
-    if (/^fixed deposit$/i.test(resolvedPayee)) {
-      return { category: 'Fixed Deposit', source: 'auto' };
-    }
-    if (/hdfc billpay/i.test(resolvedPayee)) {
-      return { category: 'Bill Payment', source: 'auto' };
-    }
+  // MF redemption credits often say Mutual Fund / Clearing without debit patterns
+  if (isCredit && /MUTUAL\s*FUND|INDIAN\s*CLEA|CLEARING\s*CORPORATION|KMMF\s*REDEMPTION/i.test(text)) {
+    return { category: 'Investment_MutualFund_Redemption', source: 'auto' };
+  }
+
+  // Bond / NCD interest style credits
+  if (isCredit && (/\bREC\b/i.test(text) || /NCD\s*INT|INTRESET\s*PAYMENT|MMFSLINT/i.test(text))) {
+    return { category: 'Income_Interest_Bond', source: 'auto' };
   }
 
   for (const rule of CATEGORY_RULES) {
-    if (rule.patterns.some((re) => re.test(text))) {
-      return { category: rule.category, source: 'auto' };
+    if (!rule.patterns.some((re) => re.test(text))) continue;
+    let category = rule.category;
+    // Refine MF direction and peer UPI
+    if (category === 'Investment_MutualFund_Purchase' && isCredit) {
+      category = 'Investment_MutualFund_Redemption';
     }
+    if (category === 'Expense_Peer_UPI') {
+      category = isCredit ? 'Income_Peer_UPI' : 'Expense_Peer_UPI';
+    }
+    if (category === 'Travel_Fuel_Petrol' && isCredit) {
+      continue; // e.g. HPCL cashback / CRV — not fuel spend
+    }
+    if (category === 'Transfer_Other_In' && isDebit) category = 'Transfer_Other_Out';
+    if (category === 'Transfer_Other_Out' && isCredit) category = 'Transfer_Other_In';
+    return { category, source: 'auto' };
   }
-  if (Number(deposit) > 0 && Number(withdrawal) <= 0) {
-    return { category: 'Income / Credit', source: 'auto' };
-  }
-  if (Number(withdrawal) > 0) {
-    return { category: 'Expense / Debit', source: 'auto' };
-  }
+
+  if (isCredit) return { category: 'Income_Other_Credit', source: 'auto' };
+  if (isDebit) return { category: 'Expense_Other_Debit', source: 'auto' };
   return { category: 'Uncategorized', source: 'auto' };
 }
 
@@ -418,9 +702,9 @@ function detectTxnType(withdrawal, deposit, narration = '') {
   const d = Number(deposit) || 0;
   const text = narration || '';
   if (/INTEREST/i.test(text) && d > 0) return 'interest';
-  if (/TAX\s*RECOVERED|TDS/i.test(text) && w > 0) return 'tax';
-  if (/FD\s*BOOKED/i.test(text)) return 'fd_book';
-  if (/FD\s*(CLOSURE|PREMATURE|MATUR)/i.test(text)) return 'fd_maturity';
+  if (/TAX\s*RECOVERED|TAX\s*RECOVERY|TDS/i.test(text) && w > 0) return 'tax';
+  if (/FD\s*BOOKED|FD\s*THROUGH|TRF\s*TO\s*FD/i.test(text)) return 'fd_book';
+  if (/FD\s*(CLOSURE|PREMATURE|MATUR)|PRINCIPAL\s*AUTO\s*REDEEM/i.test(text)) return 'fd_maturity';
   if (d > 0 && w <= 0) return 'credit';
   if (w > 0 && d <= 0) return 'debit';
   return 'other';
@@ -489,6 +773,10 @@ module.exports = {
   suggestCategory,
   detectTxnType,
   finalizeParsedTxn,
+  isTransferCategory,
+  isInterestCategory,
+  isTaxCategory,
+  isFdBookCategory,
   CATEGORY_RULES,
   PAYEE_ALIASES
 };

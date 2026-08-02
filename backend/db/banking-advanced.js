@@ -3,7 +3,8 @@ const {
   extractPayee,
   buildFingerprint,
   detectTxnType,
-  suggestCategory
+  suggestCategory,
+  isTransferCategory
 } = require('../utils/bank-parsers/common');
 
 function num(v, fallback = 0) {
@@ -416,11 +417,7 @@ function wantsExcludeTransfers(opts = {}) {
 }
 
 function isTransferTxn(r) {
-  return (
-    r.category === 'Transfer In' ||
-    r.category === 'Transfer Out' ||
-    (r.linked_transfer_id !== null && r.linked_transfer_id !== undefined)
-  );
+  return isTransferCategory(r.category) || (r.linked_transfer_id !== null && r.linked_transfer_id !== undefined);
 }
 
 function spentForBudget(spentRows, budget) {
@@ -439,7 +436,7 @@ async function mysqlBudgetStatus(periodMonth, opts = {}) {
   let transferClause = '';
   if (wantsExcludeTransfers(opts)) {
     transferClause =
-      ` AND NOT (category IN ('Transfer In','Transfer Out') OR linked_transfer_id IS NOT NULL)`;
+      ` AND NOT (category IN ('Transfer In','Transfer Out') OR category LIKE 'Transfer\\_%' OR linked_transfer_id IS NOT NULL)`;
   }
   const [spentRows] = await pool.query(
     `SELECT category, account_id, COALESCE(SUM(withdrawal),0) AS spent
@@ -568,7 +565,8 @@ async function mysqlMatchTransfers({ windowDays = 2 } = {}) {
   const [debits] = await pool.query(
     `SELECT * FROM bank_transactions
      WHERE withdrawal > 0 AND (linked_transfer_id IS NULL)
-       AND category IN ('Transfer Out','Expense / Debit','Uncategorized','UPI')
+       AND (category IN ('Transfer Out','Transfer_Other_Out','Expense / Debit','Expense_Other_Debit','Uncategorized','UPI','Expense_Peer_UPI')
+            OR category LIKE 'Transfer\\_%')
      ORDER BY txn_date DESC LIMIT 2000`
   );
   const [credits] = await pool.query(
@@ -589,11 +587,11 @@ async function mysqlMatchTransfers({ windowDays = 2 } = {}) {
     if (!cand) continue;
     usedCredits.add(cand.id);
     await pool.query(
-      `UPDATE bank_transactions SET linked_transfer_id = ?, category = 'Transfer Out', category_source = IF(category_source='manual', category_source, 'rule') WHERE id = ?`,
+      `UPDATE bank_transactions SET linked_transfer_id = ?, category = 'Transfer_Other_Out', category_source = IF(category_source='manual', category_source, 'rule') WHERE id = ?`,
       [cand.id, d.id]
     );
     await pool.query(
-      `UPDATE bank_transactions SET linked_transfer_id = ?, category = 'Transfer In', category_source = IF(category_source='manual', category_source, 'rule') WHERE id = ?`,
+      `UPDATE bank_transactions SET linked_transfer_id = ?, category = 'Transfer_Other_In', category_source = IF(category_source='manual', category_source, 'rule') WHERE id = ?`,
       [d.id, cand.id]
     );
     matched += 1;
@@ -637,11 +635,11 @@ async function mongoMatchTransfers({ windowDays = 2 } = {}) {
     const cSource = cand.category_source === 'manual' ? 'manual' : 'rule';
     await db.collection('bank_transactions').updateOne(
       { id: d.id },
-      { $set: { linked_transfer_id: cand.id, category: 'Transfer Out', category_source: dSource } }
+      { $set: { linked_transfer_id: cand.id, category: 'Transfer_Other_Out', category_source: dSource } }
     );
     await db.collection('bank_transactions').updateOne(
       { id: cand.id },
-      { $set: { linked_transfer_id: d.id, category: 'Transfer In', category_source: cSource } }
+      { $set: { linked_transfer_id: d.id, category: 'Transfer_Other_In', category_source: cSource } }
     );
     matched += 1;
   }
@@ -679,7 +677,8 @@ async function mysqlGetForecast(accountId) {
   const interestRows = await pool.query(
     `SELECT DATE_FORMAT(txn_date, '%Y-%m') AS month, COALESCE(SUM(deposit),0) AS interest
      FROM bank_transactions
-     WHERE (category = 'Interest Income' OR txn_type = 'interest')
+     WHERE (category IN ('Interest Income','Income_Interest_Bank','Income_Interest_Bond')
+            OR category LIKE 'Income\\_Interest\\_%' OR txn_type = 'interest')
        AND txn_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
      ${accountId ? 'AND account_id = ?' : ''}
      GROUP BY DATE_FORMAT(txn_date, '%Y-%m')

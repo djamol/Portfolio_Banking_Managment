@@ -2,16 +2,17 @@ const { isMongoDb, getPool } = require('../config/index');
 const mongoStore = require('../db/mongo-store');
 
 const TABLES = [
-  'sub_type_names',
-  'sub_type_categories',
-  'investments',
-  'investment_history',
-  'investment_transactions',
   'bank_accounts',
-  'bank_transactions',
-  'bank_category_rules',
-  'bank_budgets'
+  ' bank_budgets',
+  ' bank_category_rules',
+  ' bank_transactions',
+  ' investment_history',
+  ' investment_transactions', 
+  ' investments',
+  ' sub_type_categories',
+  ' sub_type_names'
 ];
+
 
 function escapeSqlValue(value) {
   if (value === null || value === undefined) {

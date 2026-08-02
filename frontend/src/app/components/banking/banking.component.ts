@@ -54,6 +54,7 @@ export class BankingComponent implements OnInit {
   filterAccountId: number | '' = '';
   filterFrom = '';
   filterTo = '';
+  filterCategories: string[] = [];
   filterCategory = '';
   filterFlow = '';
   filterQ = '';
@@ -272,24 +273,50 @@ export class BankingComponent implements OnInit {
     category: 'category'
   };
   readonly defaultCategories = [
-    'Interest Income',
-    'TDS / Tax',
-    'Fixed Deposit',
-    'Salary / Income',
-    'UPI',
-    'ATM / Cash',
-    'Card Payment',
-    'Bill Payment',
-    'Recharge',
-    'Shopping / Online',
-    'Investment / Broker',
-    'Transfer In',
-    'Transfer Out',
-    'Cheque',
-    'Bank Charges',
-    'PayPal / International',
-    'Income / Credit',
-    'Expense / Debit',
+    'Income_Interest_Bank',
+    'Income_Interest_Bond',
+    'Income_Salary_Payroll',
+    'Income_Insurance_Payout',
+    'Income_Other_Credit',
+    'Income_Peer_UPI',
+    'Expense_Tax_TDS',
+    'Expense_Bank_Charges',
+    'Expense_ATM_Cash',
+    'Expense_Card_POS',
+    'Expense_Insurance_Premium',
+    'Expense_Loan_EMI',
+    'Expense_Land_Purchase',
+    'Expense_Cheque_Paid',
+    'Expense_Other_Debit',
+    'Expense_Peer_UPI',
+    'Investment_MutualFund_Purchase',
+    'Investment_MutualFund_Redemption',
+    'Investment_Broker_Trading',
+    'Investment_FD_Book',
+    'Investment_FD_Close',
+    'Transfer_Self_Own',
+    'Transfer_Family_In',
+    'Transfer_Family_Out',
+    'Transfer_Family_Rent',
+    'Transfer_Internal_Bank',
+    'Transfer_Other_In',
+    'Transfer_Other_Out',
+    'Bills_Telecom_Mobile',
+    'Bills_Utility_Other',
+    'Food_Delivery_Online',
+    'Food_Cafe_Snacks',
+    'Food_Dairy_Store',
+    'Food_Grocery_Store',
+    'Shopping_Online_Amazon',
+    'Shopping_Online_Flipkart',
+    'Shopping_Online_Other',
+    'Travel_Transit_Metro',
+    'Travel_Transit_Bus',
+    'Travel_Transit_Rail',
+    'Travel_Cab_Ride',
+    'Travel_Fuel_Petrol',
+    'Recharge_Mobile_Prepaid',
+    'Payment_International_PayPal',
     'Uncategorized'
   ];
 
@@ -435,7 +462,11 @@ export class BankingComponent implements OnInit {
     if (this.filterAccountId) filters['account_id'] = this.filterAccountId;
     if (this.filterFrom) filters['from'] = this.filterFrom;
     if (this.filterTo) filters['to'] = this.filterTo;
-    if (this.filterCategory) filters['category'] = this.filterCategory;
+    if (this.filterCategories.length) {
+      filters['category'] = this.filterCategories.join(',');
+    } else if (this.filterCategory) {
+      filters['category'] = this.filterCategory;
+    }
     if (this.filterFlow) filters['flow'] = this.filterFlow;
     if (this.filterQ) filters['q'] = this.filterQ;
     if (this.filterPayee) filters['payee'] = this.filterPayee;
@@ -879,6 +910,7 @@ export class BankingComponent implements OnInit {
     this.filterAccountId = '';
     this.filterFrom = '';
     this.filterTo = '';
+    this.filterCategories = [];
     this.filterCategory = '';
     this.filterFlow = '';
     this.filterQ = '';
@@ -894,6 +926,7 @@ export class BankingComponent implements OnInit {
   filterByPayee(payee: string) {
     this.filterPayee = payee === 'Unknown' ? '' : payee;
     this.filterQ = '';
+    this.filterCategories = [];
     this.filterCategory = '';
     this.filterFlow = '';
     this.filterOffset = 0;
@@ -954,22 +987,51 @@ export class BankingComponent implements OnInit {
     this.goToPage(Number(this.jumpPage));
   }
 
+  onCategoryFilterChange(selected: string[]) {
+    this.filterCategories = selected || [];
+    this.filterCategory = this.filterCategories.length === 1 ? this.filterCategories[0] : '';
+    this.filterOffset = 0;
+    this.applyFilters();
+  }
+
+  isInterestFilterActive(): boolean {
+    return (
+      this.filterCategories.length > 0 &&
+      this.filterCategories.every((c) => c === 'Interest Income' || c.startsWith('Income_Interest'))
+    );
+  }
+
+  isUncategorizedFilterActive(): boolean {
+    const set = new Set(['Uncategorized', 'Expense_Other_Debit', 'Income_Other_Credit', 'Expense_Peer_UPI', 'Income_Peer_UPI']);
+    return this.filterCategories.length > 0 && this.filterCategories.every((c) => set.has(c));
+  }
+
   quickFilter(kind: 'uncategorized' | 'interest' | 'debit' | 'credit' | 'clear') {
     if (kind === 'clear') {
+      this.filterCategories = [];
       this.filterCategory = '';
       this.filterFlow = '';
       this.filterQ = '';
     } else if (kind === 'uncategorized') {
-      this.filterCategory = 'Uncategorized';
+      this.filterCategories = ['Uncategorized', 'Expense_Other_Debit', 'Income_Other_Credit', 'Expense_Peer_UPI', 'Income_Peer_UPI'];
+      this.filterCategory = '';
       this.filterFlow = '';
     } else if (kind === 'interest') {
-      this.filterCategory = 'Interest Income';
+      this.filterCategories = this.categories.filter(
+        (c) => c === 'Interest Income' || c.startsWith('Income_Interest')
+      );
+      if (!this.filterCategories.length) {
+        this.filterCategories = ['Income_Interest_Bank', 'Income_Interest_Bond', 'Interest Income'];
+      }
+      this.filterCategory = '';
       this.filterFlow = '';
     } else if (kind === 'debit') {
       this.filterFlow = 'debit';
+      this.filterCategories = [];
       this.filterCategory = '';
     } else if (kind === 'credit') {
       this.filterFlow = 'credit';
+      this.filterCategories = [];
       this.filterCategory = '';
     }
     this.filterOffset = 0;
@@ -980,6 +1042,7 @@ export class BankingComponent implements OnInit {
   }
 
   filterByCategory(category: string) {
+    this.filterCategories = category ? [category] : [];
     this.filterCategory = category;
     this.filterOffset = 0;
     this.activeTab = 'transactions';

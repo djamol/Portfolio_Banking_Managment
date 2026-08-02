@@ -73,6 +73,12 @@
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
   padding: 6px 0;
+  min-width: 240px;
+}
+
+.multi-select-filter.hierarchical .multi-select-panel {
+  max-height: 320px;
+  min-width: 280px;
 }
 
 .multi-select-option {
@@ -83,6 +89,32 @@
   cursor: pointer;
   font-size: 14px;
   color: #333;
+}
+
+.multi-select-option.tree-node {
+  gap: 8px;
+}
+
+.tree-main {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.tree-sub {
+  font-weight: 600;
+  color: #334155;
+}
+
+.tree-leaf {
+  font-weight: 500;
+  color: #475569;
+}
+
+.tree-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 600;
 }
 
 .multi-select-option:hover {

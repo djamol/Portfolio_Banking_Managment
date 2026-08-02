@@ -1,4 +1,4 @@
-<div class="multi-select-filter">
+<div class="multi-select-filter" [class.hierarchical]="hierarchical">
   <label class="multi-select-label" *ngIf="label">{{ label }}</label>
   <div class="multi-select-control" [class.open]="isOpen">
     <button type="button" class="multi-select-trigger" (click)="toggleDropdown($event)">
@@ -16,13 +16,21 @@
         <span>Select All</span>
       </label>
 
-      <label class="multi-select-option" *ngFor="let option of options">
-        <input
-          type="checkbox"
-          [checked]="isSelected(option)"
-          (change)="toggleOption(option, $event)">
-        <span>{{ option }}</span>
-      </label>
+      <ng-container *ngIf="!hierarchical">
+        <label class="multi-select-option" *ngFor="let option of options">
+          <input
+            type="checkbox"
+            [checked]="isSelected(option)"
+            (change)="toggleOption(option, $event)">
+          <span>{{ option }}</span>
+        </label>
+      </ng-container>
+
+      <ng-container *ngIf="hierarchical">
+        <ng-container *ngFor="let node of tree; trackBy: trackNode">
+          <ng-container *ngTemplateOutlet="treeNodeTpl; context: { $implicit: node }"></ng-container>
+        </ng-container>
+      </ng-container>
 
       <div class="multi-select-empty" *ngIf="options.length === 0">
         No options available
@@ -30,3 +38,20 @@
     </div>
   </div>
 </div>
+
+<ng-template #treeNodeTpl let-node>
+  <label class="multi-select-option tree-node" [style.paddingLeft.px]="12 + node.depth * 16">
+    <input
+      type="checkbox"
+      [checked]="nodeChecked(node)"
+      [indeterminate]="nodeIndeterminate(node)"
+      (change)="toggleNode(node, $event)">
+    <span [class.tree-main]="node.depth === 0" [class.tree-sub]="node.depth === 1" [class.tree-leaf]="node.depth >= 2">
+      {{ node.label }}
+    </span>
+    <span class="tree-count" *ngIf="node.children.length">{{ node.leaves.length }}</span>
+  </label>
+  <ng-container *ngFor="let child of node.children; trackBy: trackNode">
+    <ng-container *ngTemplateOutlet="treeNodeTpl; context: { $implicit: child }"></ng-container>
+  </ng-container>
+</ng-template>

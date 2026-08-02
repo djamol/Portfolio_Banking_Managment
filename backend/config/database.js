@@ -208,7 +208,7 @@ const createTables = async () => {
         withdrawal DECIMAL(15, 2) NOT NULL DEFAULT 0,
         deposit DECIMAL(15, 2) NOT NULL DEFAULT 0,
         balance DECIMAL(15, 2) NULL,
-        category VARCHAR(100) NULL,
+        category VARCHAR(150) NULL,
         category_source VARCHAR(16) DEFAULT 'auto',
         payee VARCHAR(255) NULL,
         txn_type VARCHAR(32) NULL,
@@ -268,7 +268,10 @@ const createTables = async () => {
       'ALTER TABLE bank_transactions ADD COLUMN payee VARCHAR(255) NULL',
       'ALTER TABLE bank_transactions ADD COLUMN linked_transfer_id INT NULL',
       'ALTER TABLE bank_transactions ADD INDEX idx_bank_txn_payee (payee)',
-      'ALTER TABLE bank_transactions ADD INDEX idx_bank_txn_batch (import_batch_id)'
+      'ALTER TABLE bank_transactions ADD INDEX idx_bank_txn_batch (import_batch_id)',
+      'ALTER TABLE bank_transactions MODIFY COLUMN category VARCHAR(150) NULL',
+      'ALTER TABLE bank_category_rules MODIFY COLUMN category VARCHAR(150) NOT NULL',
+      'ALTER TABLE bank_budgets MODIFY COLUMN category VARCHAR(150) NOT NULL'
     ];
     for (const sql of alterStatements) {
       try {
