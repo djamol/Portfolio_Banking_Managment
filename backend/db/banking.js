@@ -1313,6 +1313,205 @@ async function mongoFindExistingFingerprints(accountId, fingerprints) {
   return existing;
 }
 
+/* ===================== Export / backup import ===================== */
+
+async function mysqlGetTransactionsExport(filters = {}) {
+  const pool = getPool();
+  const { whereSql, params } = buildTxnWhere(filters, 't');
+  const limit = Math.min(Number(filters.limit) || 100000, 100000);
+  const [rows] = await pool.query(
+    `SELECT t.*, a.bank_name, a.account_name, a.account_number
+     FROM bank_transactions t
+     JOIN bank_accounts a ON a.id = t.account_id
+     WHERE ${whereSql}
+     ORDER BY t.txn_date ASC, t.id ASC
+     LIMIT ?`,
+    [...params, limit]
+  );
+  return rows;
+}
+
+async function mongoGetTransactionsExport(filters = {}) {
+  const db = getMongoDb();
+  const q = mongoTxnQuery(filters);
+  const limit = Math.min(Number(filters.limit) || 100000, 100000);
+  const rows = await db
+    .collection('bank_transactions')
+    .find(q)
+    .sort({ txn_date: 1, id: 1 })
+    .limit(limit)
+    .toArray();
+  const accounts = await db.collection('bank_accounts').find({}).toArray();
+  const byId = new Map(accounts.map((a) => [Number(a.id), a]));
+  return rows.map((t) => {
+    const a = byId.get(Number(t.account_id)) || {};
+    return {
+      ...t,
+      bank_name: a.bank_name,
+      account_name: a.account_name,
+      account_number: a.account_number
+    };
+  });
+}
+
+async function mysqlImportTransactionBackup(rows, importBatchId) {
+  const pool = getPool();
+  const [accounts] = await pool.query('SELECT id, bank_name, account_name, account_number FROM bank_accounts');
+  const byId = new Map(accounts.map((a) => [Number(a.id), a]));
+  const byKey = new Map(
+    accounts.map((a) => [
+      `${String(a.bank_name || '').toLowerCase()}|${String(a.account_name || '').toLowerCase()}|${String(a.account_number || '')}`,
+      a
+    ])
+  );
+
+  let inserted = 0;
+  let skipped = 0;
+  let unresolved = 0;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    for (const row of rows) {
+      let accountId = row.account_id ? Number(row.account_id) : null;
+      if (!accountId || !byId.has(accountId)) {
+        const key = `${String(row.bank_name || '').toLowerCase()}|${String(row.account_name || '').toLowerCase()}|${String(row.account_number || '')}`;
+        const match = byKey.get(key);
+        accountId = match ? Number(match.id) : null;
+      }
+      if (!accountId) {
+        unresolved += 1;
+        continue;
+      }
+      const fingerprint =
+        row.fingerprint ||
+        require('../utils/bank-txn-io').buildFingerprint({
+          accountId,
+          txnDate: row.txn_date,
+          valueDate: row.value_date || row.txn_date,
+          withdrawal: row.withdrawal,
+          deposit: row.deposit,
+          refNo: row.ref_no,
+          narration: row.narration
+        });
+      try {
+        const [result] = await conn.query(
+          `INSERT IGNORE INTO bank_transactions
+            (account_id, txn_date, value_date, narration, ref_no, withdrawal, deposit, balance,
+             category, category_source, payee, txn_type, fingerprint, raw_bank, tags, notes, import_batch_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            accountId,
+            row.txn_date,
+            row.value_date || row.txn_date,
+            row.narration || '',
+            row.ref_no || null,
+            num(row.withdrawal),
+            num(row.deposit),
+            row.balance == null || row.balance === '' ? null : num(row.balance),
+            row.category || null,
+            row.category_source || (row.category ? 'manual' : 'auto'),
+            row.payee || null,
+            row.txn_type || null,
+            fingerprint,
+            row.raw_bank || null,
+            row.tags || null,
+            row.notes || null,
+            importBatchId || row.import_batch_id || null
+          ]
+        );
+        if (result.affectedRows > 0) inserted += 1;
+        else skipped += 1;
+      } catch {
+        skipped += 1;
+      }
+    }
+    await conn.commit();
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+  return { inserted, skipped, unresolved, total: rows.length, import_batch_id: importBatchId };
+}
+
+async function mongoImportTransactionBackup(rows, importBatchId) {
+  const db = getMongoDb();
+  const accounts = await db.collection('bank_accounts').find({}).toArray();
+  const byId = new Map(accounts.map((a) => [Number(a.id), a]));
+  const byKey = new Map(
+    accounts.map((a) => [
+      `${String(a.bank_name || '').toLowerCase()}|${String(a.account_name || '').toLowerCase()}|${String(a.account_number || '')}`,
+      a
+    ])
+  );
+  const { buildFingerprint } = require('../utils/bank-txn-io');
+  let inserted = 0;
+  let skipped = 0;
+  let unresolved = 0;
+  let nextId = await nextMongoId('bank_transactions');
+
+  for (const row of rows) {
+    let accountId = row.account_id ? Number(row.account_id) : null;
+    if (!accountId || !byId.has(accountId)) {
+      const key = `${String(row.bank_name || '').toLowerCase()}|${String(row.account_name || '').toLowerCase()}|${String(row.account_number || '')}`;
+      const match = byKey.get(key);
+      accountId = match ? Number(match.id) : null;
+    }
+    if (!accountId) {
+      unresolved += 1;
+      continue;
+    }
+    const fingerprint =
+      row.fingerprint ||
+      buildFingerprint({
+        accountId,
+        txnDate: row.txn_date,
+        valueDate: row.value_date || row.txn_date,
+        withdrawal: row.withdrawal,
+        deposit: row.deposit,
+        refNo: row.ref_no,
+        narration: row.narration
+      });
+    const exists = await db.collection('bank_transactions').findOne({ fingerprint });
+    if (exists) {
+      skipped += 1;
+      continue;
+    }
+    const id = nextId++;
+    await db.collection('bank_transactions').insertOne({
+      id,
+      account_id: accountId,
+      txn_date: row.txn_date,
+      value_date: row.value_date || row.txn_date,
+      narration: row.narration || '',
+      ref_no: row.ref_no || null,
+      withdrawal: num(row.withdrawal),
+      deposit: num(row.deposit),
+      balance: row.balance == null || row.balance === '' ? null : num(row.balance),
+      category: row.category || null,
+      category_source: row.category_source || (row.category ? 'manual' : 'auto'),
+      payee: row.payee || null,
+      txn_type: row.txn_type || null,
+      fingerprint,
+      raw_bank: row.raw_bank || null,
+      tags: row.tags || null,
+      notes: row.notes || null,
+      import_batch_id: importBatchId || row.import_batch_id || null,
+      linked_transfer_id: null,
+      created_at: new Date(),
+      updated_at: new Date()
+    });
+    inserted += 1;
+  }
+  await db.collection('counters').updateOne(
+    { _id: 'bank_transactions' },
+    { $set: { seq: nextId } },
+    { upsert: true }
+  );
+  return { inserted, skipped, unresolved, total: rows.length, import_batch_id: importBatchId };
+}
+
 /* ===================== Public API ===================== */
 
 const advanced = require('./banking-advanced');
@@ -1328,6 +1527,10 @@ module.exports = {
   importTransactions: (...a) =>
     impl() === 'mongo' ? mongoImportTransactions(...a) : mysqlImportTransactions(...a),
   getTransactions: (...a) => (impl() === 'mongo' ? mongoGetTransactions(...a) : mysqlGetTransactions(...a)),
+  getTransactionsExport: (...a) =>
+    impl() === 'mongo' ? mongoGetTransactionsExport(...a) : mysqlGetTransactionsExport(...a),
+  importTransactionBackup: (...a) =>
+    impl() === 'mongo' ? mongoImportTransactionBackup(...a) : mysqlImportTransactionBackup(...a),
   updateTransaction: (...a) =>
     impl() === 'mongo' ? mongoUpdateTransaction(...a) : mysqlUpdateTransaction(...a),
   deleteTransaction: (...a) =>

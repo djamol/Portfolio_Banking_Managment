@@ -3,6 +3,11 @@ const multer = require('multer');
 const crypto = require('crypto');
 const banking = require('../db/banking');
 const { parseBankStatement } = require('../utils/bank-parsers');
+const {
+  buildTransactionsWorkbook,
+  workbookToBuffer,
+  parseTransactionsUpload
+} = require('../utils/bank-txn-io');
 
 const router = express.Router();
 const upload = multer({
@@ -481,6 +486,71 @@ router.post('/import/preview', upload.single('file'), async (req, res) => {
     });
   } catch (error) {
     console.error('Error previewing bank statement:', error);
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/export/transactions', async (req, res) => {
+  try {
+    const filters = { ...req.query };
+    delete filters.limit;
+    delete filters.offset;
+    const rows = await banking.getTransactionsExport(filters);
+    const format = String(req.query.format || 'xlsx').toLowerCase();
+    const meta = {
+      exported_at: new Date().toISOString(),
+      account_id: req.query.account_id || '',
+      from: req.query.from || '',
+      to: req.query.to || '',
+      row_count: rows.length
+    };
+
+    if (format === 'csv') {
+      const XLSX = require('xlsx');
+      const wb = buildTransactionsWorkbook(rows, meta);
+      const csv = XLSX.utils.sheet_to_csv(wb.Sheets.Transactions);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="bank_transactions_${new Date().toISOString().slice(0, 10)}.csv"`
+      );
+      return res.send(csv);
+    }
+
+    const wb = buildTransactionsWorkbook(rows, meta);
+    const buf = workbookToBuffer(wb);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="bank_transactions_${new Date().toISOString().slice(0, 10)}.xlsx"`
+    );
+    return res.send(buf);
+  } catch (error) {
+    console.error('Error exporting bank transactions:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/import/transactions', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file?.buffer) {
+      return res.status(400).json({ success: false, error: 'file is required (.xlsx or .csv)' });
+    }
+    const rows = parseTransactionsUpload(req.file.buffer, req.file.originalname);
+    if (!rows.length) {
+      return res.status(400).json({
+        success: false,
+        error: 'No valid transaction rows found. Export XLS must include account_id and txn_date.'
+      });
+    }
+    const importBatchId = `bak_${crypto.randomBytes(6).toString('hex')}`;
+    const result = await banking.importTransactionBackup(rows, importBatchId);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error importing bank transaction backup:', error);
     res.status(400).json({ success: false, error: error.message });
   }
 });

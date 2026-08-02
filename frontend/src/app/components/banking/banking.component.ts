@@ -84,6 +84,13 @@ export class BankingComponent implements OnInit {
   importPreview: any = null;
   importing = false;
   lastImportResult: any = null;
+  backupImportFile: File | null = null;
+  backupImporting = false;
+  lastBackupImportResult: any = null;
+  exportAccountId: number | '' = '';
+  exportFrom = '';
+  exportTo = '';
+  showExportPanel = false;
 
   selectedIds = new Set<number>();
   selectedSummaryCache = { count: 0, debit: 0, credit: 0 };
@@ -1404,38 +1411,81 @@ export class BankingComponent implements OnInit {
   }
 
   exportCsv() {
+    this.exportXlsxFromFilters(true);
+  }
+
+  openExportPanel() {
+    this.showExportPanel = true;
+    this.exportAccountId = this.filterAccountId || '';
+    this.exportFrom = this.filterFrom || '';
+    this.exportTo = this.filterTo || '';
+  }
+
+  exportXlsxFromFilters(useTxnFilters = false) {
     this.exporting = true;
-    this.bankingService.getTransactions(this.buildTxnFilters(true)).subscribe({
-      next: (res) => {
-        const rows = res.rows;
-        const header = ['Date', 'Account', 'Narration', 'Ref', 'Withdrawal', 'Deposit', 'Balance', 'Category', 'Type'];
-        const lines = [header.join(',')];
-        for (const t of rows) {
-          lines.push([
-            t.txn_date,
-            `${t.bank_name || ''} ${t.account_name || ''}`.trim(),
-            this.csvEscape(t.narration || ''),
-            this.csvEscape(t.ref_no || ''),
-            t.withdrawal || 0,
-            t.deposit || 0,
-            t.balance ?? '',
-            this.csvEscape(t.category || ''),
-            t.txn_type || ''
-          ].join(','));
-        }
-        const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const filters: Record<string, any> = useTxnFilters
+      ? this.buildSharedFilters()
+      : {
+          ...(this.exportAccountId ? { account_id: this.exportAccountId } : {}),
+          ...(this.exportFrom ? { from: this.exportFrom } : {}),
+          ...(this.exportTo ? { to: this.exportTo } : {})
+        };
+    this.bankingService.exportTransactionsXlsx(filters).subscribe({
+      next: (blob) => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `bank-transactions-${this.toIsoDate(new Date())}.csv`;
+        a.download = `bank_transactions_${this.toIsoDate(new Date())}.xlsx`;
         a.click();
         URL.revokeObjectURL(url);
         this.exporting = false;
-        this.flash('success', `Exported ${rows.length} transactions (max 5000)`);
+        this.showExportPanel = false;
+        this.flash('success', 'Exported transactions to Excel (full details)');
+      },
+      error: async (err) => {
+        this.exporting = false;
+        let msg = 'Export failed';
+        try {
+          if (err.error instanceof Blob) {
+            const text = await err.error.text();
+            const parsed = JSON.parse(text);
+            msg = parsed.error || msg;
+          } else {
+            msg = err.message || msg;
+          }
+        } catch {
+          /* ignore */
+        }
+        this.flash('error', msg);
+      }
+    });
+  }
+
+  onBackupFileSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    this.backupImportFile = input.files?.[0] || null;
+    this.lastBackupImportResult = null;
+  }
+
+  runBackupImport() {
+    if (!this.backupImportFile) {
+      this.flash('error', 'Select an exported .xlsx / .csv file');
+      return;
+    }
+    this.backupImporting = true;
+    this.bankingService.importTransactionBackup(this.backupImportFile).subscribe({
+      next: (data) => {
+        this.backupImporting = false;
+        this.lastBackupImportResult = data;
+        this.flash(
+          'success',
+          `Backup import: ${data.inserted} inserted · ${data.skipped} skipped · ${data.unresolved || 0} unresolved accounts`
+        );
+        this.refreshAll();
       },
       error: (err) => {
-        this.exporting = false;
-        this.flash('error', err.message || 'Export failed');
+        this.backupImporting = false;
+        this.flash('error', err.message || 'Backup import failed');
       }
     });
   }

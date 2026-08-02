@@ -112,6 +112,36 @@
     </div>
   </div>
 
+  <div class="card export-panel" *ngIf="showExportPanel">
+    <h3>Export transactions (Excel)</h3>
+    <p class="hint">
+      Includes bank/account, dates, narration, amounts, balance, category, payee, raw_bank (statement bank), fingerprint, tags, notes.
+    </p>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Bank account</label>
+        <select [(ngModel)]="exportAccountId">
+          <option [ngValue]="''">All accounts</option>
+          <option *ngFor="let a of accounts" [ngValue]="a.id">{{ a.bank_name }} – {{ a.account_name }}</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>From</label>
+        <input type="date" [(ngModel)]="exportFrom" />
+      </div>
+      <div class="form-group">
+        <label>To</label>
+        <input type="date" [(ngModel)]="exportTo" />
+      </div>
+    </div>
+    <div class="section-actions">
+      <button class="btn btn-primary" type="button" (click)="exportXlsxFromFilters(false)" [disabled]="exporting">
+        {{ exporting ? 'Exporting…' : 'Download XLS' }}
+      </button>
+      <button class="btn btn-secondary" type="button" (click)="showExportPanel=false">Cancel</button>
+    </div>
+  </div>
+
   <!-- OVERVIEW -->
   <section *ngIf="activeTab==='overview'">
     <div class="stat-grid" *ngIf="cashSummary?.totals_by_currency?.length">
@@ -384,6 +414,38 @@
   <!-- IMPORT -->
   <section *ngIf="activeTab==='import'">
     <div class="card">
+      <h3>Transaction backup (import / export)</h3>
+      <p class="hint">
+        Export categorized transactions to Excel, or re-import a previous export (skips duplicates by fingerprint; keeps category / payee / raw_bank).
+      </p>
+      <div class="section-actions wrap" style="margin-bottom: 12px;">
+        <button class="btn btn-secondary" type="button" (click)="openExportPanel()">Export XLS…</button>
+      </div>
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>Import exported file (.xlsx / .csv)</label>
+          <input type="file" accept=".csv,.xlsx,.xls" (change)="onBackupFileSelected($event)" />
+        </div>
+      </div>
+      <div class="section-actions">
+        <button
+          class="btn btn-primary"
+          type="button"
+          (click)="runBackupImport()"
+          [disabled]="backupImporting || !backupImportFile"
+        >
+          {{ backupImporting ? 'Importing…' : 'Import transaction backup' }}
+        </button>
+      </div>
+      <ul class="result-list" *ngIf="lastBackupImportResult" style="margin-top: 12px;">
+        <li>Inserted: {{ lastBackupImportResult.inserted }}</li>
+        <li>Skipped duplicates: {{ lastBackupImportResult.skipped }}</li>
+        <li>Unresolved accounts: {{ lastBackupImportResult.unresolved || 0 }}</li>
+        <li>Batch: {{ lastBackupImportResult.import_batch_id }}</li>
+      </ul>
+    </div>
+
+    <div class="card">
       <h3>Import bank statement</h3>
       <p class="hint">
         Duplicate transactions are skipped automatically (same date, amounts, ref, narration).
@@ -574,8 +636,11 @@
       </select>
       <button class="btn btn-secondary" (click)="recategorize()">Auto-categorize</button>
       <button class="btn btn-secondary" (click)="openManualTxn()">Add manual</button>
-      <button class="btn btn-secondary" (click)="exportCsv()" [disabled]="exporting || !txnTotal">
-        {{ exporting ? 'Exporting…' : 'Export CSV' }}
+      <button class="btn btn-secondary" (click)="openExportPanel()" [disabled]="exporting">
+        Export XLS…
+      </button>
+      <button class="btn btn-secondary" (click)="exportXlsxFromFilters(true)" [disabled]="exporting || !txnTotal">
+        {{ exporting ? 'Exporting…' : 'Export XLS (current filters)' }}
       </button>
     </div>
 
