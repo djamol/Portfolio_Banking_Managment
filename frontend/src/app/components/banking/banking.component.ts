@@ -149,6 +149,7 @@ export class BankingComponent implements OnInit {
     { name: 'HDFC', formats: 'CSV / Excel', status: 'Full' },
     { name: 'HDFC Credit Card', formats: 'PDF (password OK)', status: 'Full' },
     { name: 'ICICI', formats: 'XLS / XLSX', status: 'Full' },
+    { name: 'ICICI Credit Card', formats: 'CSV (CreditCardStatement)', status: 'Full' },
     { name: 'DCB', formats: 'XLS / XLSX', status: 'Full' },
     { name: 'SBI', formats: 'CSV / Excel', status: 'Generic+' },
     { name: 'Axis', formats: 'CSV / Excel', status: 'Generic+' },
@@ -1559,8 +1560,10 @@ export class BankingComponent implements OnInit {
     const type = String(account?.account_type || '');
     const bank = String(account?.bank_name || '');
     if (/credit\s*card/i.test(type) || /\bcc\b/i.test(type)) {
+      if (/icici/i.test(bank)) return 'ICICI_CC';
       if (/hdfc/i.test(bank)) return 'HDFC_CC';
-      return 'HDFC_CC';
+      // Auto-detect from file when bank name is generic
+      return '';
     }
     return bank;
   }

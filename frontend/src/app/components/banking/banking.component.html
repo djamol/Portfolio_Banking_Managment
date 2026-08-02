@@ -457,7 +457,7 @@
       <h3>Import bank / credit card statement</h3>
       <p class="hint">
         Duplicate transactions are skipped automatically (same date, amounts, ref, narration).
-        HDFC credit card PDFs are supported (enter password if the file is locked). Savings/current accounts: use CSV or Excel.
+        Credit cards: HDFC PDF (password OK) or ICICI <code>CreditCardStatement</code> CSV. Savings/current: CSV/Excel.
       </p>
       <table class="data-table compact" style="margin-bottom: 1rem;">
         <thead>
@@ -486,7 +486,8 @@
             <option value="">Auto-detect</option>
             <option value="HDFC">HDFC (savings)</option>
             <option value="HDFC_CC">HDFC Credit Card (PDF)</option>
-            <option value="ICICI">ICICI</option>
+            <option value="ICICI">ICICI (savings)</option>
+            <option value="ICICI_CC">ICICI Credit Card (CSV)</option>
             <option value="DCB">DCB</option>
             <option value="SBI">SBI</option>
             <option value="AXIS">Axis</option>

@@ -1,6 +1,7 @@
 const path = require('path');
 const { parseHdfcCsv, parseHdfcXls, parseHdfcStatement, detectHdfc } = require('./hdfc-csv');
 const { parseIciciXls, detectIcici } = require('./icici-xls');
+const { detectIciciCreditCard, parseIciciCreditCardCsv } = require('./icici-cc-csv');
 const { parseDcbXls, detectDcb } = require('./dcb-xls');
 const { detectSbi, parseSbiStatement } = require('./sbi');
 const { detectAxis, parseAxisStatement } = require('./axis');
@@ -17,6 +18,7 @@ function normalizeBankHint(bankHint) {
   const h = String(bankHint || '').toUpperCase().replace(/\s+/g, '');
   if (!h || h === 'OTHER' || h === 'AUTO') return '';
   if (h.includes('HDFC') && (h.includes('CC') || h.includes('CREDIT'))) return 'HDFC_CC';
+  if (h.includes('ICICI') && (h.includes('CC') || h.includes('CREDIT'))) return 'ICICI_CC';
   if (h.includes('HDFC')) return 'HDFC';
   if (h.includes('ICICI')) return 'ICICI';
   if (h.includes('DCB')) return 'DCB';
@@ -30,9 +32,16 @@ function parseByHint(hint, buffer, accountId, ext, options) {
   switch (hint) {
     case 'HDFC':
       return parseHdfcStatement(buffer, accountId, ext);
+    case 'HDFC_CC':
+      return null; // PDF-only path
+    case 'ICICI_CC':
+      return parseIciciCreditCardCsv(buffer, accountId, options);
     case 'DCB':
       return parseDcbXls(buffer, accountId, options);
     case 'ICICI':
+      if ((ext === '.csv' || !ext) && detectIciciCreditCard(buffer)) {
+        return parseIciciCreditCardCsv(buffer, accountId, options);
+      }
       return parseIciciXls(buffer, accountId);
     case 'SBI':
       return parseSbiStatement(buffer, accountId, ext);
@@ -83,7 +92,7 @@ async function parsePdfStatement(buffer, accountId, { password, bankHint, custom
   }
 
   throw new Error(
-    'PDF bank savings/current statements are not supported yet. For credit cards, upload an HDFC Millennia / year-end CC PDF (enter password if locked). Otherwise export CSV/Excel.'
+    'PDF bank savings/current statements are not supported yet. For credit cards: HDFC Millennia/year-end PDF, or ICICI CreditCardStatement CSV. Otherwise export CSV/Excel.'
   );
 }
 
@@ -106,7 +115,7 @@ async function parseBankStatement({
   const ext = extensionOf(filename);
   const hint = normalizeBankHint(bankHint);
   const textPreview = buffer.toString('utf8', 0, Math.min(buffer.length, 8000));
-  const options = { accountNumber };
+  const options = { accountNumber, customRules };
   const isExcel = ext === '.xls' || ext === '.xlsx';
 
   if (ext === '.pdf') {
@@ -118,10 +127,21 @@ async function parseBankStatement({
     return applyCustomRules(result, accountId, customRules);
   }
 
+  if (
+    (hint === 'ICICI_CC' || !hint || hint === 'ICICI') &&
+    (ext === '.csv' || !ext) &&
+    detectIciciCreditCard(textPreview)
+  ) {
+    const result = parseIciciCreditCardCsv(buffer, accountId, options);
+    return applyCustomRules(result, accountId, customRules);
+  }
+
   let result = hint === 'HDFC_CC' ? null : parseByHint(hint, buffer, accountId, ext, options);
 
   if (!result) {
-    if (ext === '.csv' && detectHdfc(textPreview)) {
+    if (ext === '.csv' && detectIciciCreditCard(textPreview)) {
+      result = parseIciciCreditCardCsv(buffer, accountId, options);
+    } else if (ext === '.csv' && detectHdfc(textPreview)) {
       result = parseHdfcCsv(buffer, accountId);
     } else if (isExcel && detectHdfc(buffer)) {
       result = parseHdfcXls(buffer, accountId);
@@ -144,7 +164,8 @@ async function parseBankStatement({
       result = parseGenericXls(buffer, accountId);
     } else {
       try {
-        if (detectHdfc(textPreview)) result = parseHdfcCsv(buffer, accountId);
+        if (detectIciciCreditCard(textPreview)) result = parseIciciCreditCardCsv(buffer, accountId, options);
+        else if (detectHdfc(textPreview)) result = parseHdfcCsv(buffer, accountId);
         else result = parseGenericCsv(buffer, accountId);
       } catch (csvErr) {
         try {
@@ -167,6 +188,7 @@ module.exports = {
   parseHdfcCsv,
   parseHdfcXls,
   parseIciciXls,
+  parseIciciCreditCardCsv,
   parseDcbXls,
   parseGenericCsv,
   parseGenericXls,
