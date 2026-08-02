@@ -1411,7 +1411,7 @@ export class BankingComponent implements OnInit {
   }
 
   exportCsv() {
-    this.exportXlsxFromFilters(true);
+    this.exportStatement('xlsx', true);
   }
 
   openExportPanel() {
@@ -1422,6 +1422,14 @@ export class BankingComponent implements OnInit {
   }
 
   exportXlsxFromFilters(useTxnFilters = false) {
+    this.exportStatement('xlsx', useTxnFilters);
+  }
+
+  exportStatement(
+    format: 'xlsx' | 'pdf' = 'xlsx',
+    useTxnFilters = false,
+    layout: 'statement' | 'raw' = 'statement'
+  ) {
     this.exporting = true;
     const filters: Record<string, any> = useTxnFilters
       ? this.buildSharedFilters()
@@ -1430,17 +1438,27 @@ export class BankingComponent implements OnInit {
           ...(this.exportFrom ? { from: this.exportFrom } : {}),
           ...(this.exportTo ? { to: this.exportTo } : {})
         };
-    this.bankingService.exportTransactionsXlsx(filters).subscribe({
+    this.bankingService.exportTransactions(filters, { format, layout }).subscribe({
       next: (blob) => {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `bank_transactions_${this.toIsoDate(new Date())}.xlsx`;
+        const stamp = this.toIsoDate(new Date());
+        if (layout === 'raw') {
+          a.download = `bank_transactions_backup_${stamp}.xlsx`;
+        } else {
+          a.download = `Acct_Statement_${stamp}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
+        }
         a.click();
         URL.revokeObjectURL(url);
         this.exporting = false;
         this.showExportPanel = false;
-        this.flash('success', 'Exported transactions to Excel (full details)');
+        this.flash(
+          'success',
+          layout === 'raw'
+            ? 'Exported raw backup Excel'
+            : `Exported bank statement (${format.toUpperCase()})`
+        );
       },
       error: async (err) => {
         this.exporting = false;

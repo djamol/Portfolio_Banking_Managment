@@ -1320,7 +1320,8 @@ async function mysqlGetTransactionsExport(filters = {}) {
   const { whereSql, params } = buildTxnWhere(filters, 't');
   const limit = Math.min(Number(filters.limit) || 100000, 100000);
   const [rows] = await pool.query(
-    `SELECT t.*, a.bank_name, a.account_name, a.account_number
+    `SELECT t.*, a.bank_name, a.account_name, a.account_number,
+            a.ifsc, a.account_type, a.currency, a.opening_balance, a.notes AS account_notes
      FROM bank_transactions t
      JOIN bank_accounts a ON a.id = t.account_id
      WHERE ${whereSql}
@@ -1349,7 +1350,12 @@ async function mongoGetTransactionsExport(filters = {}) {
       ...t,
       bank_name: a.bank_name,
       account_name: a.account_name,
-      account_number: a.account_number
+      account_number: a.account_number,
+      ifsc: a.ifsc,
+      account_type: a.account_type,
+      currency: a.currency,
+      opening_balance: a.opening_balance,
+      account_notes: a.notes
     };
   });
 }

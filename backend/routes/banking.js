@@ -5,6 +5,8 @@ const banking = require('../db/banking');
 const { parseBankStatement } = require('../utils/bank-parsers');
 const {
   buildTransactionsWorkbook,
+  buildStatementWorkbook,
+  buildStatementPdf,
   workbookToBuffer,
   parseTransactionsUpload
 } = require('../utils/bank-txn-io');
@@ -495,8 +497,11 @@ router.get('/export/transactions', async (req, res) => {
     const filters = { ...req.query };
     delete filters.limit;
     delete filters.offset;
+    delete filters.format;
+    delete filters.layout;
     const rows = await banking.getTransactionsExport(filters);
     const format = String(req.query.format || 'xlsx').toLowerCase();
+    const layout = String(req.query.layout || 'statement').toLowerCase();
     const meta = {
       exported_at: new Date().toISOString(),
       account_id: req.query.account_id || '',
@@ -504,20 +509,46 @@ router.get('/export/transactions', async (req, res) => {
       to: req.query.to || '',
       row_count: rows.length
     };
+    const dateStamp = new Date().toISOString().slice(0, 10);
 
-    if (format === 'csv') {
-      const XLSX = require('xlsx');
+    if (layout === 'raw' || format === 'csv') {
       const wb = buildTransactionsWorkbook(rows, meta);
-      const csv = XLSX.utils.sheet_to_csv(wb.Sheets.Transactions);
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      if (format === 'csv') {
+        const XLSX = require('xlsx');
+        const csv = XLSX.utils.sheet_to_csv(wb.Sheets.Transactions);
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="bank_transactions_${dateStamp}.csv"`
+        );
+        return res.send(csv);
+      }
+      const buf = workbookToBuffer(wb);
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
       res.setHeader(
         'Content-Disposition',
-        `attachment; filename="bank_transactions_${new Date().toISOString().slice(0, 10)}.csv"`
+        `attachment; filename="bank_transactions_backup_${dateStamp}.xlsx"`
       );
-      return res.send(csv);
+      return res.send(buf);
     }
 
-    const wb = buildTransactionsWorkbook(rows, meta);
+    const accounts = await banking.getAccounts();
+    const accountsById = new Map(accounts.map((a) => [Number(a.id), a]));
+
+    if (format === 'pdf') {
+      const buf = await buildStatementPdf(rows, accountsById, meta);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="Acct_Statement_${dateStamp}.pdf"`
+      );
+      return res.send(buf);
+    }
+
+    const wb = buildStatementWorkbook(rows, accountsById, meta);
     const buf = workbookToBuffer(wb);
     res.setHeader(
       'Content-Type',
@@ -525,7 +556,7 @@ router.get('/export/transactions', async (req, res) => {
     );
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="bank_transactions_${new Date().toISOString().slice(0, 10)}.xlsx"`
+      `attachment; filename="Acct_Statement_${dateStamp}.xlsx"`
     );
     return res.send(buf);
   } catch (error) {

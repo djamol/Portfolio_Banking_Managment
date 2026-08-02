@@ -113,15 +113,16 @@
   </div>
 
   <div class="card export-panel" *ngIf="showExportPanel">
-    <h3>Export transactions (Excel)</h3>
+    <h3>Export bank statement</h3>
     <p class="hint">
-      Includes bank/account, dates, narration, amounts, balance, category, payee, raw_bank (statement bank), fingerprint, tags, notes.
+      Indian bank–style statement: bank/account header once, then Date · Narration · Ref · Value date · Withdrawal · Deposit · Closing balance, plus summary.
+      XLS also includes a <code>BackupData</code> sheet for re-import. Use “Data backup” for the flat raw table only.
     </p>
     <div class="form-grid">
       <div class="form-group">
         <label>Bank account</label>
         <select [(ngModel)]="exportAccountId">
-          <option [ngValue]="''">All accounts</option>
+          <option [ngValue]="''">All accounts (one sheet/page each)</option>
           <option *ngFor="let a of accounts" [ngValue]="a.id">{{ a.bank_name }} – {{ a.account_name }}</option>
         </select>
       </div>
@@ -134,9 +135,15 @@
         <input type="date" [(ngModel)]="exportTo" />
       </div>
     </div>
-    <div class="section-actions">
-      <button class="btn btn-primary" type="button" (click)="exportXlsxFromFilters(false)" [disabled]="exporting">
-        {{ exporting ? 'Exporting…' : 'Download XLS' }}
+    <div class="section-actions wrap">
+      <button class="btn btn-primary" type="button" (click)="exportStatement('xlsx', false)" [disabled]="exporting">
+        {{ exporting ? 'Exporting…' : 'Statement XLS' }}
+      </button>
+      <button class="btn btn-primary" type="button" (click)="exportStatement('pdf', false)" [disabled]="exporting">
+        {{ exporting ? 'Exporting…' : 'Statement PDF' }}
+      </button>
+      <button class="btn btn-secondary" type="button" (click)="exportStatement('xlsx', false, 'raw')" [disabled]="exporting">
+        Data backup (raw XLS)
       </button>
       <button class="btn btn-secondary" type="button" (click)="showExportPanel=false">Cancel</button>
     </div>
@@ -419,7 +426,7 @@
         Export categorized transactions to Excel, or re-import a previous export (skips duplicates by fingerprint; keeps category / payee / raw_bank).
       </p>
       <div class="section-actions wrap" style="margin-bottom: 12px;">
-        <button class="btn btn-secondary" type="button" (click)="openExportPanel()">Export XLS…</button>
+        <button class="btn btn-secondary" type="button" (click)="openExportPanel()">Export statement…</button>
       </div>
       <div class="form-grid">
         <div class="form-group full">
@@ -637,10 +644,13 @@
       <button class="btn btn-secondary" (click)="recategorize()">Auto-categorize</button>
       <button class="btn btn-secondary" (click)="openManualTxn()">Add manual</button>
       <button class="btn btn-secondary" (click)="openExportPanel()" [disabled]="exporting">
-        Export XLS…
+        Export statement…
       </button>
-      <button class="btn btn-secondary" (click)="exportXlsxFromFilters(true)" [disabled]="exporting || !txnTotal">
-        {{ exporting ? 'Exporting…' : 'Export XLS (current filters)' }}
+      <button class="btn btn-secondary" (click)="exportStatement('xlsx', true)" [disabled]="exporting || !txnTotal">
+        {{ exporting ? 'Exporting…' : 'Statement XLS (filters)' }}
+      </button>
+      <button class="btn btn-secondary" (click)="exportStatement('pdf', true)" [disabled]="exporting || !txnTotal">
+        {{ exporting ? 'Exporting…' : 'Statement PDF (filters)' }}
       </button>
     </div>
 

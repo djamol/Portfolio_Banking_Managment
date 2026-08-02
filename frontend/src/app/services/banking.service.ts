@@ -292,8 +292,13 @@ export class BankingService {
       .pipe(map((r) => r.data || { deleted: 0, found: 0 }));
   }
 
-  exportTransactionsXlsx(filters: Record<string, any> = {}): Observable<Blob> {
-    let params = new HttpParams().set('format', 'xlsx');
+  exportTransactions(
+    filters: Record<string, any> = {},
+    opts: { format?: 'xlsx' | 'pdf' | 'csv'; layout?: 'statement' | 'raw' } = {}
+  ): Observable<Blob> {
+    let params = new HttpParams()
+      .set('format', opts.format || 'xlsx')
+      .set('layout', opts.layout || 'statement');
     Object.entries(filters).forEach(([k, v]) => {
       if (v !== null && v !== undefined && v !== '') params = params.set(k, String(v));
     });
@@ -301,6 +306,11 @@ export class BankingService {
       params,
       responseType: 'blob'
     });
+  }
+
+  /** @deprecated use exportTransactions */
+  exportTransactionsXlsx(filters: Record<string, any> = {}): Observable<Blob> {
+    return this.exportTransactions(filters, { format: 'xlsx', layout: 'statement' });
   }
 
   importTransactionBackup(file: File): Observable<{
