@@ -363,13 +363,14 @@ router.post('/import', upload.single('file'), async (req, res) => {
 
     const customRules = await banking.getCategoryRules();
     const bankHint = req.body.bank_hint || account.bank_name || '';
-    const parsed = parseBankStatement({
+    const parsed = await parseBankStatement({
       buffer: req.file.buffer,
       filename: req.file.originalname,
       accountId,
       bankHint,
       accountNumber: account.account_number || null,
-      customRules
+      customRules,
+      password: req.body.pdf_password || req.body.password || ''
     });
 
     const importBatchId = crypto.randomBytes(8).toString('hex');
@@ -442,13 +443,14 @@ router.post('/import/preview', upload.single('file'), async (req, res) => {
 
     const customRules = await banking.getCategoryRules();
     const bankHint = req.body.bank_hint || account.bank_name || '';
-    const parsed = parseBankStatement({
+    const parsed = await parseBankStatement({
       buffer: req.file.buffer,
       filename: req.file.originalname,
       accountId,
       bankHint,
       accountNumber: account.account_number || null,
-      customRules
+      customRules,
+      password: req.body.pdf_password || req.body.password || ''
     });
 
     const fingerprints = parsed.transactions.map((t) => t.fingerprint);

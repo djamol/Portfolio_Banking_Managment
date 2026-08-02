@@ -75,7 +75,8 @@ function parseBankDate(value) {
 
   // Kotak CSV: 01 May 2022
   // Axis Excel: 06 Jan '14 / 06 Jan ’14
-  m = dateOnly.match(/^(\d{1,2})\s+([A-Za-z]{3,9})\s+['\u2019]?(\d{2,4})$/);
+  // HDFC CC: 18 Mar, 2026
+  m = dateOnly.match(/^(\d{1,2})\s+([A-Za-z]{3,9}),?\s+['\u2019]?(\d{2,4})$/);
   if (m) {
     const mi = MONTH_MAP[m[2].toLowerCase()];
     if (mi) return ymdFromParts(m[1], mi, m[3]);

@@ -332,11 +332,17 @@ export class BankingService {
       );
   }
 
-  importStatement(accountId: number, file: File, bankHint?: string): Observable<any> {
+  importStatement(
+    accountId: number,
+    file: File,
+    bankHint?: string,
+    pdfPassword?: string
+  ): Observable<any> {
     const form = new FormData();
     form.append('file', file);
     form.append('account_id', String(accountId));
     if (bankHint) form.append('bank_hint', bankHint);
+    if (pdfPassword) form.append('pdf_password', pdfPassword);
     return this.http.post<ApiResponse<any>>(`${this.getApiUrl()}/import`, form).pipe(
       map((r) => {
         if (!r.success) throw new Error(r.error || 'Import failed');
@@ -345,11 +351,17 @@ export class BankingService {
     );
   }
 
-  previewStatement(file: File, accountId?: number, bankHint?: string): Observable<any> {
+  previewStatement(
+    file: File,
+    accountId?: number,
+    bankHint?: string,
+    pdfPassword?: string
+  ): Observable<any> {
     const form = new FormData();
     form.append('file', file);
     if (accountId) form.append('account_id', String(accountId));
     if (bankHint) form.append('bank_hint', bankHint);
+    if (pdfPassword) form.append('pdf_password', pdfPassword);
     return this.http.post<ApiResponse<any>>(`${this.getApiUrl()}/import/preview`, form).pipe(
       map((r) => {
         if (!r.success) throw new Error(r.error || 'Preview failed');

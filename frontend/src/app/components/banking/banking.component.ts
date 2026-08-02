@@ -81,6 +81,8 @@ export class BankingComponent implements OnInit {
   importAccountId: number | '' = '';
   importBankHint = '';
   importFile: File | null = null;
+  importPdfPassword = '';
+  showPdfPassword = false;
   importPreview: any = null;
   importing = false;
   lastImportResult: any = null;
@@ -145,6 +147,7 @@ export class BankingComponent implements OnInit {
 
   readonly bankSupport = [
     { name: 'HDFC', formats: 'CSV / Excel', status: 'Full' },
+    { name: 'HDFC Credit Card', formats: 'PDF (password OK)', status: 'Full' },
     { name: 'ICICI', formats: 'XLS / XLSX', status: 'Full' },
     { name: 'DCB', formats: 'XLS / XLSX', status: 'Full' },
     { name: 'SBI', formats: 'CSV / Excel', status: 'Generic+' },
@@ -1399,15 +1402,11 @@ export class BankingComponent implements OnInit {
   onFileSelected(event: Event) {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0] || null;
-    if (file && /\.pdf$/i.test(file.name)) {
-      this.importFile = null;
-      input.value = '';
-      this.flash('error', 'PDF is not supported. Export as CSV or Excel and upload that.');
-      return;
-    }
     this.importFile = file;
     this.importPreview = null;
     this.lastImportResult = null;
+    this.showPdfPassword = !!(file && /\.pdf$/i.test(file.name));
+    if (!this.showPdfPassword) this.importPdfPassword = '';
   }
 
   exportCsv() {
@@ -1555,6 +1554,17 @@ export class BankingComponent implements OnInit {
     });
   }
 
+  resolveImportBankHint(account?: { bank_name?: string; account_type?: string } | null): string {
+    if (this.importBankHint) return this.importBankHint;
+    const type = String(account?.account_type || '');
+    const bank = String(account?.bank_name || '');
+    if (/credit\s*card/i.test(type) || /\bcc\b/i.test(type)) {
+      if (/hdfc/i.test(bank)) return 'HDFC_CC';
+      return 'HDFC_CC';
+    }
+    return bank;
+  }
+
   previewImport() {
     if (!this.importFile) {
       this.flash('error', 'Choose a statement file first');
@@ -1564,11 +1574,20 @@ export class BankingComponent implements OnInit {
       this.flash('error', 'Select a target account before preview');
       return;
     }
+    if (this.showPdfPassword && !this.importPdfPassword.trim()) {
+      this.flash('error', 'Enter the PDF password (credit card statements are usually locked)');
+      return;
+    }
     this.importing = true;
     const account = this.accounts.find((a) => a.id === Number(this.importAccountId));
-    const hint = this.importBankHint || account?.bank_name || '';
+    const hint = this.resolveImportBankHint(account);
     this.bankingService
-      .previewStatement(this.importFile, Number(this.importAccountId), hint || undefined)
+      .previewStatement(
+        this.importFile,
+        Number(this.importAccountId),
+        hint || undefined,
+        this.importPdfPassword || undefined
+      )
       .subscribe({
         next: (data) => {
           this.importPreview = data;
@@ -1592,10 +1611,21 @@ export class BankingComponent implements OnInit {
       this.flash('error', 'Select an account and a statement file');
       return;
     }
+    if (this.showPdfPassword && !this.importPdfPassword.trim()) {
+      this.flash('error', 'Enter the PDF password (credit card statements are usually locked)');
+      return;
+    }
     this.importing = true;
     const account = this.accounts.find((a) => a.id === Number(this.importAccountId));
-    const hint = this.importBankHint || account?.bank_name || '';
-    this.bankingService.importStatement(Number(this.importAccountId), this.importFile, hint).subscribe({
+    const hint = this.resolveImportBankHint(account);
+    this.bankingService
+      .importStatement(
+        Number(this.importAccountId),
+        this.importFile,
+        hint,
+        this.importPdfPassword || undefined
+      )
+      .subscribe({
       next: (data) => {
         this.lastImportResult = data;
         this.importing = false;

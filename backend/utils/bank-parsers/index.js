@@ -6,6 +6,8 @@ const { detectSbi, parseSbiStatement } = require('./sbi');
 const { detectAxis, parseAxisStatement } = require('./axis');
 const { detectKotak, parseKotakStatement } = require('./kotak');
 const { parseGenericCsv, parseGenericXls } = require('./generic');
+const { extractPdfText } = require('./pdf-text');
+const { detectHdfcCreditCard, parseHdfcCcFromLines, parseHdfcCreditCardPdf } = require('./hdfc-cc-pdf');
 
 function extensionOf(filename = '') {
   return path.extname(filename).toLowerCase();
@@ -14,6 +16,7 @@ function extensionOf(filename = '') {
 function normalizeBankHint(bankHint) {
   const h = String(bankHint || '').toUpperCase().replace(/\s+/g, '');
   if (!h || h === 'OTHER' || h === 'AUTO') return '';
+  if (h.includes('HDFC') && (h.includes('CC') || h.includes('CREDIT'))) return 'HDFC_CC';
   if (h.includes('HDFC')) return 'HDFC';
   if (h.includes('ICICI')) return 'ICICI';
   if (h.includes('DCB')) return 'DCB';
@@ -42,7 +45,57 @@ function parseByHint(hint, buffer, accountId, ext, options) {
   }
 }
 
-function parseBankStatement({ buffer, filename, accountId, bankHint, accountNumber, customRules }) {
+function applyCustomRules(result, accountId, customRules) {
+  if (customRules?.length && result?.transactions?.length) {
+    const { finalizeParsedTxn } = require('./common');
+    result.transactions = result.transactions.map((t) =>
+      finalizeParsedTxn(
+        {
+          txnDate: t.txn_date,
+          valueDate: t.value_date,
+          narration: t.narration,
+          refNo: t.ref_no,
+          withdrawal: t.withdrawal,
+          deposit: t.deposit,
+          balance: t.balance,
+          rawBank: t.raw_bank,
+          tags: t.tags,
+          notes: t.notes,
+          payee: t.payee
+        },
+        accountId,
+        customRules
+      )
+    );
+  }
+  return result;
+}
+
+async function parsePdfStatement(buffer, accountId, { password, bankHint, customRules } = {}) {
+  const hint = normalizeBankHint(bankHint);
+  if (hint === 'HDFC_CC') {
+    return parseHdfcCreditCardPdf(buffer, accountId, { password, customRules });
+  }
+
+  const extracted = await extractPdfText(buffer, { password });
+  if (detectHdfcCreditCard(extracted.text) || /credit\s*card/i.test(hint)) {
+    return parseHdfcCcFromLines(extracted.lines, accountId, customRules || []);
+  }
+
+  throw new Error(
+    'PDF bank savings/current statements are not supported yet. For credit cards, upload an HDFC Millennia / year-end CC PDF (enter password if locked). Otherwise export CSV/Excel.'
+  );
+}
+
+async function parseBankStatement({
+  buffer,
+  filename,
+  accountId,
+  bankHint,
+  accountNumber,
+  customRules,
+  password
+}) {
   if (!buffer || !buffer.length) {
     throw new Error('Empty file uploaded');
   }
@@ -57,12 +110,15 @@ function parseBankStatement({ buffer, filename, accountId, bankHint, accountNumb
   const isExcel = ext === '.xls' || ext === '.xlsx';
 
   if (ext === '.pdf') {
-    throw new Error(
-      'PDF import is not supported. Export the statement as CSV or Excel (HDFC, ICICI, DCB, SBI, Axis, Kotak) and upload that.'
-    );
+    const result = await parsePdfStatement(buffer, accountId, {
+      password,
+      bankHint,
+      customRules
+    });
+    return applyCustomRules(result, accountId, customRules);
   }
 
-  let result = parseByHint(hint, buffer, accountId, ext, options);
+  let result = hint === 'HDFC_CC' ? null : parseByHint(hint, buffer, accountId, ext, options);
 
   if (!result) {
     if (ext === '.csv' && detectHdfc(textPreview)) {
@@ -72,7 +128,6 @@ function parseBankStatement({ buffer, filename, accountId, bankHint, accountNumb
     } else if (isExcel && detectDcb(buffer)) {
       result = parseDcbXls(buffer, accountId, options);
     } else if (isExcel && detectAxis(buffer)) {
-      // Axis before ICICI: both may use OpTransactionHistory sheet name
       result = parseAxisStatement(buffer, accountId, ext);
     } else if (isExcel && detectIcici(buffer)) {
       result = parseIciciXls(buffer, accountId);
@@ -104,31 +159,7 @@ function parseBankStatement({ buffer, filename, accountId, bankHint, accountNumb
     }
   }
 
-  // Re-apply categorization with user rules if provided (parsers call finalize without rules)
-  if (customRules?.length && result?.transactions?.length) {
-    const { finalizeParsedTxn } = require('./common');
-    result.transactions = result.transactions.map((t) =>
-      finalizeParsedTxn(
-        {
-          txnDate: t.txn_date,
-          valueDate: t.value_date,
-          narration: t.narration,
-          refNo: t.ref_no,
-          withdrawal: t.withdrawal,
-          deposit: t.deposit,
-          balance: t.balance,
-          rawBank: t.raw_bank,
-          tags: t.tags,
-          notes: t.notes,
-          payee: t.payee
-        },
-        accountId,
-        customRules
-      )
-    );
-  }
-
-  return result;
+  return applyCustomRules(result, accountId, customRules);
 }
 
 module.exports = {
@@ -138,5 +169,6 @@ module.exports = {
   parseIciciXls,
   parseDcbXls,
   parseGenericCsv,
-  parseGenericXls
+  parseGenericXls,
+  parseHdfcCreditCardPdf
 };

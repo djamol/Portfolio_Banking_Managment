@@ -345,6 +345,7 @@
             <option>Savings</option>
             <option>Current</option>
             <option>Salary</option>
+            <option>Credit Card</option>
             <option>NRE</option>
             <option>NRO</option>
           </select>
@@ -453,10 +454,10 @@
     </div>
 
     <div class="card">
-      <h3>Import bank statement</h3>
+      <h3>Import bank / credit card statement</h3>
       <p class="hint">
         Duplicate transactions are skipped automatically (same date, amounts, ref, narration).
-        PDF is not supported — use CSV or Excel exports.
+        HDFC credit card PDFs are supported (enter password if the file is locked). Savings/current accounts: use CSV or Excel.
       </p>
       <table class="data-table compact" style="margin-bottom: 1rem;">
         <thead>
@@ -476,14 +477,15 @@
           <label>Target account</label>
           <select [(ngModel)]="importAccountId">
             <option [ngValue]="''" disabled>Select account</option>
-            <option *ngFor="let a of activeAccounts" [ngValue]="a.id">{{ a.bank_name }} – {{ a.account_name }}</option>
+            <option *ngFor="let a of activeAccounts" [ngValue]="a.id">{{ a.bank_name }} – {{ a.account_name }} ({{ a.account_type }})</option>
           </select>
         </div>
         <div class="form-group">
           <label>Bank format hint (optional)</label>
           <select [(ngModel)]="importBankHint">
             <option value="">Auto-detect</option>
-            <option value="HDFC">HDFC</option>
+            <option value="HDFC">HDFC (savings)</option>
+            <option value="HDFC_CC">HDFC Credit Card (PDF)</option>
             <option value="ICICI">ICICI</option>
             <option value="DCB">DCB</option>
             <option value="SBI">SBI</option>
@@ -493,8 +495,17 @@
           </select>
         </div>
         <div class="form-group full">
-          <label>Statement file (CSV / Excel only)</label>
-          <input type="file" accept=".csv,.xls,.xlsx" (change)="onFileSelected($event)" />
+          <label>Statement file (CSV / Excel / Credit card PDF)</label>
+          <input type="file" accept=".csv,.xls,.xlsx,.pdf,.PDF" (change)="onFileSelected($event)" />
+        </div>
+        <div class="form-group" *ngIf="showPdfPassword">
+          <label>PDF password</label>
+          <input
+            type="password"
+            [(ngModel)]="importPdfPassword"
+            placeholder="Statement password"
+            autocomplete="off"
+          />
         </div>
       </div>
 
