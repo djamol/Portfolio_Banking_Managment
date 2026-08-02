@@ -1,0 +1,31 @@
+<div class="cat-picker" [class.open]="isOpen">
+  <button type="button" class="cat-picker-trigger" (click)="toggle($event)" [title]="displayText">
+    <span class="cat-picker-text" [class.placeholder]="!(value || '').trim()">{{ displayText }}</span>
+    <span class="cat-picker-arrow">▼</span>
+  </button>
+
+  <div class="cat-picker-panel" *ngIf="isOpen" (click)="$event.stopPropagation()">
+    <div class="cat-picker-toolbar" *ngIf="allowClear">
+      <button type="button" class="cat-clear" (click)="clear($event)">Clear</button>
+      <span class="cat-path-preview" *ngIf="browsePath.length">{{ browsePath.join(' → ') }}</span>
+    </div>
+    <div class="cat-cols" *ngIf="columns.length; else empty">
+      <div class="cat-col" *ngFor="let col of columns; let colIndex = index">
+        <button
+          type="button"
+          class="cat-item"
+          *ngFor="let node of col"
+          [class.active]="isPathPrefix(colIndex, node.label)"
+          [class.leaf]="!node.children.length"
+          (click)="pickNode(colIndex, node, $event)"
+        >
+          <span>{{ node.label }}</span>
+          <span class="cat-item-meta" *ngIf="node.children.length">›</span>
+        </button>
+      </div>
+    </div>
+    <ng-template #empty>
+      <div class="cat-empty">No categories</div>
+    </ng-template>
+  </div>
+</div>

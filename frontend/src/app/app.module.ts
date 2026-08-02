@@ -13,6 +13,7 @@ import { InvestmentSummaryComponent } from './components/investment-summary/inve
 import { InvestmentFormComponent } from './components/investment-form/investment-form.component';
 import { ImportDataComponent } from './components/import-data/import-data.component';
 import { MultiSelectFilterComponent } from './components/multi-select-filter/multi-select-filter.component';
+import { HierarchicalCategoryPickerComponent } from './components/hierarchical-category-picker/hierarchical-category-picker.component';
 import { AssetTrackerComponent } from './components/asset-tracker/asset-tracker.component';
 import { DashboardComponent } from './components/dashboard/dashboard.component';
 import { BankingComponent } from './components/banking/banking.component';
@@ -28,6 +29,7 @@ import { routes } from './app.routes';
     InvestmentFormComponent,
     ImportDataComponent,
     MultiSelectFilterComponent,
+    HierarchicalCategoryPickerComponent,
     AssetTrackerComponent,
     DashboardComponent,
     BankingComponent,

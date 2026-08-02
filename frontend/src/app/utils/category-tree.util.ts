@@ -25,9 +25,19 @@ export function splitCategoryParts(category: string): string[] {
   return [raw];
 }
 
-export function formatCategoryLabel(category: string): string {
+export function formatCategoryLabel(category: string, separator = ' → '): string {
   const parts = splitCategoryParts(category);
-  return parts.length ? parts.join(' › ') : category;
+  return parts.length ? parts.join(separator) : category;
+}
+
+/** Join path parts back to stored category value (prefer underscore hierarchy). */
+export function joinCategoryParts(parts: string[], sampleLeaf?: string): string {
+  const clean = parts.map((p) => String(p || '').trim()).filter(Boolean);
+  if (!clean.length) return '';
+  if (sampleLeaf && sampleLeaf.includes(' / ') && !sampleLeaf.includes('_')) {
+    return clean.join(' / ');
+  }
+  return clean.join('_');
 }
 
 /**

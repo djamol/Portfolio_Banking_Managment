@@ -518,6 +518,16 @@
   border-radius: 4px;
 }
 
+.cat-cell {
+  min-width: 180px;
+  max-width: 280px;
+  vertical-align: middle;
+}
+
+.cat-cell app-hierarchical-category-picker {
+  display: block;
+}
+
 .narration {
   max-width: 360px;
   overflow: hidden;

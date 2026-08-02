@@ -7,6 +7,7 @@ import {
   BankTransaction,
   CategoryRule
 } from '../../services/banking.service';
+import { formatCategoryLabel } from '../../utils/category-tree.util';
 
 type TabId =
   | 'overview'
@@ -1541,12 +1542,18 @@ export class BankingComponent implements OnInit {
   }
 
   updateRowCategory(txn: BankTransaction, category: string) {
-    this.bankingService.updateTransaction(txn.id, { category }).subscribe({
+    this.bankingService.updateTransaction(txn.id, { category: category || null }).subscribe({
       next: () => {
-        txn.category = category;
+        txn.category = category || null;
+        txn.category_source = 'manual';
       },
       error: (err) => this.flash('error', err.message || 'Update failed')
     });
+  }
+
+  formatCat(category: string | null | undefined): string {
+    if (!category) return '—';
+    return formatCategoryLabel(category, ' → ');
   }
 
   recategorize() {

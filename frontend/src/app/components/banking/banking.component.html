@@ -557,10 +557,10 @@
         <option *ngFor="let s of sortOptions" [value]="s.value">{{ s.label }}</option>
       </select>
       <button class="btn btn-secondary" (click)="toggleSelectAll()">Select page</button>
-      <select [(ngModel)]="bulkCategory">
-        <option value="">Bulk category…</option>
-        <option *ngFor="let c of categories" [value]="c">{{ c }}</option>
-      </select>
+              <select [(ngModel)]="bulkCategory">
+                <option value="">Bulk category…</option>
+                <option *ngFor="let c of categories" [value]="c">{{ formatCat(c) }}</option>
+              </select>
       <button class="btn btn-primary" (click)="applyBulkCategory()" [disabled]="!selectedIds.size || !bulkCategory">
         Apply to {{ selectedIds.size }}
       </button>
@@ -606,10 +606,12 @@
         </div>
         <div class="form-group">
           <label>Category</label>
-          <select [(ngModel)]="manualTxn.category">
-            <option value="">Auto</option>
-            <option *ngFor="let c of categories" [value]="c">{{ c }}</option>
-          </select>
+          <app-hierarchical-category-picker
+            [options]="categories"
+            [value]="manualTxn.category"
+            placeholder="Auto / pick category"
+            (valueChange)="manualTxn.category = $event">
+          </app-hierarchical-category-picker>
         </div>
         <div class="form-group">
           <label>Tags</label>
@@ -656,10 +658,13 @@
               <td class="debit num">{{ t.withdrawal ? formatMoney(t.withdrawal) : '' }}</td>
               <td class="credit num">{{ t.deposit ? formatMoney(t.deposit) : '' }}</td>
               <td class="num">{{ t.balance != null ? formatMoney(t.balance) : '—' }}</td>
-              <td>
-                <select [ngModel]="t.category" (ngModelChange)="updateRowCategory(t, $event)">
-                  <option *ngFor="let c of categories" [value]="c">{{ c }}</option>
-                </select>
+              <td class="cat-cell">
+                <app-hierarchical-category-picker
+                  [options]="categories"
+                  [value]="t.category"
+                  placeholder="Set category"
+                  (valueChange)="updateRowCategory(t, $event)">
+                </app-hierarchical-category-picker>
               </td>
               <td><button class="link-btn danger" (click)="deleteTxn(t)" title="Delete">×</button></td>
             </tr>
