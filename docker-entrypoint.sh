@@ -32,8 +32,13 @@ resolve_publish_port() {
 start_embedded_mysql() {
   DB_NAME="${DB_NAME:-portfolio}"
   DB_USER="${DB_USER:-root}"
-  DB_PASSWORD="${DB_PASSWORD:-${MYSQL_ROOT_PASSWORD:-portfolio}}"
-  MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-$DB_PASSWORD}"
+  # App and MariaDB must share one password. Prefer DB_PASSWORD (Node uses it).
+  if [ -n "${DB_PASSWORD:-}" ] && [ -n "${MYSQL_ROOT_PASSWORD:-}" ] && [ "$DB_PASSWORD" != "$MYSQL_ROOT_PASSWORD" ]; then
+    echo "[entrypoint] WARNING: DB_PASSWORD and MYSQL_ROOT_PASSWORD differ — using DB_PASSWORD for MariaDB root"
+  fi
+  ROOT_PASS="${DB_PASSWORD:-${MYSQL_ROOT_PASSWORD:-portfolio}}"
+  DB_PASSWORD="$ROOT_PASS"
+  MYSQL_ROOT_PASSWORD="$ROOT_PASS"
   DATADIR="${MYSQL_DATADIR:-/var/lib/mysql}"
   SOCKET="${MYSQL_UNIX_PORT:-/run/mysqld/mysqld.sock}"
   # Always listen on 3306 inside the container. Host publish is optional and separate.
@@ -94,22 +99,48 @@ start_embedded_mysql() {
     exit 1
   fi
 
-  if mysql --socket="$SOCKET" -uroot -e "SELECT 1" >/dev/null 2>&1; then
-    mysql --socket="$SOCKET" -uroot <<SQL
+  # Node connects via TCP to 127.0.0.1 → authenticates as root@'127.0.0.1' (not @localhost).
+  # Reset password for all root host variants every start (volume may predate current env).
+  ROOT_SQL=$(mktemp)
+  cat > "$ROOT_SQL" <<SQL
+CREATE USER IF NOT EXISTS 'root'@'localhost' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';
+CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';
+CREATE USER IF NOT EXISTS 'root'@'::1' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';
+CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';
 ALTER USER 'root'@'localhost' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';
-CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';
-GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
-CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`;
-FLUSH PRIVILEGES;
-SQL
-  else
-    mysql --socket="$SOCKET" -uroot -p"${MYSQL_ROOT_PASSWORD}" <<SQL
-CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';
+ALTER USER 'root'@'127.0.0.1' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';
+ALTER USER 'root'@'::1' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';
 ALTER USER 'root'@'%' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'localhost' WITH GRANT OPTION;
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'::1' WITH GRANT OPTION;
 GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;
 CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`;
 FLUSH PRIVILEGES;
 SQL
+
+  root_sql_ok=0
+  if mysql --socket="$SOCKET" -uroot < "$ROOT_SQL" >/dev/null 2>&1; then
+    root_sql_ok=1
+  elif mysql --socket="$SOCKET" -uroot -p"${MYSQL_ROOT_PASSWORD}" < "$ROOT_SQL" >/dev/null 2>&1; then
+    root_sql_ok=1
+  elif mysql --socket="$SOCKET" -uroot -pportfolio < "$ROOT_SQL" >/dev/null 2>&1; then
+    root_sql_ok=1
+  elif mysql --socket="$SOCKET" -uroot -pportfolio_root < "$ROOT_SQL" >/dev/null 2>&1; then
+    root_sql_ok=1
+  fi
+  rm -f "$ROOT_SQL"
+
+  if [ "$root_sql_ok" -ne 1 ]; then
+    echo "[entrypoint] Failed to configure MariaDB root users (password mismatch with existing volume?)" >&2
+    echo "[entrypoint] Fix: remove the MySQL volume and recreate, or set DB_PASSWORD to the volume's root password" >&2
+    exit 1
+  fi
+
+  # Verify the same path Node uses (TCP 127.0.0.1)
+  if ! mysql -h127.0.0.1 -P"$EMBEDDED_MYSQL_PORT" -uroot -p"${MYSQL_ROOT_PASSWORD}" -e "SELECT 1" >/dev/null 2>&1; then
+    echo "[entrypoint] TCP auth check failed for root@127.0.0.1 — app would get Access denied" >&2
+    exit 1
   fi
 
   if [ "$DB_USER" != "root" ]; then
@@ -117,6 +148,9 @@ SQL
 CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
 CREATE USER IF NOT EXISTS '${DB_USER}'@'127.0.0.1' IDENTIFIED BY '${DB_PASSWORD}';
 CREATE USER IF NOT EXISTS '${DB_USER}'@'%' IDENTIFIED BY '${DB_PASSWORD}';
+ALTER USER '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
+ALTER USER '${DB_USER}'@'127.0.0.1' IDENTIFIED BY '${DB_PASSWORD}';
+ALTER USER '${DB_USER}'@'%' IDENTIFIED BY '${DB_PASSWORD}';
 GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'localhost';
 GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'127.0.0.1';
 GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'%';
@@ -124,7 +158,7 @@ FLUSH PRIVILEGES;
 SQL
   fi
 
-  echo "[entrypoint] Embedded MySQL ready at 127.0.0.1:${EMBEDDED_MYSQL_PORT} (no host publish needed for the app)"
+  echo "[entrypoint] Embedded MySQL ready at 127.0.0.1:${EMBEDDED_MYSQL_PORT} (root TCP auth verified)"
   echo "[entrypoint] Optional host access: docker run -p ${MYSQL_PUBLISH_PORT}:${EMBEDDED_MYSQL_PORT} ...  OR  -P (random host port)"
   echo "$MYSQL_PUBLISH_PORT" > /tmp/mysql-publish-port
 }

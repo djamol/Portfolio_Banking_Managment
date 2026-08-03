@@ -203,7 +203,14 @@ export class LoginComponent implements OnInit {
       return;
     }
 
-    const body: Record<string, unknown> = {};
+    const body: {
+      host?: string;
+      port?: number;
+      user?: string;
+      password?: string;
+      database?: string;
+      preset?: string;
+    } = {};
 
     if (this.selectedDbPreset === 'custom') {
       body.host = this.dbHost.trim();
