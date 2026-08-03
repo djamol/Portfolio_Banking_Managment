@@ -58,6 +58,9 @@ ENV PORT=3000
 ENV EMBEDDED_MYSQL=false
 ENV EMBEDDED_MYSQL_PORT=3306
 ENV MYSQL_ROOT_PASSWORD=portfolio
+# Login page DB presets: host MySQL vs in-container / compose DB
+ENV DB_HOST_LOCALHOST=host.docker.internal
+ENV DB_HOST_DOCKER=127.0.0.1
 
 EXPOSE 3000
 # Container MySQL :3306 — publish as host 3307 with -p 3307:3306

@@ -13,7 +13,7 @@
   box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
   padding: 40px;
   width: 100%;
-  max-width: 400px;
+  max-width: 440px;
 }
 
 .login-card h2 {
@@ -55,6 +55,49 @@
 .form-control:focus {
   outline: none;
   border-color: #667eea;
+}
+
+.db-preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.db-preset-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 2px solid #ddd;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.db-preset-option.selected {
+  border-color: #667eea;
+  background-color: #f5f7ff;
+}
+
+.db-preset-option input {
+  margin-top: 3px;
+}
+
+.db-preset-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.db-preset-text strong {
+  color: #333;
+  font-size: 14px;
+}
+
+.db-preset-text small {
+  color: #666;
+  font-size: 12px;
+  line-height: 1.3;
 }
 
 .error-message {

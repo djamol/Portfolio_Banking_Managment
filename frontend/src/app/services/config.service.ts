@@ -6,6 +6,21 @@ import { getApiBaseUrl } from '../utils/api-url.util';
 
 export type AppConfig = {
   ignorePlatforms: string[];
+  dbType?: string;
+  database?: {
+    host: string;
+    port: number;
+    user?: string;
+    database?: string;
+  };
+  databasePreset?: string | null;
+  databasePresets?: Array<{
+    id: string;
+    label: string;
+    host: string;
+    port: number;
+    description?: string;
+  }>;
 };
 
 @Injectable({

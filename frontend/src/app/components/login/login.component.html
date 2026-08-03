@@ -12,8 +12,34 @@
           name="apiDomain" 
           class="form-control"
           placeholder="http://your-domain.com:3000"
+          (blur)="onApiDomainBlur()"
           required>
         <small class="form-text">Include <code>http://</code> or <code>https://</code> and port <code>:3000</code> unless a reverse proxy is configured.</small>
+      </div>
+
+      <div class="form-group" *ngIf="dbType !== 'mongodb'">
+        <label>Database server:</label>
+        <div class="db-preset-list" *ngIf="databasePresets.length; else dbFallback">
+          <label
+            class="db-preset-option"
+            *ngFor="let preset of databasePresets"
+            [class.selected]="selectedDbPreset === preset.id">
+            <input
+              type="radio"
+              name="dbPreset"
+              [value]="preset.id"
+              [(ngModel)]="selectedDbPreset">
+            <span class="db-preset-text">
+              <strong>{{ preset.label }}</strong>
+              <small>{{ preset.host }}:{{ preset.port }}<span *ngIf="preset.description"> — {{ preset.description }}</span></small>
+            </span>
+          </label>
+        </div>
+        <ng-template #dbFallback>
+          <small class="form-text" *ngIf="loadingDbConfig">Loading database options…</small>
+          <small class="form-text" *ngIf="!loadingDbConfig">Connect to API to load database options.</small>
+        </ng-template>
+        <small class="form-text" *ngIf="currentDbHost">Currently connected: <code>{{ currentDbHost }}</code></small>
       </div>
       
       <div class="form-group">

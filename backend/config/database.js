@@ -29,12 +29,67 @@ function getConnectionSummary() {
   };
 }
 
+/** Presets for login UI: localhost (host MySQL) vs in-container / compose DB. */
+function getDatabasePresets() {
+  const localhostHost = process.env.DB_HOST_LOCALHOST || 'host.docker.internal';
+  const dockerHost = process.env.DB_HOST_DOCKER || '127.0.0.1';
+  const port = Number(process.env.DB_PORT) || 3306;
+
+  return [
+    {
+      id: 'localhost',
+      label: 'Localhost (host MySQL)',
+      host: localhostHost,
+      port,
+      description: 'MySQL on the host machine'
+    },
+    {
+      id: 'docker',
+      label: 'Internal Docker DB',
+      host: dockerHost,
+      port,
+      description: 'Embedded MariaDB or compose db service'
+    }
+  ];
+}
+
+function matchPresetId(host, port) {
+  const h = String(host || '').toLowerCase();
+  const p = Number(port) || 3306;
+  const presets = getDatabasePresets();
+  const match = presets.find(
+    (preset) => preset.host.toLowerCase() === h && Number(preset.port) === p
+  );
+  if (match) return match.id;
+  // Common aliases
+  if (h === 'localhost' || h === '127.0.0.1') {
+    const docker = presets.find((preset) => preset.id === 'docker');
+    if (docker && docker.host.toLowerCase() === h) return 'docker';
+    if (h === '127.0.0.1') return 'docker';
+    if (h === 'localhost') return 'localhost';
+  }
+  if (h === 'host.docker.internal' || h === 'db') {
+    return h === 'db' ? 'docker' : 'localhost';
+  }
+  return null;
+}
+
 const getPool = () => {
   if (!pool) {
     pool = mysql.createPool(dbConfig);
   }
   return pool;
 };
+
+async function closePool() {
+  if (!pool) return;
+  try {
+    await pool.end();
+  } catch (error) {
+    logger.warn('MySQL: error closing pool', { message: error.message });
+  }
+  pool = null;
+}
 
 const initializeDatabaseOnce = async () => {
   logger.info('MySQL: connecting', getConnectionSummary());
@@ -85,6 +140,86 @@ const initializeDatabase = async () => {
     }
   }
 };
+
+/**
+ * Switch MySQL target at runtime (login page localhost vs internal Docker DB).
+ * @param {{ host?: string, port?: number|string, user?: string, password?: string, database?: string }} overrides
+ */
+async function reconfigureDatabase(overrides = {}) {
+  const previous = {
+    host: dbConfig.host,
+    port: dbConfig.port,
+    user: dbConfig.user,
+    password: dbConfig.password,
+    database: dbConfig.database
+  };
+
+  const next = {
+    host: overrides.host != null ? String(overrides.host).trim() : dbConfig.host,
+    port: overrides.port != null ? Number(overrides.port) || dbConfig.port : dbConfig.port,
+    user: overrides.user != null ? String(overrides.user).trim() : dbConfig.user,
+    password: overrides.password != null ? String(overrides.password) : dbConfig.password,
+    database: overrides.database != null ? String(overrides.database).trim() : dbConfig.database
+  };
+
+  if (!next.host) {
+    throw new Error('DB host is required');
+  }
+
+  if (
+    next.host === previous.host &&
+    next.port === previous.port &&
+    next.user === previous.user &&
+    next.password === previous.password &&
+    next.database === previous.database
+  ) {
+    return getConnectionSummary();
+  }
+
+  logger.info('MySQL: reconfigure requested', {
+    from: getConnectionSummary(),
+    to: {
+      host: next.host,
+      port: next.port,
+      user: next.user,
+      database: next.database,
+      password: logger.redact(next.password)
+    }
+  });
+
+  await closePool();
+
+  const applyConfig = (cfg) => {
+    dbConfig.host = cfg.host;
+    dbConfig.port = cfg.port;
+    dbConfig.user = cfg.user;
+    dbConfig.password = cfg.password;
+    dbConfig.database = cfg.database;
+    process.env.DB_HOST = dbConfig.host;
+    process.env.DB_PORT = String(dbConfig.port);
+    process.env.DB_USER = dbConfig.user;
+    process.env.DB_PASSWORD = dbConfig.password;
+    process.env.DB_NAME = dbConfig.database;
+  };
+
+  applyConfig(next);
+
+  try {
+    await initializeDatabaseOnce();
+    return getConnectionSummary();
+  } catch (error) {
+    logger.logError('MySQL: reconfigure failed, restoring previous connection', error);
+    await closePool();
+    applyConfig(previous);
+    try {
+      await initializeDatabaseOnce();
+    } catch (restoreError) {
+      logger.logError('MySQL: failed to restore previous connection', restoreError);
+    }
+    throw error;
+  }
+}
+
 
 const createTables = async () => {
   const connection = await pool.getConnection();
@@ -303,5 +438,8 @@ module.exports = {
   getPool,
   initializeDatabase,
   ensureTablesExist,
-  getConnectionSummary
+  getConnectionSummary,
+  getDatabasePresets,
+  matchPresetId,
+  reconfigureDatabase
 };
