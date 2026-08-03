@@ -14,6 +14,8 @@ router.get('/', (req, res) => {
     data.database = current;
     data.databasePreset = mysqlDb.matchPresetId(current.host, current.port);
     data.databasePresets = mysqlDb.getDatabasePresets();
+    data.embeddedMysql = /^(1|true|yes|on)$/i.test(String(process.env.EMBEDDED_MYSQL || ''));
+    data.mysqlPublishPort = process.env.MYSQL_PUBLISH_PORT || null;
   }
 
   res.json({
@@ -22,7 +24,7 @@ router.get('/', (req, res) => {
   });
 });
 
-/** Switch MySQL host at runtime (login: localhost vs internal Docker DB). */
+/** Switch MySQL host at runtime (login: preset or full custom config). */
 router.post('/database', async (req, res) => {
   if (isMongoDb()) {
     return res.status(400).json({
@@ -31,11 +33,15 @@ router.post('/database', async (req, res) => {
     });
   }
 
+  let host;
+  let port;
   try {
     const body = req.body || {};
-    let { host, port, preset } = body;
+    const { preset, user, password, database } = body;
+    host = body.host;
+    port = body.port;
 
-    if (preset) {
+    if (preset && preset !== 'custom') {
       const found = mysqlDb.getDatabasePresets().find((p) => p.id === String(preset));
       if (!found) {
         return res.status(400).json({
@@ -50,22 +56,39 @@ router.post('/database', async (req, res) => {
     if (!host) {
       return res.status(400).json({
         success: false,
-        error: 'Provide preset (localhost|docker) or host'
+        error: 'Provide preset (localhost|docker) or custom host'
       });
     }
 
-    const summary = await mysqlDb.reconfigureDatabase({ host, port });
+    const overrides = { host, port };
+    if (user != null && String(user).trim() !== '') overrides.user = String(user).trim();
+    if (password != null) overrides.password = String(password);
+    if (database != null && String(database).trim() !== '') {
+      overrides.database = String(database).trim();
+    }
+
+    const summary = await mysqlDb.reconfigureDatabase(overrides);
     res.json({
       success: true,
       data: {
         database: summary,
-        databasePreset: mysqlDb.matchPresetId(summary.host, summary.port)
+        databasePreset: mysqlDb.matchPresetId(summary.host, summary.port) || 'custom',
+        embeddedMysql: /^(1|true|yes|on)$/i.test(String(process.env.EMBEDDED_MYSQL || '')),
+        mysqlPublishPort: process.env.MYSQL_PUBLISH_PORT || null
       }
     });
   } catch (error) {
+    const code = error && error.code;
+    let message = error.message || 'Failed to switch database';
+    if (code === 'ECONNREFUSED' && (host === '127.0.0.1' || host === 'localhost')) {
+      message =
+        'Internal Docker DB is not running (ECONNREFUSED 127.0.0.1:3306). ' +
+        'Rebuild/run the image with EMBEDDED_MYSQL=true (default for standalone). ' +
+        'MySQL host publish (-p) is optional and not required for Internal Docker DB.';
+    }
     res.status(500).json({
       success: false,
-      error: error.message || 'Failed to switch database'
+      error: message
     });
   }
 });

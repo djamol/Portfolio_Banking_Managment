@@ -33,22 +33,28 @@ function getConnectionSummary() {
 function getDatabasePresets() {
   const localhostHost = process.env.DB_HOST_LOCALHOST || 'host.docker.internal';
   const dockerHost = process.env.DB_HOST_DOCKER || '127.0.0.1';
-  const port = Number(process.env.DB_PORT) || 3306;
+  // Host MySQL port — do not use MYSQL_PUBLISH_PORT (that's only the Docker host mapping).
+  const localhostPort = Number(process.env.DB_PORT_LOCALHOST) || 3306;
+  // In-container listen port (always 3306 for embedded). Publish is host:3307 → container:3306.
+  const dockerPort =
+    Number(process.env.DB_PORT_DOCKER) ||
+    Number(process.env.EMBEDDED_MYSQL_PORT) ||
+    3306;
 
   return [
     {
       id: 'localhost',
       label: 'Localhost (host MySQL)',
       host: localhostHost,
-      port,
+      port: localhostPort,
       description: 'MySQL on the host machine'
     },
     {
       id: 'docker',
       label: 'Internal Docker DB',
       host: dockerHost,
-      port,
-      description: 'Embedded MariaDB or compose db service'
+      port: dockerPort,
+      description: 'Embedded MariaDB (container :3306; host publish optional)'
     }
   ];
 }

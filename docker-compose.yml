@@ -47,8 +47,12 @@ services:
       DB_USER: ${DB_USER:-root}
       DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-portfolio_root}
       DB_NAME: ${MYSQL_DATABASE:-portfolio}
+      # Use compose "db" service — do not start in-image MariaDB
+      EMBEDDED_MYSQL: "false"
       DB_HOST_LOCALHOST: host.docker.internal
       DB_HOST_DOCKER: db
+      DB_PORT_LOCALHOST: 3306
+      DB_PORT_DOCKER: 3306
       MONGODB_URI: mongodb://mongo:27017
       MONGODB_DB: ${MONGODB_DB:-portfolio}
       PORT: 3000

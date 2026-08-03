@@ -28,10 +28,26 @@
               type="radio"
               name="dbPreset"
               [value]="preset.id"
-              [(ngModel)]="selectedDbPreset">
+              [(ngModel)]="selectedDbPreset"
+              (ngModelChange)="onDbPresetChange()">
             <span class="db-preset-text">
               <strong>{{ preset.label }}</strong>
               <small>{{ preset.host }}:{{ preset.port }}<span *ngIf="preset.description"> — {{ preset.description }}</span></small>
+            </span>
+          </label>
+
+          <label
+            class="db-preset-option"
+            [class.selected]="selectedDbPreset === 'custom'">
+            <input
+              type="radio"
+              name="dbPreset"
+              value="custom"
+              [(ngModel)]="selectedDbPreset"
+              (ngModelChange)="onDbPresetChange()">
+            <span class="db-preset-text">
+              <strong>Custom</strong>
+              <small>Enter your own host, port, user, password, and database</small>
             </span>
           </label>
         </div>
@@ -40,6 +56,78 @@
           <small class="form-text" *ngIf="!loadingDbConfig">Connect to API to load database options.</small>
         </ng-template>
         <small class="form-text" *ngIf="currentDbHost">Currently connected: <code>{{ currentDbHost }}</code></small>
+
+        <button
+          *ngIf="selectedDbPreset !== 'custom'"
+          type="button"
+          class="link-btn"
+          (click)="showAdvancedDb = !showAdvancedDb">
+          {{ showAdvancedDb ? 'Hide' : 'Show' }} user / password / database overrides
+        </button>
+
+        <div class="db-custom-fields" *ngIf="selectedDbPreset === 'custom' || showAdvancedDb">
+          <div class="db-field-row" *ngIf="selectedDbPreset === 'custom'">
+            <div class="form-group compact">
+              <label for="dbHost">Host</label>
+              <input
+                type="text"
+                id="dbHost"
+                name="dbHost"
+                class="form-control"
+                [(ngModel)]="dbHost"
+                placeholder="127.0.0.1"
+                required>
+            </div>
+            <div class="form-group compact">
+              <label for="dbPort">Port</label>
+              <input
+                type="number"
+                id="dbPort"
+                name="dbPort"
+                class="form-control"
+                [(ngModel)]="dbPort"
+                placeholder="3306"
+                min="1"
+                max="65535"
+                required>
+            </div>
+          </div>
+
+          <div class="db-field-row">
+            <div class="form-group compact">
+              <label for="dbUser">DB user</label>
+              <input
+                type="text"
+                id="dbUser"
+                name="dbUser"
+                class="form-control"
+                [(ngModel)]="dbUser"
+                placeholder="root">
+            </div>
+            <div class="form-group compact">
+              <label for="dbPassword">DB password</label>
+              <input
+                type="password"
+                id="dbPassword"
+                name="dbPassword"
+                class="form-control"
+                [(ngModel)]="dbPassword"
+                placeholder="••••••••"
+                autocomplete="off">
+            </div>
+          </div>
+
+          <div class="form-group compact">
+            <label for="dbName">Database name</label>
+            <input
+              type="text"
+              id="dbName"
+              name="dbName"
+              class="form-control"
+              [(ngModel)]="dbName"
+              placeholder="portfolio">
+          </div>
+        </div>
       </div>
       
       <div class="form-group">
@@ -73,7 +161,7 @@
       <button 
         type="submit" 
         class="login-btn" 
-        [disabled]="loading || !username || !password || !apiDomain">
+        [disabled]="loading || !username || !password || !apiDomain || (selectedDbPreset === 'custom' && !dbHost)">
         <span *ngIf="!loading">Login</span>
         <span *ngIf="loading">Logging in...</span>
       </button>

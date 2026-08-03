@@ -15,6 +15,8 @@ type DatabasePreset = {
   description?: string;
 };
 
+const DB_CUSTOM_STORAGE_KEY = 'dbCustomConfig';
+
 @Component({
   selector: 'app-login',
   standalone: true,
@@ -34,6 +36,14 @@ export class LoginComponent implements OnInit {
   selectedDbPreset: string = 'localhost';
   currentDbHost: string = '';
   loadingDbConfig: boolean = false;
+  showAdvancedDb: boolean = false;
+
+  // Custom / advanced MySQL fields
+  dbHost: string = '127.0.0.1';
+  dbPort: number = 3306;
+  dbUser: string = 'root';
+  dbPassword: string = '';
+  dbName: string = 'portfolio';
 
   constructor(
     private http: HttpClient,
@@ -42,9 +52,14 @@ export class LoginComponent implements OnInit {
   ) {}
 
   ngOnInit() {
+    this.restoreCustomDbConfig();
+
     const storedPreset = localStorage.getItem('dbPreset');
     if (storedPreset) {
       this.selectedDbPreset = storedPreset;
+      if (storedPreset === 'custom') {
+        this.showAdvancedDb = true;
+      }
     }
 
     if (this.authService.isAuthenticated()) {
@@ -63,6 +78,19 @@ export class LoginComponent implements OnInit {
     this.loadDatabaseConfig();
   }
 
+  onDbPresetChange() {
+    if (this.selectedDbPreset === 'custom') {
+      this.showAdvancedDb = true;
+      return;
+    }
+
+    const preset = this.databasePresets.find((p) => p.id === this.selectedDbPreset);
+    if (preset) {
+      this.dbHost = preset.host;
+      this.dbPort = preset.port;
+    }
+  }
+
   async loadDatabaseConfig() {
     this.apiDomain = normalizeApiDomain(this.apiDomain);
     this.loadingDbConfig = true;
@@ -72,7 +100,12 @@ export class LoginComponent implements OnInit {
           success: boolean;
           data: {
             dbType?: string;
-            database?: { host: string; port: number };
+            database?: {
+              host: string;
+              port: number;
+              user?: string;
+              database?: string;
+            };
             databasePreset?: string | null;
             databasePresets?: DatabasePreset[];
           };
@@ -85,16 +118,32 @@ export class LoginComponent implements OnInit {
         ? `${response.data.database.host}:${response.data.database.port}`
         : '';
 
+      const db = response?.data?.database;
+      if (db) {
+        // Prefill custom fields from live server config when not using saved custom
+        if (this.selectedDbPreset !== 'custom' || !localStorage.getItem(DB_CUSTOM_STORAGE_KEY)) {
+          this.dbHost = db.host;
+          this.dbPort = db.port;
+          if (db.user) this.dbUser = db.user;
+          if (db.database) this.dbName = db.database;
+        }
+      }
+
       const storedPreset = localStorage.getItem('dbPreset');
-      if (storedPreset && this.databasePresets.some((p) => p.id === storedPreset)) {
+      if (storedPreset === 'custom') {
+        this.selectedDbPreset = 'custom';
+        this.showAdvancedDb = true;
+      } else if (storedPreset && this.databasePresets.some((p) => p.id === storedPreset)) {
         this.selectedDbPreset = storedPreset;
+        this.onDbPresetChange();
       } else if (response?.data?.databasePreset) {
         this.selectedDbPreset = response.data.databasePreset;
+        this.onDbPresetChange();
       } else if (this.databasePresets.length) {
         this.selectedDbPreset = this.databasePresets[0].id;
+        this.onDbPresetChange();
       }
     } catch {
-      // API may be unreachable until user fixes URL; keep local fallbacks
       this.databasePresets = [
         {
           id: 'localhost',
@@ -108,7 +157,7 @@ export class LoginComponent implements OnInit {
           label: 'Internal Docker DB',
           host: '127.0.0.1',
           port: 3306,
-          description: 'Embedded MariaDB or compose db service'
+          description: 'Embedded MariaDB (no host port publish needed)'
         }
       ];
       this.currentDbHost = '';
@@ -122,12 +171,19 @@ export class LoginComponent implements OnInit {
     this.errorMessage = '';
     this.apiDomain = normalizeApiDomain(this.apiDomain);
 
+    if (this.selectedDbPreset === 'custom' && !this.dbHost?.trim()) {
+      this.errorMessage = 'Custom database host is required';
+      this.loading = false;
+      return;
+    }
+
     if (this.username === 'amol' && this.password === 'admin') {
       this.testApiConnection()
-        .then(() => this.applyDatabasePreset())
+        .then(() => this.applyDatabaseConfig())
         .then(() => {
           this.authService.login(this.apiDomain);
           localStorage.setItem('dbPreset', this.selectedDbPreset);
+          this.persistCustomDbConfig();
           this.router.navigate(['/dashboard']);
         })
         .catch((err: Error) => {
@@ -142,23 +198,70 @@ export class LoginComponent implements OnInit {
     }
   }
 
-  private async applyDatabasePreset(): Promise<void> {
-    if (this.dbType === 'mongodb' || !this.selectedDbPreset) {
+  private async applyDatabaseConfig(): Promise<void> {
+    if (this.dbType === 'mongodb') {
       return;
+    }
+
+    const body: Record<string, unknown> = {};
+
+    if (this.selectedDbPreset === 'custom') {
+      body.host = this.dbHost.trim();
+      body.port = Number(this.dbPort) || 3306;
+      body.user = this.dbUser.trim() || 'root';
+      body.password = this.dbPassword;
+      body.database = this.dbName.trim() || 'portfolio';
+    } else {
+      body.preset = this.selectedDbPreset;
+      // Optional advanced overrides on top of preset host/port
+      if (this.showAdvancedDb) {
+        if (this.dbUser?.trim()) body.user = this.dbUser.trim();
+        if (this.dbPassword !== '') body.password = this.dbPassword;
+        if (this.dbName?.trim()) body.database = this.dbName.trim();
+      }
     }
 
     try {
       await firstValueFrom(
-        this.http.post<{ success: boolean; error?: string }>(`${this.apiDomain}/api/config/database`, {
-          preset: this.selectedDbPreset
-        })
+        this.http.post<{ success: boolean; error?: string }>(
+          `${this.apiDomain}/api/config/database`,
+          body
+        )
       );
     } catch (error: any) {
       const msg =
         error?.error?.error ||
         error?.message ||
-        `Failed to switch to ${this.selectedDbPreset} database`;
+        `Failed to apply database configuration`;
       throw new Error(msg);
+    }
+  }
+
+  private persistCustomDbConfig() {
+    const payload = {
+      host: this.dbHost,
+      port: this.dbPort,
+      user: this.dbUser,
+      password: this.dbPassword,
+      database: this.dbName,
+      showAdvancedDb: this.showAdvancedDb
+    };
+    localStorage.setItem(DB_CUSTOM_STORAGE_KEY, JSON.stringify(payload));
+  }
+
+  private restoreCustomDbConfig() {
+    try {
+      const raw = localStorage.getItem(DB_CUSTOM_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed.host) this.dbHost = parsed.host;
+      if (parsed.port) this.dbPort = Number(parsed.port) || 3306;
+      if (parsed.user) this.dbUser = parsed.user;
+      if (parsed.password != null) this.dbPassword = parsed.password;
+      if (parsed.database) this.dbName = parsed.database;
+      if (parsed.showAdvancedDb) this.showAdvancedDb = !!parsed.showAdvancedDb;
+    } catch {
+      // ignore corrupt storage
     }
   }
 

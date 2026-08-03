@@ -20,8 +20,8 @@ RUN node ./node_modules/@angular/cli/bin/ng build --configuration production --b
 # Stage 2 — backend + serve static frontend
 FROM node:20-alpine
 
-# MariaDB packages are present for optional in-image MySQL (EMBEDDED_MYSQL=true).
-# Default remains external DB via DB_HOST (compose "db" or host.docker.internal).
+# MariaDB is bundled; EMBEDDED_MYSQL=true by default for standalone runs.
+# Compose overrides EMBEDDED_MYSQL=false and uses the separate "db" service.
 RUN apk add --no-cache mariadb mariadb-client \
   && mkdir -p /run/mysqld /var/lib/mysql \
   && chown -R mysql:mysql /run/mysqld /var/lib/mysql
@@ -47,23 +47,29 @@ ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV LOG_LEVEL=info
 
-# Defaults shown in Docker Desktop "Run container" (override as needed)
+# Defaults for standalone image: embedded MariaDB on (no host MySQL publish required)
 ENV DB_TYPE=mysql
-ENV DB_HOST=host.docker.internal
+ENV DB_HOST=127.0.0.1
 ENV DB_USER=root
-ENV DB_PASSWORD=
+ENV DB_PASSWORD=portfolio
 ENV DB_NAME=portfolio
+ENV DB_PORT=3306
 ENV PORT=3000
-# Set EMBEDDED_MYSQL=true to start MariaDB inside this container (DB_HOST forced to 127.0.0.1)
-ENV EMBEDDED_MYSQL=false
+# Internal DB starts by default. App uses 127.0.0.1:3306 — publishing MySQL is optional.
+ENV EMBEDDED_MYSQL=true
 ENV EMBEDDED_MYSQL_PORT=3306
+# Host publish port hint: fixed 3307, or set MYSQL_PUBLISH_PORT=random for a random suggestion.
+# Actual mapping is still docker run -p HOST:3306 (or -P). Never set DB_PORT to the host port.
+ENV MYSQL_PUBLISH_PORT=random
 ENV MYSQL_ROOT_PASSWORD=portfolio
-# Login page DB presets: host MySQL vs in-container / compose DB
+# Login page DB presets: host MySQL vs in-container DB
 ENV DB_HOST_LOCALHOST=host.docker.internal
 ENV DB_HOST_DOCKER=127.0.0.1
+ENV DB_PORT_LOCALHOST=3306
+ENV DB_PORT_DOCKER=3306
 
 EXPOSE 3000
-# Container MySQL :3306 — publish as host 3307 with -p 3307:3306
+# Optional external MySQL access — map with -p 3307:3306 or -P (random host port)
 EXPOSE 3306
 
 VOLUME ["/var/lib/mysql"]
