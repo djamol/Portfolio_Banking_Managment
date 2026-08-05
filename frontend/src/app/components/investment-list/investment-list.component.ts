@@ -1,7 +1,4 @@
 import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { RouterModule } from '@angular/router';
 import { InvestmentService } from '../../services/investment.service';
 import { AnalyticsService } from '../../services/analytics.service';
 import { CategoryService, SubTypeName, Category } from '../../services/category.service';
@@ -9,6 +6,7 @@ import { ConfigService } from '../../services/config.service';
 import { INVESTMENT_TYPES, INVESTMENT_SUB_TYPES } from '../../constants/investment-types.constants';
 import { hasMultiSelectFilter, matchesMultiSelect, pruneSelections } from '../../utils/advanced-filter.util';
 import { matchesPlatformFilter } from '../../utils/ignore-platform.util';
+import { getApiDomain } from '../../utils/api-url.util';
 
 @Component({
   selector: 'app-investment-list',
@@ -21,6 +19,7 @@ export class InvestmentListComponent implements OnInit {
   filteredInvestments: any[] = [];
   loading = false;
   errorMessage = '';
+  apiDomain = getApiDomain();
 
   // Search and filter properties
   searchTerm: string = '';

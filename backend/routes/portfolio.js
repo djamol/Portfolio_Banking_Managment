@@ -6,6 +6,8 @@ const { importDatabaseSql } = require('../utils/sql-import');
 const { exportDatabaseMongo } = require('../utils/mongo-export');
 const { importDatabaseMongo } = require('../utils/mongo-import');
 const { getPool, isMongoDb } = require('../config/index');
+const { requireFreshInstallConfirm } = require('../middleware/auth');
+const logger = require('../utils/logger');
 
 router.get('/export', async (req, res) => {
   try {
@@ -100,7 +102,7 @@ router.get('/export/sql', async (req, res) => {
   }
 });
 
-router.post('/import/sql', express.json({ limit: '50mb' }), async (req, res) => {
+router.post('/import/sql', express.json({ limit: '50mb' }), requireFreshInstallConfirm, async (req, res) => {
   try {
     if (isMongoDb()) {
       return res.status(400).json({
@@ -129,7 +131,7 @@ router.post('/import/sql', express.json({ limit: '50mb' }), async (req, res) => 
         : `SQL merge import completed. ${result.executed} statements executed, ${result.skipped} duplicates skipped.`
     });
   } catch (error) {
-    console.error('Error importing SQL:', error);
+    logger.logError('Error importing SQL', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -147,7 +149,7 @@ router.get('/export/mongo', async (req, res) => {
   }
 });
 
-router.post('/import/mongo', express.json({ limit: '50mb' }), async (req, res) => {
+router.post('/import/mongo', express.json({ limit: '50mb' }), requireFreshInstallConfirm, async (req, res) => {
   try {
     const { data, freshInstall = false } = req.body || {};
     const exportPayload = data ?? req.body;
@@ -169,7 +171,7 @@ router.post('/import/mongo', express.json({ limit: '50mb' }), async (req, res) =
         : `MongoDB merge import completed. ${result.inserted} documents upserted, ${result.skipped} skipped.`
     });
   } catch (error) {
-    console.error('Error importing MongoDB:', error);
+    logger.logError('Error importing MongoDB', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

@@ -1,3 +1,22 @@
+:root {
+  --app-bg: #f1f5f9;
+  --app-bg-gradient: linear-gradient(180deg, #e8eef6 0%, #f1f5f9 220px);
+  --app-surface: #ffffff;
+  --app-ink: #0f172a;
+  --app-muted: #64748b;
+  --app-accent: #3b82f6;
+  --app-accent-hover: #2563eb;
+  --app-danger: #dc2626;
+  --app-danger-hover: #b91c1c;
+  --app-success: #059669;
+  --app-border: #e2e8f0;
+  --app-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  --app-radius: 12px;
+  --app-radius-sm: 6px;
+  --app-nav-bg: #0f172a;
+  --app-font: 'Segoe UI', ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -5,8 +24,9 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background: linear-gradient(135deg, #ffffff 0%, #d2d1d4 100%);
+  font-family: var(--app-font);
+  background: var(--app-bg-gradient);
+  color: var(--app-ink);
   min-height: 100vh;
   padding: 0;
 }
@@ -17,50 +37,51 @@ body {
 }
 
 .card {
-  background: white;
-  border-radius: 12px;
+  background: var(--app-surface);
+  border-radius: var(--app-radius);
   padding: 24px;
   margin-bottom: 20px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--app-shadow);
+  border: 1px solid var(--app-border);
 }
 
 .btn {
   padding: 10px 20px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--app-radius-sm);
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
-  transition: all 0.3s;
+  transition: background-color 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 
 .btn-primary {
-  background: #667eea;
+  background: var(--app-accent);
   color: white;
 }
 
 .btn-primary:hover {
-  background: #5568d3;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+  background: var(--app-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.25);
 }
 
 .btn-danger {
-  background: #ef4444;
+  background: var(--app-danger);
   color: white;
 }
 
 .btn-danger:hover {
-  background: #dc2626;
+  background: var(--app-danger-hover);
 }
 
 .btn-secondary {
-  background: #6b7280;
+  background: #64748b;
   color: white;
 }
 
 .btn-secondary:hover {
-  background: #4b5563;
+  background: #475569;
 }
 
 .form-group {
@@ -71,23 +92,23 @@ body {
   display: block;
   margin-bottom: 6px;
   font-weight: 500;
-  color: #374151;
+  color: #334155;
 }
 
 .form-group input,
 .form-group select {
   width: 100%;
   padding: 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--app-radius-sm);
   font-size: 14px;
 }
 
 .form-group input:focus,
 .form-group select:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: var(--app-accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
 .table {
@@ -100,17 +121,17 @@ body {
 .table td {
   padding: 12px;
   text-align: left;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .table th {
-  background: #f9fafb;
+  background: #f8fafc;
   font-weight: 600;
-  color: #374151;
+  color: #334155;
 }
 
 .table tr:hover {
-  background: #f9fafb;
+  background: #f8fafc;
 }
 
 .badge {
@@ -144,7 +165,7 @@ body {
   top: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(15, 23, 42, 0.45);
   align-items: center;
   justify-content: center;
 }
@@ -154,8 +175,8 @@ body {
 }
 
 .modal-content {
-  background: white;
-  border-radius: 12px;
+  background: var(--app-surface);
+  border-radius: var(--app-radius);
   padding: 24px;
   max-width: 500px;
   width: 90%;
@@ -172,7 +193,7 @@ body {
 
 .modal-header h2 {
   margin: 0;
-  color: #111827;
+  color: var(--app-ink);
 }
 
 .close {
@@ -180,11 +201,11 @@ body {
   border: none;
   font-size: 24px;
   cursor: pointer;
-  color: #6b7280;
+  color: var(--app-muted);
 }
 
 .close:hover {
-  color: #111827;
+  color: var(--app-ink);
 }
 
 .stats-grid {
@@ -195,22 +216,23 @@ body {
 }
 
 .stat-card {
-  background: white;
-  border-radius: 12px;
+  background: var(--app-surface);
+  border-radius: var(--app-radius);
   padding: 20px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--app-shadow);
+  border: 1px solid var(--app-border);
 }
 
 .stat-card h3 {
   font-size: 14px;
-  color: #6b7280;
+  color: var(--app-muted);
   margin-bottom: 8px;
 }
 
 .stat-card .value {
   font-size: 28px;
   font-weight: 700;
-  color: #111827;
+  color: var(--app-ink);
 }
 
 .chart-container {

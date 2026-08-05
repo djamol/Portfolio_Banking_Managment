@@ -76,6 +76,7 @@ export class BankingShellComponent implements OnInit, OnDestroy {
         'import',
         'transactions',
         'rules',
+        'budgets',
         'analytics',
         'charts',
         'cashflow',
@@ -216,6 +217,15 @@ export class BankingShellComponent implements OnInit, OnDestroy {
       'Income_Peer_UPI'
     ]);
     return this.filters.filterCategories.length > 0 && this.filters.filterCategories.every((c) => set.has(c));
+  }
+
+  isAnalyticsTabActive(): boolean {
+    const r = this.filters.activeRoute;
+    return r === 'analytics' || r === 'charts' || r === 'cashflow';
+  }
+
+  clearPayeeFilter() {
+    this.filters.clearPayeeFilter();
   }
 
   formatMoney = formatMoney;

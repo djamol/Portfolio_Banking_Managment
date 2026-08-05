@@ -53,6 +53,12 @@ export class BankRulesService {
     );
   }
 
+  updateBudget(id: number, data: BankBudget): Observable<BankBudget | null> {
+    return this.http.put<ApiResponse<BankBudget>>(bankApiUrl(`budgets/${id}`), data).pipe(
+      map((r) => (r.success ? r.data : null))
+    );
+  }
+
   deleteBudget(id: number): Observable<boolean> {
     return this.http.delete<ApiResponse<any>>(bankApiUrl(`budgets/${id}`)).pipe(
       map((r) => !!r.success)

@@ -60,6 +60,19 @@ export class BankAnalyticsService {
     );
   }
 
+  listMatchedTransfers(limit = 50): Observable<any[]> {
+    let params = new HttpParams().set('limit', String(limit));
+    return this.http.get<ApiResponse<any[]>>(bankApiUrl('transfers/matched'), { params }).pipe(
+      map((r) => (r.success ? r.data : []))
+    );
+  }
+
+  unmatchTransfer(txnId: number): Observable<boolean> {
+    return this.http
+      .post<ApiResponse<any>>(bankApiUrl('transfers/unmatch'), { txn_id: txnId })
+      .pipe(map((r) => !!r.success));
+  }
+
   getForecast(accountId?: number): Observable<any> {
     let params = new HttpParams();
     if (accountId) params = params.set('account_id', String(accountId));

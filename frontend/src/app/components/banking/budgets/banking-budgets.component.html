@@ -1,0 +1,102 @@
+<div class="section-head">
+  <div>
+    <h3>Budgets</h3>
+    <p class="section-hint">Set monthly category limits and track spend vs budget.</p>
+  </div>
+  <label class="inline-label">
+    Month
+    <input type="month" [(ngModel)]="budgetMonth" (ngModelChange)="onBudgetMonthChange()" />
+  </label>
+</div>
+
+<div class="stat-grid" *ngIf="budgets.length">
+  <div class="stat-card">
+    <div class="stat-label">Budgets this month</div>
+    <div class="stat-value">{{ budgets.length }}</div>
+  </div>
+  <div class="stat-card" [class.debit]="overspendCount() > 0">
+    <div class="stat-label">Overspent</div>
+    <div class="stat-value">{{ overspendCount() }}</div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>{{ editingId ? 'Edit budget' : 'Add budget' }}</h3>
+  <div class="form-grid">
+    <div class="form-group">
+      <label>Category</label>
+      <input list="budget-category-list-page" [(ngModel)]="budgetForm.category" placeholder="Select or type…" />
+      <datalist id="budget-category-list-page">
+        <option *ngFor="let c of ctx.categories" [value]="c"></option>
+      </datalist>
+    </div>
+    <div class="form-group">
+      <label>Amount</label>
+      <input type="number" [(ngModel)]="budgetForm.amount" min="0" />
+    </div>
+    <div class="form-group">
+      <label>Month</label>
+      <input type="month" [(ngModel)]="budgetForm.period_month" />
+    </div>
+    <div class="form-group">
+      <label>Account (optional)</label>
+      <select [(ngModel)]="budgetForm.account_id">
+        <option [ngValue]="null">All accounts</option>
+        <option *ngFor="let a of ctx.accounts" [ngValue]="a.id">{{ a.bank_name }} – {{ a.account_name }}</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Notes</label>
+      <input [(ngModel)]="budgetForm.notes" placeholder="Optional" />
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <div class="section-actions wrap">
+        <button class="btn btn-primary" type="button" (click)="saveBudget()">
+          {{ editingId ? 'Update budget' : 'Add budget' }}
+        </button>
+        <button class="btn btn-secondary" type="button" *ngIf="editingId" (click)="cancelEdit()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <table class="data-table compact" *ngIf="budgets.length; else noBudgets">
+    <thead>
+      <tr>
+        <th>Category</th>
+        <th>Month</th>
+        <th>Account</th>
+        <th>Budget</th>
+        <th>Spent</th>
+        <th>Remaining</th>
+        <th>Progress</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let b of budgets" [class.budget-over]="(b.pct || 0) >= 100">
+        <td>{{ b.category }}</td>
+        <td>{{ b.period_month || budgetMonth }}</td>
+        <td>{{ ctx.accountLabel(b.account_id) }}</td>
+        <td>₹{{ formatMoney(b.amount) }}</td>
+        <td class="debit">₹{{ formatMoney(b.spent) }}</td>
+        <td [class.credit]="(b.remaining||0)>=0" [class.debit]="(b.remaining||0)<0">₹{{ formatMoney(b.remaining) }}</td>
+        <td class="budget-progress-cell">
+          <div class="budget-bar" [class.over]="(b.pct || 0) >= 100" [class.warn]="(b.pct || 0) >= 80 && (b.pct || 0) < 100">
+            <div class="budget-bar-fill" [style.width.%]="budgetBarWidth(b.pct)"></div>
+          </div>
+          <span class="budget-pct" [class.debit]="(b.pct || 0) >= 100">{{ b.pct || 0 }}%</span>
+        </td>
+        <td class="row-actions">
+          <button class="link-btn" type="button" (click)="startEdit(b)">Edit</button>
+          <button class="link-btn danger" type="button" (click)="deleteBudget(b)">×</button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <ng-template #noBudgets>
+    <p class="empty">No budgets for this month. Add a category budget to track spending.</p>
+  </ng-template>
+</div>

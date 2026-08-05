@@ -1,6 +1,8 @@
 <div class="section-actions wrap">
       <button class="btn btn-primary" (click)="loadInsights()">Refresh insights</button>
-      <button class="btn btn-secondary" (click)="runTransferMatch()">Match cross-account transfers</button>
+      <button class="btn btn-secondary" (click)="runTransferMatch()" [disabled]="transferMatching">
+        {{ transferMatching ? 'Matching…' : 'Match cross-account transfers' }}
+      </button>
       <select [(ngModel)]="continuityAccountId">
         <option [ngValue]="''">Account for continuity…</option>
         <option *ngFor="let a of ctx.accounts" [ngValue]="a.id">{{ a.bank_name }} – {{ a.account_name }}</option>
@@ -38,6 +40,42 @@
         <div class="stat-label">Active / inactive</div>
         <div class="stat-value">{{ analyticsState.cashSummary.active_count }} / {{ analyticsState.cashSummary.inactive_count }}</div>
       </div>
+    </div>
+
+    <div class="card">
+      <h3>Matched transfers</h3>
+      <p class="hint">Review auto-matched cross-account pairs. Unlink if a match is wrong.</p>
+      <table class="data-table compact" *ngIf="matchedTransfers.length; else noMatchedTransfers">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Amount</th>
+            <th>From</th>
+            <th>To</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let p of matchedTransfers">
+            <td>{{ p.out?.txn_date | date:'mediumDate' }}</td>
+            <td>₹{{ formatMoney(p.amount) }}</td>
+            <td>
+              {{ p.out?.bank_name }} – {{ p.out?.account_name }}
+              <small class="muted">{{ p.out?.narration }}</small>
+            </td>
+            <td>
+              {{ p.in?.bank_name }} – {{ p.in?.account_name }}
+              <small class="muted">{{ p.in?.narration }}</small>
+            </td>
+            <td>
+              <button type="button" class="link-btn danger" (click)="unmatchTransferPair(p)">Unlink</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <ng-template #noMatchedTransfers>
+        <p class="empty">No linked transfers yet. Run “Match cross-account transfers” above.</p>
+      </ng-template>
     </div>
 
     <div class="stat-grid" *ngIf="forecast?.projected_next_month">

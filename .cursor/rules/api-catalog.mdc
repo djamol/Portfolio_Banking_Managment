@@ -11,8 +11,11 @@ Base: `{apiDomain}/api`. Response shape usually `{ success, data, error? }`. Ban
 
 | Method | Path | File |
 |--------|------|------|
-| GET | `/health` | `server.js` |
+| GET | `/health` | `server.js` (includes DB ping) |
 | GET | `/config` | `routes/config.js` → ignorePlatforms |
+| POST | `/auth/login` | `routes/auth.js` — session cookie |
+| POST | `/auth/logout` | `routes/auth.js` |
+| GET | `/auth/me` | `routes/auth.js` — requires session |
 
 ## Investments — `routes/investments.js` + `db/*-store.js`
 
@@ -84,4 +87,4 @@ MySQL path uses pool + `ignore-platform` + often `snapshot-queries`. Mongo → `
 | Forecast | GET `/banking/forecast` |
 | Import | POST `/banking/import` (multer file), `/import/preview`; DELETE `/import/batches/:batchId` |
 
-Parsers: `utils/bank-parsers/index.js` — HDFC/ICICI/DCB/SBI/Axis/Kotak + generic; **no PDF**.
+Parsers: `utils/bank-parsers/index.js` — HDFC/ICICI/DCB/SBI/Axis/Kotak + generic CSV/XLS; **PDF**: HDFC credit-card PDF only (savings/current PDFs rejected).

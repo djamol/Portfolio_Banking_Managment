@@ -11,8 +11,15 @@
 
   <div *ngIf="errorMessage" style="background: #fee; color: #c33; padding: 12px; border-radius: 6px; margin-bottom: 20px;">
     <strong>Error:</strong> {{ errorMessage }}<br>
-    <small>Make sure the backend server is running on http://localhost:3000</small>
+    <small>Make sure the backend is reachable (check API domain in login settings)</small>
   </div>
+
+  <nav class="analytics-tabs">
+    <button type="button" class="analytics-tab" [class.active]="activeTab==='overview'" (click)="setAnalyticsTab('overview')">Overview</button>
+    <button type="button" class="analytics-tab" [class.active]="activeTab==='allocation'" (click)="setAnalyticsTab('allocation')">Allocation &amp; rebalance</button>
+    <button type="button" class="analytics-tab" [class.active]="activeTab==='delta'" (click)="setAnalyticsTab('delta')">Delta</button>
+    <button type="button" class="analytics-tab" [class.active]="activeTab==='cashflows'" (click)="setAnalyticsTab('cashflows')">Cashflows</button>
+  </nav>
 
   <div class="stats-grid">
     <div class="stat-card">
@@ -35,6 +42,7 @@
     </div>
   </div>
 
+  <ng-container *ngIf="activeTab === 'overview'">
   <div class="card" style="margin-top: 20px;">
     <h3>Investments by Type</h3>
     <div *ngIf="byTypeChartData.labels && byTypeChartData.labels.length > 0" class="chart-container">
@@ -104,7 +112,9 @@
       <p>No data available</p>
     </div>
   </div>
+  </ng-container>
 
+  <ng-container *ngIf="activeTab === 'cashflows'">
   <div class="card" style="margin-top: 20px;">
     <h3>Cashflow by Month</h3>
     <p class="section-hint">Inflow, outflow, and net from investment cashflows (unique to Analytics)</p>
@@ -122,8 +132,9 @@
       </p>
     </div>
   </div>
+  </ng-container>
 
-  <div class="card" style="margin-top: 20px;">
+  <div class="card" style="margin-top: 20px;" *ngIf="activeTab === 'overview' || activeTab === 'allocation' || activeTab === 'delta'">
     <h3>Advance Analytics</h3>
 
     <div *ngIf="advanceErrorMessage" style="background: #fff7ed; color: #9a3412; padding: 12px; border-radius: 6px; margin-bottom: 16px;">
@@ -221,6 +232,7 @@
       </div>
     </div>
 
+    <ng-container *ngIf="activeTab === 'overview' || activeTab === 'allocation'">
     <div class="advance-grid">
       <div class="advance-card">
         <div class="advance-card-header">
@@ -329,8 +341,9 @@
         </div>
       </div>
     </div>
+    </ng-container>
 
-    <div class="advance-card" style="margin-top: 16px;">
+    <div class="advance-card" style="margin-top: 16px;" *ngIf="activeTab === 'allocation'">
       <div class="advance-card-header">
         <div>
           <h4 style="margin: 0 0 6px 0;">Planning: Target Allocation + Rebalance</h4>
@@ -379,7 +392,7 @@
       </div>
     </div>
 
-    <div class="advance-card" style="margin-top: 16px;">
+    <div class="advance-card" style="margin-top: 16px;" *ngIf="activeTab === 'delta'">
       <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
         <h4 style="margin: 0;">Change Between Two Dates (Top Movers)</h4>
         <div class="delta-controls">

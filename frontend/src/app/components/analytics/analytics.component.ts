@@ -22,6 +22,11 @@ export class AnalyticsComponent implements OnInit {
   loading = false;
   errorMessage = '';
   advanceErrorMessage = '';
+  activeTab: 'overview' | 'allocation' | 'delta' | 'cashflows' = 'overview';
+
+  setAnalyticsTab(tab: 'overview' | 'allocation' | 'delta' | 'cashflows') {
+    this.activeTab = tab;
+  }
 
   // Chart options
   barChartOptions: ChartOptions<'bar'> = {

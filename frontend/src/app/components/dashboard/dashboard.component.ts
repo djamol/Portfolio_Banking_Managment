@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { AnalyticsService, DeltaRow, InsightsResponse, ValueSeriesResponse } from '../../services/analytics.service';
+import { BankAnalyticsService } from '../../services/banking/bank-analytics.service';
 import { ChartConfiguration, ChartOptions } from 'chart.js';
 import { getIndianAmountBreakdown, IndianAmountBreakdown } from '../../utils/indian-number.util';
 
@@ -85,6 +86,10 @@ export class DashboardComponent implements OnInit {
   largestHoldingPct = 0;
   largestHoldingAmount = 0;
   largestHoldingLabel = '';
+  bankCashInr = 0;
+  bankCashLabel = '';
+  combinedNetWorth = 0;
+  combinedBreakdown: IndianAmountBreakdown | null = null;
 
   allocationChartData: ChartConfiguration<'doughnut'>['data'] = {
     labels: [],
@@ -145,7 +150,10 @@ export class DashboardComponent implements OnInit {
     }
   };
 
-  constructor(private analyticsService: AnalyticsService) {}
+  constructor(
+    private analyticsService: AnalyticsService,
+    private bankAnalytics: BankAnalyticsService
+  ) {}
 
   ngOnInit() {
     this.refresh();
@@ -157,6 +165,7 @@ export class DashboardComponent implements OnInit {
     this.platformGroups = [];
     this.expandedPlatform = null;
     this.top3ConcentrationPct = 0;
+    this.loadBankCash();
     this.platformCount = 0;
     this.gainerPlatforms = [];
     this.loserPlatforms = [];
@@ -177,6 +186,7 @@ export class DashboardComponent implements OnInit {
         this.totalAmount = this.toNumber(res.data?.total_amount);
         this.totalInvestments = this.toNumber(res.data?.total_investments);
         this.totalBreakdown = getIndianAmountBreakdown(this.totalAmount);
+        this.updateCombinedNetWorth();
         if (this.summaryRows.length) {
           this.buildLargestHoldings();
           this.buildPlatformConcentration();
@@ -580,6 +590,33 @@ export class DashboardComponent implements OnInit {
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
+  }
+
+  private loadBankCash() {
+    this.bankAnalytics.getCashSummary().subscribe({
+      next: (data) => {
+        const inr = (data?.totals_by_currency || []).find(
+          (t) => String(t.currency || 'INR').toUpperCase() === 'INR'
+        );
+        const first = (data?.totals_by_currency || [])[0];
+        const row = inr || first;
+        this.bankCashInr = this.toNumber(row?.total);
+        this.bankCashLabel = row
+          ? `Bank cash (${String(row.currency || 'INR').toUpperCase()})`
+          : 'Bank cash';
+        this.updateCombinedNetWorth();
+      },
+      error: () => {
+        this.bankCashInr = 0;
+        this.bankCashLabel = 'Bank cash';
+        this.updateCombinedNetWorth();
+      }
+    });
+  }
+
+  private updateCombinedNetWorth() {
+    this.combinedNetWorth = this.totalAmount + this.bankCashInr;
+    this.combinedBreakdown = getIndianAmountBreakdown(this.combinedNetWorth);
   }
 
   private formatLabel(dateStr: string): string {

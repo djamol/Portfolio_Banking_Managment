@@ -15,9 +15,8 @@
     <a routerLink="/banking/import" routerLinkActive="active">Import</a>
     <a routerLink="/banking/transactions" routerLinkActive="active">Transactions</a>
     <a routerLink="/banking/rules" routerLinkActive="active">Rules</a>
-    <a routerLink="/banking/analytics" routerLinkActive="active">Analytics</a>
-    <a routerLink="/banking/charts" routerLinkActive="active">Charts</a>
-    <a routerLink="/banking/cashflow" routerLinkActive="active">Cashflow</a>
+    <a routerLink="/banking/budgets" routerLinkActive="active">Budgets</a>
+    <a routerLink="/banking/analytics" [class.active]="isAnalyticsTabActive()">Analytics</a>
     <a routerLink="/banking/interest" routerLinkActive="active">Interest &amp; FD</a>
     <a routerLink="/banking/insights" routerLinkActive="active">Insights</a>
   </nav>
@@ -59,13 +58,19 @@
         <button class="btn btn-primary" (click)="filters.applyFilters()">Apply</button>
         <button class="btn btn-secondary" (click)="filters.clearFilters()">Clear</button>
       </div>
+      <div class="active-filter-chips" *ngIf="filters.filterPayee">
+        <button type="button" class="filter-chip" (click)="clearPayeeFilter()" title="Clear payee filter">
+          Payee: {{ filters.filterPayee }}
+          <span aria-hidden="true">×</span>
+        </button>
+      </div>
     </div>
 
     <div class="advanced-filters" *ngIf="filters.showAdvancedFilters">
       <div class="advanced-filters-head">
         <div>
           <h4>Advanced filters</h4>
-          <p>Narrow by flow, amount range, search, and transfer handling.</p>
+          <p>Narrow by flow, amount range, search, payee, and transfer handling.</p>
         </div>
         <button type="button" class="btn btn-secondary btn-sm" (click)="filters.showAdvancedFilters=false">Close</button>
       </div>
@@ -89,6 +94,10 @@
         <label class="adv-field adv-wide" *ngIf="filters.activeRoute === 'transactions'">
           <span>Search narration / ref / payee</span>
           <input type="search" placeholder="Type and Apply" [(ngModel)]="filters.filterQ" (keyup.enter)="filters.applyFilters()" />
+        </label>
+        <label class="adv-field adv-wide" *ngIf="filters.activeRoute === 'transactions'">
+          <span>Payee</span>
+          <input type="search" placeholder="Exact payee filter" [(ngModel)]="filters.filterPayee" (keyup.enter)="filters.applyFilters()" />
         </label>
         <label class="adv-check">
           <input type="checkbox" [(ngModel)]="filters.excludeTransfers" />

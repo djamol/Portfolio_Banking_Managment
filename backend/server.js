@@ -4,12 +4,14 @@ const path = require('path');
 const fs = require('fs');
 const db = require('./config/index');
 const logger = require('./utils/logger');
+const { authGate } = require('./middleware/auth');
 const investmentRoutes = require('./routes/investments');
 const analyticsRoutes = require('./routes/analytics');
 const categoriesRoutes = require('./routes/categories');
 const portfolioRoutes = require('./routes/portfolio');
 const configRoutes = require('./routes/config');
 const bankingRoutes = require('./routes/banking');
+const authRoutes = require('./routes/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -39,7 +41,12 @@ logger.info('Portfolio app starting', {
 });
 
 app.enable('trust proxy');
-app.use(cors());
+app.use(
+  cors({
+    origin: true,
+    credentials: true
+  })
+);
 app.use(express.json({ limit: '50mb' }));
 
 app.use((req, res, next) => {
@@ -58,16 +65,36 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/api/health', (req, res) => {
-  res.json({
-    success: true,
-    status: 'ok',
+app.get('/api/health', async (req, res) => {
+  let dbOk = false;
+  let dbError = null;
+  try {
+    if (db.getDbType() === 'mongodb') {
+      const mongo = db.getMongoDb();
+      await mongo.command({ ping: 1 });
+      dbOk = true;
+    } else {
+      const pool = db.getPool();
+      await pool.query('SELECT 1');
+      dbOk = true;
+    }
+  } catch (error) {
+    dbError = error.message;
+    logger.warn('Health DB ping failed', { error: error.message });
+  }
+  res.status(dbOk ? 200 : 503).json({
+    success: dbOk,
+    status: dbOk ? 'ok' : 'degraded',
     dbType: db.getDbType(),
+    dbOk,
+    dbError,
     uptimeSeconds: Math.round(process.uptime()),
     timestamp: new Date().toISOString()
   });
 });
 
+app.use('/api', authGate);
+app.use('/api/auth', authRoutes);
 app.use('/api/investments', investmentRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/categories', categoriesRoutes);

@@ -1,6 +1,6 @@
 import { NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
-import { HttpClientModule } from '@angular/common/http';
+import { HTTP_INTERCEPTORS, HttpClientModule } from '@angular/common/http';
 import { RouterModule } from '@angular/router';
 import { NgChartsModule } from 'ng2-charts';
 import { CommonModule } from '@angular/common';
@@ -27,7 +27,9 @@ import { BankingChartsComponent } from './components/banking/charts/banking-char
 import { BankingCashflowComponent } from './components/banking/cashflow/banking-cashflow.component';
 import { BankingInterestComponent } from './components/banking/interest/banking-interest.component';
 import { BankingInsightsComponent } from './components/banking/insights/banking-insights.component';
+import { BankingBudgetsComponent } from './components/banking/budgets/banking-budgets.component';
 import { CashflowsComponent } from './components/cashflows/cashflows.component';
+import { AuthInterceptor } from './services/auth.interceptor';
 import { routes } from './app.routes';
 
 @NgModule({
@@ -53,6 +55,7 @@ import { routes } from './app.routes';
     BankingCashflowComponent,
     BankingInterestComponent,
     BankingInsightsComponent,
+    BankingBudgetsComponent,
     CashflowsComponent
   ],
   imports: [
@@ -63,7 +66,9 @@ import { routes } from './app.routes';
     RouterModule.forRoot(routes, { useHash: true }),
     NgChartsModule
   ],
-  providers: [],
+  providers: [
+    { provide: HTTP_INTERCEPTORS, useClass: AuthInterceptor, multi: true }
+  ],
   bootstrap: [AppComponent]
 })
 export class AppModule { }

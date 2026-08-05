@@ -1,5 +1,4 @@
 import { Component } from '@angular/core';
-import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from './services/auth.service';
 
 @Component({
@@ -9,10 +8,22 @@ import { AuthService } from './services/auth.service';
 })
 export class AppComponent {
   title = 'Portfolio Financial Management';
-  
+  menuOpen = false;
+  openGroup: 'portfolio' | 'insights' | 'data' | null = null;
+
   constructor(public authService: AuthService) {}
-  
+
+  toggleGroup(group: 'portfolio' | 'insights' | 'data') {
+    this.openGroup = this.openGroup === group ? null : group;
+  }
+
+  closeMenu() {
+    this.menuOpen = false;
+    this.openGroup = null;
+  }
+
   logout() {
+    this.closeMenu();
     this.authService.logout();
   }
 }

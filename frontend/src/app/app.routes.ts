@@ -19,6 +19,7 @@ import { BankingChartsComponent } from './components/banking/charts/banking-char
 import { BankingCashflowComponent } from './components/banking/cashflow/banking-cashflow.component';
 import { BankingInterestComponent } from './components/banking/interest/banking-interest.component';
 import { BankingInsightsComponent } from './components/banking/insights/banking-insights.component';
+import { BankingBudgetsComponent } from './components/banking/budgets/banking-budgets.component';
 import { CashflowsComponent } from './components/cashflows/cashflows.component';
 import { authGuard } from './guards/auth.guard';
 
@@ -43,6 +44,7 @@ export const routes: Routes = [
       { path: 'import', component: BankingImportComponent },
       { path: 'transactions', component: BankingTransactionsComponent },
       { path: 'rules', component: BankingRulesComponent },
+      { path: 'budgets', component: BankingBudgetsComponent },
       { path: 'analytics', component: BankingAnalyticsComponent },
       { path: 'charts', component: BankingChartsComponent },
       { path: 'cashflow', component: BankingCashflowComponent },

@@ -23,7 +23,7 @@ UI `banking/` → `banking.service.ts` → `/api/banking/*` → `routes/banking.
 | `cotak-csv.js` | Kotak CSV variant |
 | `generic.js` | Fallback CSV/XLS |
 | `common.js` | `finalizeParsedTxn`, shared categorize |
-| `index.js` | detect order + PDF reject |
+| `index.js` | detect order; savings PDF reject; HDFC CC PDF allowed |
 
 Hints: `bankHint` HDFC|ICICI|DCB|SBI|AXIS|KOTAK. Custom rules re-applied after parse.
 

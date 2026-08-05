@@ -177,25 +177,36 @@ export class LoginComponent implements OnInit {
       return;
     }
 
-    if (this.username === 'amol' && this.password === 'admin') {
-      this.testApiConnection()
-        .then(() => this.applyDatabaseConfig())
-        .then(() => {
-          this.authService.login(this.apiDomain);
-          localStorage.setItem('dbPreset', this.selectedDbPreset);
-          this.persistCustomDbConfig();
-          this.router.navigate(['/dashboard']);
-        })
-        .catch((err: Error) => {
-          this.errorMessage =
-            err?.message ||
-            `Cannot connect to ${this.apiDomain}. Use full URL with protocol and port, e.g. http://your-domain.com:3000`;
-          this.loading = false;
-        });
-    } else {
-      this.errorMessage = 'Invalid username or password';
+    if (!this.username?.trim() || !this.password) {
+      this.errorMessage = 'Username and password are required';
       this.loading = false;
+      return;
     }
+
+    this.authService
+      .loginRemote(this.username.trim(), this.password, this.apiDomain)
+      .subscribe({
+        next: () => {
+          this.testApiConnection()
+            .then(() => this.applyDatabaseConfig())
+            .then(() => {
+              localStorage.setItem('dbPreset', this.selectedDbPreset);
+              this.persistCustomDbConfig();
+              this.router.navigate(['/dashboard']);
+            })
+            .catch((err: Error) => {
+              this.errorMessage =
+                err?.message ||
+                `Cannot connect to ${this.apiDomain}. Use full URL with protocol and port, e.g. http://your-domain.com:3000`;
+              this.loading = false;
+            });
+        },
+        error: (err) => {
+          this.errorMessage =
+            err?.error?.error || err?.message || 'Invalid username or password';
+          this.loading = false;
+        }
+      });
   }
 
   private async applyDatabaseConfig(): Promise<void> {

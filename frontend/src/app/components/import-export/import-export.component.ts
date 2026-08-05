@@ -204,7 +204,8 @@ export class ImportExportComponent {
 
       this.http.post(`${this.apiUrl}/portfolio/import/sql`, {
         sql,
-        freshInstall: this.sqlImportMode === 'fresh'
+        freshInstall: this.sqlImportMode === 'fresh',
+        confirmFreshInstall: this.sqlImportMode === 'fresh'
       }).subscribe({
         next: (response: any) => {
           if (response.success) {
@@ -304,7 +305,8 @@ export class ImportExportComponent {
 
       this.http.post(`${this.apiUrl}/portfolio/import/mongo`, {
         data,
-        freshInstall: this.mongoImportMode === 'fresh'
+        freshInstall: this.mongoImportMode === 'fresh',
+        confirmFreshInstall: this.mongoImportMode === 'fresh'
       }).subscribe({
         next: (response: any) => {
           if (response.success) {

@@ -770,6 +770,94 @@ async function mongoMatchTransfers({ windowDays = 2 } = {}) {
   return { matched };
 }
 
+async function mysqlListMatchedTransfers(limit = 50) {
+  const pool = getPool();
+  const [rows] = await pool.query(
+    `SELECT t.*, a.bank_name, a.account_name
+     FROM bank_transactions t
+     LEFT JOIN bank_accounts a ON a.id = t.account_id
+     WHERE t.linked_transfer_id IS NOT NULL AND t.withdrawal > 0
+     ORDER BY t.txn_date DESC
+     LIMIT ?`,
+    [Math.min(200, Number(limit) || 50)]
+  );
+  const pairs = [];
+  for (const out of rows) {
+    const [linked] = await pool.query(
+      `SELECT t.*, a.bank_name, a.account_name
+       FROM bank_transactions t
+       LEFT JOIN bank_accounts a ON a.id = t.account_id
+       WHERE t.id = ?`,
+      [out.linked_transfer_id]
+    );
+    pairs.push({
+      out,
+      in: linked[0] || null,
+      amount: num(out.withdrawal)
+    });
+  }
+  return pairs;
+}
+
+async function mysqlUnmatchTransfer(txnId) {
+  const pool = getPool();
+  const [rows] = await pool.query('SELECT id, linked_transfer_id FROM bank_transactions WHERE id = ?', [
+    Number(txnId)
+  ]);
+  if (!rows.length || rows[0].linked_transfer_id == null) return false;
+  const a = Number(rows[0].id);
+  const b = Number(rows[0].linked_transfer_id);
+  await pool.query('UPDATE bank_transactions SET linked_transfer_id = NULL WHERE id IN (?, ?)', [a, b]);
+  return true;
+}
+
+async function mongoListMatchedTransfers(limit = 50) {
+  const db = getMongoDb();
+  const outs = await db
+    .collection('bank_transactions')
+    .find({ linked_transfer_id: { $ne: null }, withdrawal: { $gt: 0 } })
+    .sort({ txn_date: -1 })
+    .limit(Math.min(200, Number(limit) || 50))
+    .toArray();
+  const accounts = await db.collection('bank_accounts').find({}).toArray();
+  const byId = new Map(accounts.map((a) => [Number(a.id), a]));
+  const pairs = [];
+  for (const out of outs) {
+    const linked = await db.collection('bank_transactions').findOne({ id: Number(out.linked_transfer_id) });
+    const outAcc = byId.get(Number(out.account_id));
+    const inAcc = linked ? byId.get(Number(linked.account_id)) : null;
+    pairs.push({
+      out: formatDoc({
+        ...out,
+        bank_name: outAcc?.bank_name,
+        account_name: outAcc?.account_name
+      }),
+      in: linked
+        ? formatDoc({
+            ...linked,
+            bank_name: inAcc?.bank_name,
+            account_name: inAcc?.account_name
+          })
+        : null,
+      amount: num(out.withdrawal)
+    });
+  }
+  return pairs;
+}
+
+async function mongoUnmatchTransfer(txnId) {
+  const db = getMongoDb();
+  const row = await db.collection('bank_transactions').findOne({ id: Number(txnId) });
+  if (!row || row.linked_transfer_id == null) return false;
+  const a = Number(row.id);
+  const b = Number(row.linked_transfer_id);
+  await db.collection('bank_transactions').updateMany(
+    { id: { $in: [a, b] } },
+    { $set: { linked_transfer_id: null } }
+  );
+  return true;
+}
+
 async function mysqlGetForecast(accountId) {
   const pool = getPool();
   const params = [];
@@ -898,5 +986,9 @@ module.exports = {
   budgetStatus: (...a) => (impl() === 'mongo' ? mongoBudgetStatus(...a) : mysqlBudgetStatus(...a)),
   getRecurring: (...a) => (impl() === 'mongo' ? mongoGetRecurring(...a) : mysqlGetRecurring(...a)),
   matchTransfers: (...a) => (impl() === 'mongo' ? mongoMatchTransfers(...a) : mysqlMatchTransfers(...a)),
+  listMatchedTransfers: (...a) =>
+    impl() === 'mongo' ? mongoListMatchedTransfers(...a) : mysqlListMatchedTransfers(...a),
+  unmatchTransfer: (...a) =>
+    impl() === 'mongo' ? mongoUnmatchTransfer(...a) : mysqlUnmatchTransfer(...a),
   getForecast: (...a) => (impl() === 'mongo' ? mongoGetForecast(...a) : mysqlGetForecast(...a))
 };

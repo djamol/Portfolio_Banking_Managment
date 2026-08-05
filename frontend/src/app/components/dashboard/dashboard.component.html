@@ -21,13 +21,19 @@
   <div class="kpi-grid">
     <div class="kpi highlight">
       <span class="kpi-label">Net Worth</span>
-      <span class="kpi-value" *ngIf="totalBreakdown">{{ totalBreakdown.primaryDisplay }}</span>
-      <span class="kpi-meta" *ngIf="totalBreakdown">{{ totalBreakdown.full }}</span>
+      <span class="kpi-value" *ngIf="combinedBreakdown">{{ combinedBreakdown.primaryDisplay }}</span>
+      <span class="kpi-meta" *ngIf="combinedBreakdown">{{ combinedBreakdown.full }}</span>
+      <span class="kpi-meta" *ngIf="!combinedBreakdown && totalBreakdown">{{ totalBreakdown.full }}</span>
     </div>
     <div class="kpi">
-      <span class="kpi-label">Holdings</span>
-      <span class="kpi-value">{{ totalInvestments }}</span>
-      <span class="kpi-meta">Active investments</span>
+      <span class="kpi-label">Investments</span>
+      <span class="kpi-value" *ngIf="totalBreakdown">{{ totalBreakdown.primaryDisplay }}</span>
+      <span class="kpi-meta">{{ totalInvestments }} holdings</span>
+    </div>
+    <div class="kpi">
+      <span class="kpi-label">{{ bankCashLabel || 'Bank cash' }}</span>
+      <span class="kpi-value">₹{{ bankCashInr | number:'1.0-0' }}</span>
+      <span class="kpi-meta"><a routerLink="/banking">Open Bank Tracker</a></span>
     </div>
     <div class="kpi" *ngIf="insights?.portfolio">
       <span class="kpi-label">Vs Previous Snapshot</span>

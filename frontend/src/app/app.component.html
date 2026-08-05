@@ -1,41 +1,48 @@
-<nav class="navbar">
+<nav class="navbar" *ngIf="authService.isAuthenticated()">
   <div class="nav-container">
     <a routerLink="/dashboard" class="nav-brand">Investment Tracker</a>
-    <ul class="nav-menu">
-      <li class="nav-item">
-        <a routerLink="/dashboard" routerLinkActive="active" class="nav-link">Dashboard</a>
+    <button
+      type="button"
+      class="nav-toggle"
+      (click)="menuOpen = !menuOpen"
+      [attr.aria-expanded]="menuOpen"
+      aria-label="Toggle navigation">
+      <span></span><span></span><span></span>
+    </button>
+    <ul class="nav-menu" [class.open]="menuOpen">
+      <li class="nav-item nav-group" [class.open]="openGroup === 'portfolio'">
+        <button type="button" class="nav-group-btn" (click)="toggleGroup('portfolio')">Portfolio</button>
+        <ul class="nav-dropdown">
+          <li><a routerLink="/dashboard" routerLinkActive="active" class="nav-link" (click)="closeMenu()">Dashboard</a></li>
+          <li><a routerLink="/investments" routerLinkActive="active" class="nav-link" (click)="closeMenu()">Investments</a></li>
+          <li><a routerLink="/cashflows" routerLinkActive="active" class="nav-link" (click)="closeMenu()">Cashflows</a></li>
+          <li><a routerLink="/investment-summary" routerLinkActive="active" class="nav-link" (click)="closeMenu()">Summary</a></li>
+        </ul>
+      </li>
+      <li class="nav-item nav-group" [class.open]="openGroup === 'insights'">
+        <button type="button" class="nav-group-btn" (click)="toggleGroup('insights')">Insights</button>
+        <ul class="nav-dropdown">
+          <li><a routerLink="/analytics" routerLinkActive="active" class="nav-link" (click)="closeMenu()">Analytics</a></li>
+          <li><a routerLink="/asset-tracker" routerLinkActive="active" class="nav-link" (click)="closeMenu()">Asset Tracker</a></li>
+        </ul>
       </li>
       <li class="nav-item">
-        <a routerLink="/investments" routerLinkActive="active" class="nav-link">Investments</a>
+        <a routerLink="/banking" routerLinkActive="active" class="nav-link" (click)="closeMenu()">Bank</a>
+      </li>
+      <li class="nav-item nav-group" [class.open]="openGroup === 'data'">
+        <button type="button" class="nav-group-btn" (click)="toggleGroup('data')">Data</button>
+        <ul class="nav-dropdown">
+          <li><a routerLink="/import-data" routerLinkActive="active" class="nav-link" (click)="closeMenu()">Import statements</a></li>
+          <li><a routerLink="/import-export" routerLinkActive="active" class="nav-link" (click)="closeMenu()">Backup &amp; restore</a></li>
+        </ul>
       </li>
       <li class="nav-item">
-        <a routerLink="/cashflows" routerLinkActive="active" class="nav-link">Cashflows</a>
-      </li>
-      <li class="nav-item">
-        <a routerLink="/investment-summary" routerLinkActive="active" class="nav-link">Investment Summary</a>
-      </li>
-      <li class="nav-item">
-        <a routerLink="/analytics" routerLinkActive="active" class="nav-link">Analytics</a>
-      </li>
-      <li class="nav-item">
-        <a routerLink="/asset-tracker" routerLinkActive="active" class="nav-link">Asset Tracker</a>
-      </li>
-      <li class="nav-item">
-        <a routerLink="/banking" routerLinkActive="active" class="nav-link">Bank Tracker</a>
-      </li>
-      <li class="nav-item">
-        <a routerLink="/import-data" routerLinkActive="active" class="nav-link">Import Data</a>
-      </li>
-      <li class="nav-item">
-        <a routerLink="/import-export" routerLinkActive="active" class="nav-link">Import/Export</a>
-      </li>
-      <li class="nav-item" *ngIf="authService.isAuthenticated()">
-        <button (click)="logout()" class="logout-btn">Logout</button>
+        <button type="button" (click)="logout()" class="logout-btn">Logout</button>
       </li>
     </ul>
   </div>
 </nav>
 
-<main class="main-content">
+<main class="main-content" [class.no-nav]="!authService.isAuthenticated()">
   <router-outlet />
 </main>

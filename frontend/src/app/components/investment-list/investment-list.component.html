@@ -1,12 +1,15 @@
 <div class="investment-list-container">
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 12px; flex-wrap: wrap;">
     <h2 style="margin: 0;">Investment Portfolio</h2>
-    <button (click)="openAddModal()" class="btn btn-primary">Add Investment</button>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+      <a routerLink="/investments/new" class="btn btn-secondary">Full form</a>
+      <button (click)="openAddModal()" class="btn btn-primary">Add Investment</button>
+    </div>
   </div>
 
   <div *ngIf="errorMessage" style="background: #fee; color: #c33; padding: 12px; border-radius: 6px; margin-bottom: 20px;">
     <strong>Error:</strong> {{ errorMessage }}<br>
-    <small>Make sure the backend server is running on http://localhost:3000</small>
+    <small>Make sure the backend is reachable at {{ apiDomain }}</small>
   </div>
 
   <!-- Controls Section -->
@@ -169,6 +172,7 @@
           <td>{{ formatDate(investment.investment_date) }}</td>
           <td>
             <button (click)="openEditModal(investment)" class="btn btn-sm btn-outline-primary">Edit</button>
+            <a [routerLink]="['/investments/edit', investment.id]" class="btn btn-sm btn-outline-secondary" style="margin-left: 5px;">Full form</a>
             <button (click)="deleteInvestment(investment.id)" class="btn btn-sm btn-outline-danger" style="margin-left: 5px;">Delete</button>
             <button 
               (click)="viewHistory(investment)" 

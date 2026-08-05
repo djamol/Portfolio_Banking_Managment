@@ -1,3 +1,9 @@
+<nav class="analytics-subnav">
+  <a routerLink="/banking/analytics" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Summary</a>
+  <a routerLink="/banking/charts" routerLinkActive="active">Charts</a>
+  <a routerLink="/banking/cashflow" routerLinkActive="active">Cashflow</a>
+</nav>
+
 <div class="stat-grid" *ngIf="analyticsState.analytics">
       <div class="stat-card credit">
         <div class="stat-label">Credits</div>

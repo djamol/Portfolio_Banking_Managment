@@ -40,7 +40,7 @@ History written on amount changes (create/update/delete patterns in store).
 
 - Core: `db/banking.js` (accounts, txns, import, analytics, fingerprints).
 - Advanced: `db/banking-advanced.js` spread into banking exports (rules, budgets, recurring, transfers, forecast, continuity, bulk-delete, undo batch).
-- Parse entry: `parseBankStatement` from `utils/bank-parsers` (hint or auto-detect; PDF rejected).
+- Parse entry: `parseBankStatement` from `utils/bank-parsers` (hint or auto-detect; savings PDF rejected; HDFC CC PDF allowed).
 - Upload: multer memory, 40MB, field `file`.
 
 ## Logging

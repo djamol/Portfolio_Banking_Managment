@@ -321,6 +321,20 @@ router.post('/budgets', async (req, res) => {
   }
 });
 
+router.put('/budgets/:id', async (req, res) => {
+  try {
+    if (!req.body.category || req.body.amount == null) {
+      return res.status(400).json({ success: false, error: 'category and amount are required' });
+    }
+    const row = await banking.upsertBudget({ ...req.body, id: Number(req.params.id) });
+    if (!row) return res.status(404).json({ success: false, error: 'Budget not found' });
+    res.json({ success: true, data: row });
+  } catch (error) {
+    console.error('Error updating budget:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.delete('/budgets/:id', async (req, res) => {
   try {
     const ok = await banking.deleteBudget(req.params.id);
@@ -348,6 +362,29 @@ router.post('/transfers/match', async (req, res) => {
     res.json({ success: true, data });
   } catch (error) {
     console.error('Error matching transfers:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/transfers/matched', async (req, res) => {
+  try {
+    const data = await banking.listMatchedTransfers(req.query.limit);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error listing matched transfers:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/transfers/unmatch', async (req, res) => {
+  try {
+    const txnId = req.body?.txn_id ?? req.body?.id;
+    if (!txnId) return res.status(400).json({ success: false, error: 'txn_id is required' });
+    const ok = await banking.unmatchTransfer(txnId);
+    if (!ok) return res.status(404).json({ success: false, error: 'Linked transfer not found' });
+    res.json({ success: true, data: { unmatched: true } });
+  } catch (error) {
+    console.error('Error unmatching transfer:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

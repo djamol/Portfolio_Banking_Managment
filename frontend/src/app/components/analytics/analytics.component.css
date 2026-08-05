@@ -18,7 +18,7 @@
   border-radius: 8px;
   padding: 20px;
   text-align: center;
-  border-left: 4px solid #667eea;
+  border-left: 4px solid var(--app-accent);
 }
 
 .stat-card h3 {
@@ -31,6 +31,30 @@
   font-size: 24px;
   font-weight: bold;
   color: #1e293b;
+}
+
+.analytics-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.analytics-tab {
+  border: 1px solid var(--app-border, #e2e8f0);
+  background: var(--app-surface, #fff);
+  color: var(--app-muted, #64748b);
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.analytics-tab.active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
 }
 
 .chart-container {

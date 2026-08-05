@@ -1,4 +1,3 @@
-/* page-specific */
 .budget-progress-cell {
   min-width: 120px;
 }
@@ -15,7 +14,6 @@
   height: 100%;
   background: var(--bank-accent, #3b82f6);
   border-radius: 999px;
-  transition: width 0.2s ease;
 }
 
 .budget-bar.warn .budget-bar-fill {
@@ -33,4 +31,10 @@
 
 tr.budget-over {
   background: #fef2f2;
+}
+
+.row-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }

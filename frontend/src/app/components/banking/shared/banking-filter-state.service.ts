@@ -8,6 +8,7 @@ export type BankingRouteId =
   | 'import'
   | 'transactions'
   | 'rules'
+  | 'budgets'
   | 'analytics'
   | 'charts'
   | 'cashflow'
@@ -117,6 +118,7 @@ export class BankingFilterState {
     return (
       r === 'overview' ||
       r === 'transactions' ||
+      r === 'budgets' ||
       r === 'analytics' ||
       r === 'charts' ||
       r === 'cashflow' ||
@@ -179,6 +181,12 @@ export class BankingFilterState {
     this.datePreset = 'all';
     this.excludeTransfers = true;
     this.showAdvancedFilters = false;
+    this.notifyChanged();
+  }
+
+  clearPayeeFilter() {
+    this.filterPayee = '';
+    this.filterOffset = 0;
     this.notifyChanged();
   }
 

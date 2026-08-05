@@ -25,6 +25,8 @@ export class BankingInsightsComponent implements OnInit, OnDestroy {
   duplicateCleaning = false;
   duplicateGroupSelected: Record<number, boolean> = {};
   topPayees: any[] = [];
+  matchedTransfers: any[] = [];
+  transferMatching = false;
 
   private readonly destroy$ = new Subject<void>();
 
@@ -61,6 +63,14 @@ export class BankingInsightsComponent implements OnInit, OnDestroy {
     });
     this.analyticsState.loadCashSummary();
     this.loadTopPayees();
+    this.loadMatchedTransfers();
+  }
+
+  loadMatchedTransfers() {
+    this.analyticsService.listMatchedTransfers(40).subscribe({
+      next: (rows) => (this.matchedTransfers = rows || []),
+      error: () => (this.matchedTransfers = [])
+    });
   }
 
   loadTopPayees() {
@@ -84,13 +94,32 @@ export class BankingInsightsComponent implements OnInit, OnDestroy {
   }
 
   runTransferMatch() {
+    this.transferMatching = true;
     this.analyticsService.matchTransfers().subscribe({
       next: (r) => {
+        this.transferMatching = false;
         this.ctx.flash('success', `Matched ${r.matched} cross-account transfers`);
+        this.loadMatchedTransfers();
         this.analyticsState.loadAnalytics();
         this.filters.requestRefresh();
       },
-      error: (err) => this.ctx.flash('error', err.message || 'Transfer match failed')
+      error: (err) => {
+        this.transferMatching = false;
+        this.ctx.flash('error', err.message || 'Transfer match failed');
+      }
+    });
+  }
+
+  unmatchTransferPair(pair: any) {
+    const id = pair?.out?.id;
+    if (!id || !confirm('Unlink this transfer pair?')) return;
+    this.analyticsService.unmatchTransfer(Number(id)).subscribe({
+      next: () => {
+        this.ctx.flash('success', 'Transfer unlinked');
+        this.loadMatchedTransfers();
+        this.analyticsState.loadAnalytics();
+      },
+      error: (err) => this.ctx.flash('error', err.message || 'Unmatch failed')
     });
   }
 

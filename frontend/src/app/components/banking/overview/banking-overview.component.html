@@ -7,7 +7,7 @@
     <div class="quick-links">
       <a class="quick-link-tile" routerLink="/banking/import">
         Import statement
-        <small>Upload CSV / Excel / bank PDF</small>
+        <small>CSV / Excel (HDFC CC PDF supported)</small>
       </a>
       <a class="quick-link-tile" routerLink="/banking/transactions">
         Transactions
@@ -91,67 +91,33 @@
           Month
           <input type="month" [(ngModel)]="budgetMonth" (ngModelChange)="onBudgetMonthChange()" />
         </label>
-      </div>
-      <div class="form-grid" style="margin-bottom: 1rem;">
-        <div class="form-group">
-          <label>Category</label>
-          <input list="budget-category-list" [(ngModel)]="budgetForm.category" placeholder="Select or type…" />
-          <datalist id="budget-category-list">
-            <option *ngFor="let c of ctx.categories" [value]="c"></option>
-          </datalist>
-        </div>
-        <div class="form-group">
-          <label>Amount</label>
-          <input type="number" [(ngModel)]="budgetForm.amount" min="0" />
-        </div>
-        <div class="form-group">
-          <label>Month</label>
-          <input type="month" [(ngModel)]="budgetForm.period_month" />
-        </div>
-        <div class="form-group">
-          <label>Account (optional)</label>
-          <select [(ngModel)]="budgetForm.account_id">
-            <option [ngValue]="null">All ctx.accounts</option>
-            <option *ngFor="let a of ctx.accounts" [ngValue]="a.id">{{ a.bank_name }} – {{ a.account_name }}</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Notes</label>
-          <input [(ngModel)]="budgetForm.notes" placeholder="Optional" />
-        </div>
-        <div class="form-group">
-          <label>&nbsp;</label>
-          <button class="btn btn-primary" type="button" (click)="saveBudget()">Add budget</button>
-        </div>
+        <a routerLink="/banking/budgets" class="btn btn-secondary btn-sm">Manage budgets</a>
       </div>
       <table class="data-table compact" *ngIf="budgets.length; else noBudgets">
         <thead>
           <tr>
             <th>Category</th>
-            <th>Month</th>
-            <th>Account</th>
             <th>Budget</th>
             <th>Spent</th>
-            <th>Remaining</th>
-            <th>%</th>
-            <th></th>
+            <th>Progress</th>
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let b of budgets">
+          <tr *ngFor="let b of budgets" [class.budget-over]="(b.pct || 0) >= 100">
             <td>{{ b.category }}</td>
-            <td>{{ b.period_month || budgetMonth }}</td>
-            <td>{{ ctx.accountLabel(b.account_id) }}</td>
             <td>₹{{ formatMoney(b.amount) }}</td>
             <td class="debit">₹{{ formatMoney(b.spent) }}</td>
-            <td [class.credit]="(b.remaining||0)>=0" [class.debit]="(b.remaining||0)<0">₹{{ formatMoney(b.remaining) }}</td>
-            <td>{{ b.pct || 0 }}%</td>
-            <td><button class="link-btn danger" (click)="deleteBudget(b)">×</button></td>
+            <td class="budget-progress-cell">
+              <div class="budget-bar" [class.over]="(b.pct || 0) >= 100" [class.warn]="(b.pct || 0) >= 80 && (b.pct || 0) < 100">
+                <div class="budget-bar-fill" [style.width.%]="budgetBarWidth(b.pct)"></div>
+              </div>
+              <span class="budget-pct" [class.debit]="(b.pct || 0) >= 100">{{ b.pct || 0 }}%</span>
+            </td>
           </tr>
         </tbody>
       </table>
       <ng-template #noBudgets>
-        <p class="empty">No budgets yet. Add a category budget to track spending.</p>
+        <p class="empty">No budgets yet. <a routerLink="/banking/budgets">Add a category budget</a> to track spending.</p>
       </ng-template>
     </div>
 
