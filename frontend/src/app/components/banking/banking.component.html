@@ -932,6 +932,27 @@
         <option *ngFor="let a of accounts" [ngValue]="a.id">{{ a.bank_name }} – {{ a.account_name }}</option>
       </select>
       <button class="btn btn-secondary" (click)="checkContinuity()" [disabled]="!continuityAccountId">Check balance continuity</button>
+      <select [(ngModel)]="duplicateAccountId">
+        <option [ngValue]="''">All accounts (duplicates)</option>
+        <option *ngFor="let a of accounts" [ngValue]="a.id">{{ a.bank_name }} – {{ a.account_name }}</option>
+      </select>
+      <button class="btn btn-secondary" (click)="scanDuplicates()" [disabled]="duplicateScanning">
+        {{ duplicateScanning ? 'Scanning…' : 'Scan near-duplicates' }}
+      </button>
+      <button
+        class="btn btn-secondary"
+        (click)="removeSelectedDuplicates()"
+        [disabled]="duplicateCleaning || !duplicateScan?.groups?.length"
+      >
+        Remove selected
+      </button>
+      <button
+        class="btn btn-danger-outline"
+        (click)="autoCleanDuplicates()"
+        [disabled]="duplicateCleaning || !duplicateScan?.groups?.length"
+      >
+        {{ duplicateCleaning ? 'Cleaning…' : 'Auto-clean all' }}
+      </button>
     </div>
 
     <div class="stat-grid" *ngIf="cashSummary?.totals_by_currency?.length">
@@ -1058,6 +1079,55 @@
             <td>₹{{ formatMoney(g.actual_balance) }}</td>
             <td class="debit">₹{{ formatMoney(g.diff) }}</td>
             <td class="narration">{{ g.narration }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" *ngIf="duplicateScan">
+      <h3>
+        Near-duplicates —
+        {{ duplicateScan.groups_found || 0 }} group(s)
+        <span *ngIf="duplicateScan.truncated"> (showing {{ duplicateScan.groups?.length || 0 }})</span>
+        · scanned {{ duplicateScan.scanned || 0 }}
+      </h3>
+      <p class="hint">
+        Same account, date, amount, similar closing balance and narration (volatile refs stripped). Keep row stays; selected groups’ extras are deleted.
+      </p>
+      <p class="hint" *ngIf="!duplicateScan.groups?.length">No near-duplicates found.</p>
+      <div class="section-actions wrap" *ngIf="duplicateScan.groups?.length">
+        <button class="link-btn" type="button" (click)="toggleAllDuplicateGroups(true)">Select all</button>
+        <button class="link-btn" type="button" (click)="toggleAllDuplicateGroups(false)">Select none</button>
+      </div>
+      <table class="data-table compact" *ngIf="duplicateScan.groups?.length">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Account</th>
+            <th>Date</th>
+            <th>Debit</th>
+            <th>Credit</th>
+            <th>Balance</th>
+            <th>Keep</th>
+            <th>Remove</th>
+            <th>#</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let g of duplicateScan.groups; let i = index">
+            <td>
+              <input type="checkbox" [(ngModel)]="duplicateGroupSelected[i]" />
+            </td>
+            <td>{{ accountLabel(g.account_id) }}</td>
+            <td>{{ g.txn_date }}</td>
+            <td class="debit">{{ g.withdrawal ? ('₹' + formatMoney(g.withdrawal)) : '—' }}</td>
+            <td class="credit">{{ g.deposit ? ('₹' + formatMoney(g.deposit)) : '—' }}</td>
+            <td>₹{{ formatMoney(g.balance) }}</td>
+            <td class="narration">{{ g.keep?.narration }}</td>
+            <td class="narration">
+              <div *ngFor="let d of g.duplicates">{{ d.narration }}</div>
+            </td>
+            <td>{{ g.delete_ids?.length || 0 }}</td>
           </tr>
         </tbody>
       </table>

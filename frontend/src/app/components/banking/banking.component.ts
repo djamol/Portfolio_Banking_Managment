@@ -130,6 +130,12 @@ export class BankingComponent implements OnInit {
   forecast: any = null;
   continuity: any = null;
   continuityAccountId: number | '' = '';
+  duplicateAccountId: number | '' = '';
+  duplicateScan: any = null;
+  duplicateScanning = false;
+  duplicateCleaning = false;
+  /** group index → selected for delete */
+  duplicateGroupSelected: Record<number, boolean> = {};
   cashSummary: {
     accounts: Array<{
       id: number;
@@ -1379,6 +1385,117 @@ export class BankingComponent implements OnInit {
         );
       },
       error: (err) => this.flash('error', err.message || 'Continuity check failed')
+    });
+  }
+
+  scanDuplicates() {
+    this.duplicateScanning = true;
+    const accountId =
+      this.duplicateAccountId === '' || this.duplicateAccountId == null
+        ? null
+        : Number(this.duplicateAccountId);
+    this.bankingService.scanDuplicates(accountId).subscribe({
+      next: (data) => {
+        this.duplicateScanning = false;
+        this.duplicateScan = data;
+        this.duplicateGroupSelected = {};
+        (data?.groups || []).forEach((_: any, i: number) => {
+          this.duplicateGroupSelected[i] = true;
+        });
+        const found = data?.groups_found || 0;
+        const shown = data?.groups?.length || 0;
+        this.flash(
+          found ? 'info' : 'success',
+          found
+            ? `Found ${found} near-duplicate group(s)${data?.truncated ? ` (showing ${shown})` : ''}`
+            : 'No near-duplicates found'
+        );
+      },
+      error: (err) => {
+        this.duplicateScanning = false;
+        this.flash('error', err.message || 'Duplicate scan failed');
+      }
+    });
+  }
+
+  toggleAllDuplicateGroups(selected: boolean) {
+    if (!this.duplicateScan?.groups) return;
+    this.duplicateScan.groups.forEach((_: any, i: number) => {
+      this.duplicateGroupSelected[i] = selected;
+    });
+  }
+
+  selectedDuplicateDeleteIds(): number[] {
+    const ids: number[] = [];
+    (this.duplicateScan?.groups || []).forEach((g: any, i: number) => {
+      if (this.duplicateGroupSelected[i]) {
+        for (const id of g.delete_ids || []) ids.push(Number(id));
+      }
+    });
+    return ids;
+  }
+
+  removeSelectedDuplicates() {
+    const ids = this.selectedDuplicateDeleteIds();
+    if (!ids.length) {
+      this.flash('error', 'Select at least one duplicate group');
+      return;
+    }
+    if (!confirm(`Delete ${ids.length} near-duplicate transaction(s)? Keep one row per selected group.`)) {
+      return;
+    }
+    this.duplicateCleaning = true;
+    const accountId =
+      this.duplicateAccountId === '' || this.duplicateAccountId == null
+        ? null
+        : Number(this.duplicateAccountId);
+    this.bankingService.cleanDuplicates({ account_id: accountId, delete_ids: ids }).subscribe({
+      next: (data) => {
+        this.duplicateCleaning = false;
+        this.flash('success', `Deleted ${data?.deleted || 0} near-duplicate(s)`);
+        this.scanDuplicates();
+        this.loadTransactions();
+      },
+      error: (err) => {
+        this.duplicateCleaning = false;
+        this.flash('error', err.message || 'Clean failed');
+      }
+    });
+  }
+
+  autoCleanDuplicates() {
+    const total = (this.duplicateScan?.groups || []).reduce(
+      (sum: number, g: any) => sum + (g.delete_ids?.length || 0),
+      0
+    );
+    if (!this.duplicateScan) {
+      this.flash('error', 'Scan duplicates first');
+      return;
+    }
+    if (!total) {
+      this.flash('info', 'Nothing to clean');
+      return;
+    }
+    if (!confirm(`Auto-clean: delete ${total} near-duplicates, keep 1 per group?`)) return;
+    this.duplicateCleaning = true;
+    const accountId =
+      this.duplicateAccountId === '' || this.duplicateAccountId == null
+        ? null
+        : Number(this.duplicateAccountId);
+    this.bankingService.cleanDuplicates({ account_id: accountId }).subscribe({
+      next: (data) => {
+        this.duplicateCleaning = false;
+        this.flash(
+          'success',
+          `Auto-cleaned ${data?.deleted || 0} near-duplicate(s) across ${data?.groups_found || 0} group(s)`
+        );
+        this.scanDuplicates();
+        this.loadTransactions();
+      },
+      error: (err) => {
+        this.duplicateCleaning = false;
+        this.flash('error', err.message || 'Auto-clean failed');
+      }
     });
   }
 

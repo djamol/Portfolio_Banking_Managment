@@ -260,6 +260,32 @@ router.get('/accounts/:id/continuity', async (req, res) => {
   }
 });
 
+router.get('/duplicates/scan', async (req, res) => {
+  try {
+    const accountId = req.query.account_id || null;
+    const data = await banking.findNearDuplicates(accountId);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error scanning near-duplicates:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/duplicates/clean', async (req, res) => {
+  try {
+    const accountId = req.body.account_id != null && req.body.account_id !== '' ? req.body.account_id : null;
+    const deleteIds = Array.isArray(req.body.delete_ids) ? req.body.delete_ids : null;
+    const data = await banking.cleanNearDuplicates(accountId, {
+      deleteIds,
+      dryRun: !!req.body.dry_run
+    });
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error cleaning near-duplicates:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.get('/budgets', async (req, res) => {
   try {
     const rows = await banking.getBudgets(req.query.period_month);

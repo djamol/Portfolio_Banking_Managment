@@ -284,6 +284,30 @@ export class BankingService {
     );
   }
 
+  scanDuplicates(accountId?: number | null): Observable<any> {
+    let params = new HttpParams();
+    if (accountId != null && accountId !== undefined) {
+      params = params.set('account_id', String(accountId));
+    }
+    return this.http.get<ApiResponse<any>>(`${this.getApiUrl()}/duplicates/scan`, { params }).pipe(
+      map((r) => (r.success ? r.data : null))
+    );
+  }
+
+  cleanDuplicates(opts: {
+    account_id?: number | null;
+    delete_ids?: number[];
+    dry_run?: boolean;
+  } = {}): Observable<any> {
+    return this.http
+      .post<ApiResponse<any>>(`${this.getApiUrl()}/duplicates/clean`, {
+        account_id: opts.account_id ?? null,
+        delete_ids: opts.delete_ids,
+        dry_run: !!opts.dry_run
+      })
+      .pipe(map((r) => (r.success ? r.data : null)));
+  }
+
   undoImportBatch(batchId: string): Observable<{ deleted: number; found: number }> {
     return this.http
       .delete<ApiResponse<{ deleted: number; found: number }>>(

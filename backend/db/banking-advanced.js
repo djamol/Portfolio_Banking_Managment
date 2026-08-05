@@ -6,6 +6,7 @@ const {
   suggestCategory,
   isTransferCategory
 } = require('../utils/bank-parsers/common');
+const { clusterNearDuplicates, collectDeleteIds } = require('../utils/bank-duplicate');
 
 function num(v, fallback = 0) {
   const n = Number(v);
@@ -325,6 +326,129 @@ async function mongoBalanceContinuity(accountId) {
     }
   }
   return { account_id: Number(accountId), checked: rows.length, gaps: gaps.slice(0, 100) };
+}
+
+/* ---------- Near-duplicate scan / clean ---------- */
+
+async function mysqlLoadDuplicateCandidates(accountId) {
+  const pool = getPool();
+  const params = [];
+  let sql = `SELECT id, account_id, txn_date, narration, withdrawal, deposit, balance,
+                    category, category_source, payee, fingerprint, import_batch_id
+             FROM bank_transactions
+             WHERE balance IS NOT NULL`;
+  if (accountId != null && accountId !== '') {
+    sql += ' AND account_id = ?';
+    params.push(Number(accountId));
+  }
+  sql += ' ORDER BY account_id ASC, txn_date ASC, id ASC';
+  const [rows] = await pool.query(sql, params);
+  return rows;
+}
+
+async function mongoLoadDuplicateCandidates(accountId) {
+  const db = getMongoDb();
+  const filter = { balance: { $ne: null } };
+  if (accountId != null && accountId !== '') {
+    filter.account_id = Number(accountId);
+  }
+  return db
+    .collection('bank_transactions')
+    .find(filter, {
+      projection: {
+        id: 1,
+        account_id: 1,
+        txn_date: 1,
+        narration: 1,
+        withdrawal: 1,
+        deposit: 1,
+        balance: 1,
+        category: 1,
+        category_source: 1,
+        payee: 1,
+        fingerprint: 1,
+        import_batch_id: 1
+      }
+    })
+    .sort({ account_id: 1, txn_date: 1, id: 1 })
+    .toArray();
+}
+
+async function mysqlFindNearDuplicates(accountId) {
+  const rows = await mysqlLoadDuplicateCandidates(accountId);
+  const result = clusterNearDuplicates(rows);
+  return {
+    account_id: accountId != null && accountId !== '' ? Number(accountId) : null,
+    ...result
+  };
+}
+
+async function mongoFindNearDuplicates(accountId) {
+  const rows = await mongoLoadDuplicateCandidates(accountId);
+  const result = clusterNearDuplicates(rows);
+  return {
+    account_id: accountId != null && accountId !== '' ? Number(accountId) : null,
+    ...result
+  };
+}
+
+function resolveCleanTargets(scan, deleteIds) {
+  const groupsFound = scan.groups_found;
+  const keptIds = (scan.groups || []).map((g) => Number(g.keep?.id)).filter(Boolean);
+  const allowed = new Set(collectDeleteIds(scan));
+  let idsToDelete;
+  if (Array.isArray(deleteIds) && deleteIds.length) {
+    idsToDelete = deleteIds.map(Number).filter((id) => allowed.has(id));
+  } else {
+    idsToDelete = [...allowed];
+  }
+  return { groupsFound, keptIds, idsToDelete };
+}
+
+async function mysqlCleanNearDuplicates(accountId, opts = {}) {
+  const scan = await mysqlFindNearDuplicates(accountId);
+  const { groupsFound, keptIds, idsToDelete } = resolveCleanTargets(scan, opts.deleteIds);
+
+  if (opts.dryRun) {
+    return {
+      groups_found: groupsFound,
+      deleted: 0,
+      kept_ids: keptIds,
+      deleted_ids: idsToDelete,
+      dry_run: true
+    };
+  }
+
+  const deleted = await mysqlBulkDelete(idsToDelete);
+  return {
+    groups_found: groupsFound,
+    deleted,
+    kept_ids: keptIds,
+    deleted_ids: idsToDelete
+  };
+}
+
+async function mongoCleanNearDuplicates(accountId, opts = {}) {
+  const scan = await mongoFindNearDuplicates(accountId);
+  const { groupsFound, keptIds, idsToDelete } = resolveCleanTargets(scan, opts.deleteIds);
+
+  if (opts.dryRun) {
+    return {
+      groups_found: groupsFound,
+      deleted: 0,
+      kept_ids: keptIds,
+      deleted_ids: idsToDelete,
+      dry_run: true
+    };
+  }
+
+  const deleted = await mongoBulkDelete(idsToDelete);
+  return {
+    groups_found: groupsFound,
+    deleted,
+    kept_ids: keptIds,
+    deleted_ids: idsToDelete
+  };
 }
 
 /* ---------- Budgets ---------- */
@@ -764,6 +888,10 @@ module.exports = {
     impl() === 'mongo' ? mongoCreateTransaction(...a) : mysqlCreateTransaction(...a),
   balanceContinuity: (...a) =>
     impl() === 'mongo' ? mongoBalanceContinuity(...a) : mysqlBalanceContinuity(...a),
+  findNearDuplicates: (...a) =>
+    impl() === 'mongo' ? mongoFindNearDuplicates(...a) : mysqlFindNearDuplicates(...a),
+  cleanNearDuplicates: (...a) =>
+    impl() === 'mongo' ? mongoCleanNearDuplicates(...a) : mysqlCleanNearDuplicates(...a),
   getBudgets: (...a) => (impl() === 'mongo' ? mongoGetBudgets(...a) : mysqlGetBudgets(...a)),
   upsertBudget: (...a) => (impl() === 'mongo' ? mongoUpsertBudget(...a) : mysqlUpsertBudget(...a)),
   deleteBudget: (...a) => (impl() === 'mongo' ? mongoDeleteBudget(...a) : mysqlDeleteBudget(...a)),
