@@ -1,0 +1,98 @@
+<div class="section-actions">
+      <button class="btn btn-primary" (click)="openRuleForm()">Add rule</button>
+      <select [(ngModel)]="recategorizeMode">
+        <option value="auto_only">Apply to auto only</option>
+        <option value="uncategorized">Uncategorized only</option>
+        <option value="all">Overwrite all</option>
+      </select>
+      <button class="btn btn-secondary" (click)="recategorize()">Run auto-categorize now</button>
+    </div>
+    <p class="hint">
+      Categories use <code>Category_SubCategory_Detail</code> (purpose over rail — e.g. not bare “UPI”).
+      Custom rules run before built-in patterns. Manual categories are preserved unless you choose “Overwrite all”.
+      Use Recategorize (auto only) to refresh older “UPI” / generic labels.
+      Pattern can be plain text or a regex (e.g. <code>SWIGGY|ZOMATO</code>).
+    </p>
+
+    <div class="card" *ngIf="showRuleForm">
+      <h3>{{ editingRuleId ? 'Edit category rule' : 'New category rule' }}</h3>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Pattern</label>
+          <input [(ngModel)]="ruleForm.pattern" placeholder="e.g. SWIGGY" />
+        </div>
+        <div class="form-group">
+          <label>Match field</label>
+          <select [(ngModel)]="ruleForm.match_field">
+            <option value="narration">Narration</option>
+            <option value="payee">Payee</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <input list="rule-category-list" [(ngModel)]="ruleForm.category" placeholder="Select or type…" />
+          <datalist id="rule-category-list">
+            <option *ngFor="let c of ctx.categories" [value]="c"></option>
+          </datalist>
+        </div>
+        <div class="form-group">
+          <label>Priority (lower = first)</label>
+          <input type="number" [(ngModel)]="ruleForm.priority" />
+        </div>
+        <div class="form-group">
+          <label>Account</label>
+          <select [(ngModel)]="ruleForm.account_id">
+            <option [ngValue]="null">All ctx.accounts</option>
+            <option *ngFor="let a of ctx.accounts" [ngValue]="a.id">{{ a.bank_name }} – {{ a.account_name }}</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Active</label>
+          <label class="chk-inline">
+            <input type="checkbox" [ngModel]="isRuleActive(ruleForm)" (ngModelChange)="ruleForm.is_active = $event ? 1 : 0" />
+            Enabled
+          </label>
+        </div>
+      </div>
+      <div class="section-actions">
+        <button class="btn btn-primary" (click)="saveRule()">{{ editingRuleId ? 'Update rule' : 'Save rule' }}</button>
+        <button class="btn btn-secondary" (click)="showRuleForm=false; editingRuleId=null">Cancel</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <table class="data-table" *ngIf="rules.length; else noRules">
+        <thead>
+          <tr>
+            <th>Priority</th>
+            <th>Pattern</th>
+            <th>Field</th>
+            <th>Category</th>
+            <th>Account</th>
+            <th>Active</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let r of rules" [class.inactive-row]="!isRuleActive(r)">
+            <td>{{ r.priority }}</td>
+            <td><code>{{ r.pattern }}</code></td>
+            <td>{{ r.match_field }}</td>
+            <td>{{ r.category }}</td>
+            <td>{{ ctx.accountLabel(r.account_id) }}</td>
+            <td>
+              <button class="link-btn" type="button" (click)="toggleRuleActive(r)">
+                {{ isRuleActive(r) ? 'On' : 'Off' }}
+              </button>
+            </td>
+            <td class="row-actions">
+              <button class="link-btn" type="button" (click)="editRule(r)">Edit</button>
+              <button class="link-btn danger" type="button" (click)="deleteRule(r)">Delete</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <ng-template #noRules>
+        <p class="empty">No custom rules yet. Example: pattern <code>SWIGGY</code> → category Food / Shopping.</p>
+      </ng-template>
+    </div>

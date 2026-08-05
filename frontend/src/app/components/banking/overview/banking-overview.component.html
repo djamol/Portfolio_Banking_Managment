@@ -1,0 +1,165 @@
+<div class="quick-links">
+      <a class="quick-link-tile" routerLink="/banking/import">Import statement</a>
+      <a class="quick-link-tile" routerLink="/banking/transactions">Transactions</a>
+      <a class="quick-link-tile" routerLink="/banking/insights">Insights</a>
+    </div>
+
+    <div class="stat-grid" *ngIf="analyticsState.cashSummary?.totals_by_currency?.length">
+      <div class="stat-card" *ngFor="let t of analyticsState.cashSummary!.totals_by_currency">
+        <div class="stat-label">Cash position ({{ t.currency }})</div>
+        <div class="stat-value">{{ formatCurrency(t.total, t.currency) }}</div>
+      </div>
+      <div class="stat-card" *ngIf="analyticsState.cashSummary">
+        <div class="stat-label">Active accounts</div>
+        <div class="stat-value">{{ analyticsState.cashSummary.active_count }}</div>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-label">Accounts</div>
+        <div class="stat-value">{{ ctx.accounts.length }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Latest combined balance</div>
+        <div class="stat-value">₹{{ formatMoney(totalBalance()) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Transactions (filtered)</div>
+        <div class="stat-value">{{ analyticsState.analytics?.summary?.txn_count || 0 }}</div>
+      </div>
+      <div class="stat-card credit">
+        <div class="stat-label">Total credits</div>
+        <div class="stat-value">₹{{ formatMoney(analyticsState.analytics?.summary?.total_credit) }}</div>
+      </div>
+      <div class="stat-card debit">
+        <div class="stat-label">Total debits</div>
+        <div class="stat-value">₹{{ formatMoney(analyticsState.analytics?.summary?.total_debit) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Net cashflow</div>
+        <div class="stat-value">₹{{ formatMoney(analyticsState.analytics?.summary?.net_cashflow) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Interest earned</div>
+        <div class="stat-value">₹{{ formatMoney(analyticsState.analytics?.interestTax?.interest_earned) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">TDS / tax deducted</div>
+        <div class="stat-value">₹{{ formatMoney(analyticsState.analytics?.interestTax?.tax_deducted) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">FD booked</div>
+        <div class="stat-value">₹{{ formatMoney(analyticsState.analytics?.interestTax?.fd_booked) }}</div>
+      </div>
+    </div>
+
+    <div class="chart-grid" *ngIf="analyticsState.analytics">
+      <div class="card">
+        <h3>By category</h3>
+        <div class="chart-box">
+          <canvas baseChart [data]="analyticsState.categoryChartData" [options]="doughnutOptions" type="doughnut"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Monthly cashflow</h3>
+        <div class="chart-box">
+          <canvas baseChart [data]="analyticsState.monthlyChartData" [options]="barOptions" type="bar"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-actions wrap" style="margin-bottom: 0.75rem;">
+        <h3 style="margin: 0; flex: 1;">Budgets</h3>
+        <label class="inline-label">
+          Month
+          <input type="month" [(ngModel)]="budgetMonth" (ngModelChange)="onBudgetMonthChange()" />
+        </label>
+      </div>
+      <div class="form-grid" style="margin-bottom: 1rem;">
+        <div class="form-group">
+          <label>Category</label>
+          <input list="budget-category-list" [(ngModel)]="budgetForm.category" placeholder="Select or type…" />
+          <datalist id="budget-category-list">
+            <option *ngFor="let c of ctx.categories" [value]="c"></option>
+          </datalist>
+        </div>
+        <div class="form-group">
+          <label>Amount</label>
+          <input type="number" [(ngModel)]="budgetForm.amount" min="0" />
+        </div>
+        <div class="form-group">
+          <label>Month</label>
+          <input type="month" [(ngModel)]="budgetForm.period_month" />
+        </div>
+        <div class="form-group">
+          <label>Account (optional)</label>
+          <select [(ngModel)]="budgetForm.account_id">
+            <option [ngValue]="null">All ctx.accounts</option>
+            <option *ngFor="let a of ctx.accounts" [ngValue]="a.id">{{ a.bank_name }} – {{ a.account_name }}</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <input [(ngModel)]="budgetForm.notes" placeholder="Optional" />
+        </div>
+        <div class="form-group">
+          <label>&nbsp;</label>
+          <button class="btn btn-primary" type="button" (click)="saveBudget()">Add budget</button>
+        </div>
+      </div>
+      <table class="data-table compact" *ngIf="budgets.length; else noBudgets">
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Month</th>
+            <th>Account</th>
+            <th>Budget</th>
+            <th>Spent</th>
+            <th>Remaining</th>
+            <th>%</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let b of budgets">
+            <td>{{ b.category }}</td>
+            <td>{{ b.period_month || budgetMonth }}</td>
+            <td>{{ ctx.accountLabel(b.account_id) }}</td>
+            <td>₹{{ formatMoney(b.amount) }}</td>
+            <td class="debit">₹{{ formatMoney(b.spent) }}</td>
+            <td [class.credit]="(b.remaining||0)>=0" [class.debit]="(b.remaining||0)<0">₹{{ formatMoney(b.remaining) }}</td>
+            <td>{{ b.pct || 0 }}%</td>
+            <td><button class="link-btn danger" (click)="deleteBudget(b)">×</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <ng-template #noBudgets>
+        <p class="empty">No budgets yet. Add a category budget to track spending.</p>
+      </ng-template>
+    </div>
+
+    <div class="card" *ngIf="ctx.accounts.length">
+      <h3>Accounts snapshot</h3>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Bank</th>
+            <th>Account</th>
+            <th>Number</th>
+            <th>Txns</th>
+            <th>Latest balance</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let a of ctx.accounts" [class.inactive-row]="a.is_active === 0 || a.is_active === false">
+            <td>{{ a.bank_name }}</td>
+            <td>{{ a.account_name }} <span class="badge" *ngIf="a.is_active === 0 || a.is_active === false">inactive</span></td>
+            <td>{{ ctx.maskAccount(a.account_number) }}</td>
+            <td>{{ a.txn_count || 0 }}</td>
+            <td>{{ formatCurrency(a.latest_balance, a.currency) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>

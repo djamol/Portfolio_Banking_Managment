@@ -1,0 +1,167 @@
+<div class="card">
+      <h3>Transaction backup (import / export)</h3>
+      <p class="hint">
+        Export categorized transactions to Excel, or re-import a previous export (skips duplicates by fingerprint; keeps category / payee / raw_bank).
+      </p>
+      <div class="section-actions wrap" style="margin-bottom: 12px;">
+        <button class="btn btn-secondary" type="button" (click)="requestExportPanel()">Export statement…</button>
+      </div>
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>Import exported file (.xlsx / .csv)</label>
+          <input type="file" accept=".csv,.xlsx,.xls" (change)="onBackupFileSelected($event)" />
+        </div>
+      </div>
+      <div class="section-actions">
+        <button
+          class="btn btn-primary"
+          type="button"
+          (click)="runBackupImport()"
+          [disabled]="backupImporting || !backupImportFile"
+        >
+          {{ backupImporting ? 'Importing…' : 'Import transaction backup' }}
+        </button>
+      </div>
+      <ul class="result-list" *ngIf="lastBackupImportResult" style="margin-top: 12px;">
+        <li>Inserted: {{ lastBackupImportResult.inserted }}</li>
+        <li>Skipped duplicates: {{ lastBackupImportResult.skipped }}</li>
+        <li>Unresolved accounts: {{ lastBackupImportResult.unresolved || 0 }}</li>
+        <li>Batch: {{ lastBackupImportResult.import_batch_id }}</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3>Import bank / credit card statement</h3>
+      <p class="hint">
+        Duplicate transactions are skipped automatically (same date, amounts, ref, narration).
+        Credit cards: HDFC PDF (password OK) or ICICI <code>CreditCardStatement</code> CSV. Savings/current: CSV/Excel.
+      </p>
+      <table class="data-table compact" style="margin-bottom: 1rem;">
+        <thead>
+          <tr><th>Bank</th><th>Formats</th><th>Support</th></tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let b of bankSupport">
+            <td>{{ b.name }}</td>
+            <td>{{ b.formats }}</td>
+            <td>{{ b.status }}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Target account</label>
+          <select [(ngModel)]="importAccountId">
+            <option [ngValue]="''" disabled>Select account</option>
+            <option *ngFor="let a of ctx.activeAccounts" [ngValue]="a.id">{{ a.bank_name }} – {{ a.account_name }} ({{ a.account_type }})</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Bank format hint (optional)</label>
+          <select [(ngModel)]="importBankHint">
+            <option value="">Auto-detect</option>
+            <option value="HDFC">HDFC (savings)</option>
+            <option value="HDFC_CC">HDFC Credit Card (PDF)</option>
+            <option value="ICICI">ICICI (savings)</option>
+            <option value="ICICI_CC">ICICI Credit Card (CSV)</option>
+            <option value="DCB">DCB</option>
+            <option value="SBI">SBI</option>
+            <option value="AXIS">Axis</option>
+            <option value="KOTAK">Kotak</option>
+            <option value="GENERIC">Generic</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <label>Statement file (CSV / Excel / Credit card PDF)</label>
+          <input type="file" accept=".csv,.xls,.xlsx,.pdf,.PDF" (change)="onFileSelected($event)" />
+        </div>
+        <div class="form-group" *ngIf="showPdfPassword">
+          <label>PDF password</label>
+          <input
+            type="password"
+            [(ngModel)]="importPdfPassword"
+            placeholder="Statement password"
+            autocomplete="off"
+          />
+        </div>
+      </div>
+
+      <div class="section-actions">
+        <button class="btn btn-secondary" (click)="previewImport()" [disabled]="importing || !importFile || !importAccountId">Preview</button>
+        <button class="btn btn-primary" (click)="runImport()" [disabled]="importing || !importFile || !importAccountId">
+          {{ importing ? 'Working…' : 'Import (skip duplicates)' }}
+        </button>
+      </div>
+    </div>
+
+    <div class="card" *ngIf="importPreview">
+      <h3>Preview — {{ importPreview.bank }}</h3>
+      <div class="preview-stats">
+        <div class="preview-stat">
+          <span class="preview-stat-label">In file</span>
+          <span class="preview-stat-value">{{ importPreview.count }}</span>
+        </div>
+        <div class="preview-stat existing">
+          <span class="preview-stat-label">Already exist</span>
+          <span class="preview-stat-value">{{ importPreview.existing_count || 0 }}</span>
+        </div>
+        <div class="preview-stat neu">
+          <span class="preview-stat-label">New to import</span>
+          <span class="preview-stat-value">{{ importPreview.new_count || 0 }}</span>
+        </div>
+      </div>
+      <p class="hint" *ngIf="importPreview.date_from">
+        Period {{ importPreview.date_from }} → {{ importPreview.date_to }}
+        · Debits ₹{{ formatMoney(importPreview.total_debit) }}
+        · Credits ₹{{ formatMoney(importPreview.total_credit) }}
+      </p>
+      <p class="hint" *ngIf="importPreview.meta">
+        A/c {{ importPreview.meta.accountNumber || '—' }}
+        <span *ngIf="importPreview.meta.ifsc"> · IFSC {{ importPreview.meta.ifsc }}</span>
+        <span *ngIf="importPreview.meta.customerName"> · {{ importPreview.meta.customerName }}</span>
+      </p>
+      <p class="hint" *ngIf="(importPreview.new_count || 0) === 0">
+        All transactions in this file already exist for the selected account. Nothing new to import.
+      </p>
+      <h4 *ngIf="importPreview.preview?.length">New transactions (sample)</h4>
+      <table class="data-table compact" *ngIf="importPreview.preview?.length">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Narration</th>
+            <th>Withdrawal</th>
+            <th>Deposit</th>
+            <th>Category</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let t of importPreview.preview">
+            <td>{{ t.txn_date }}</td>
+            <td class="narration">{{ t.narration }}</td>
+            <td class="debit">{{ t.withdrawal ? formatMoney(t.withdrawal) : '' }}</td>
+            <td class="credit">{{ t.deposit ? formatMoney(t.deposit) : '' }}</td>
+            <td>{{ t.category }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" *ngIf="lastImportResult">
+      <h3>Last import result</h3>
+      <ul class="result-list">
+        <li>Bank format: {{ lastImportResult.bank }}</li>
+        <li>Parsed: {{ lastImportResult.parsed }}</li>
+        <li>Inserted: {{ lastImportResult.inserted }}</li>
+        <li>Skipped duplicates: {{ lastImportResult.skipped }}</li>
+        <li>Batch: {{ lastImportResult.import_batch_id }}</li>
+        <li *ngIf="lastImportResult.opening_warning">
+          Opening balance warning: account opening ₹{{ formatMoney(lastImportResult.opening_warning.opening_balance) }}
+          vs first txn balance ₹{{ formatMoney(lastImportResult.opening_warning.first_txn_balance) }}
+          on {{ lastImportResult.opening_warning.first_txn_date }}
+        </li>
+      </ul>
+      <div class="section-actions">
+        <button class="btn btn-danger-outline" type="button" (click)="undoLastImport()">Undo this import</button>
+      </div>
+    </div>

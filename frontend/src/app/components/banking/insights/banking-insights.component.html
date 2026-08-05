@@ -1,0 +1,208 @@
+<div class="section-actions wrap">
+      <button class="btn btn-primary" (click)="loadInsights()">Refresh insights</button>
+      <button class="btn btn-secondary" (click)="runTransferMatch()">Match cross-account transfers</button>
+      <select [(ngModel)]="continuityAccountId">
+        <option [ngValue]="''">Account for continuity…</option>
+        <option *ngFor="let a of ctx.accounts" [ngValue]="a.id">{{ a.bank_name }} – {{ a.account_name }}</option>
+      </select>
+      <button class="btn btn-secondary" (click)="checkContinuity()" [disabled]="!continuityAccountId">Check balance continuity</button>
+      <select [(ngModel)]="duplicateAccountId">
+        <option [ngValue]="''">All ctx.accounts (duplicates)</option>
+        <option *ngFor="let a of ctx.accounts" [ngValue]="a.id">{{ a.bank_name }} – {{ a.account_name }}</option>
+      </select>
+      <button class="btn btn-secondary" (click)="scanDuplicates()" [disabled]="duplicateScanning">
+        {{ duplicateScanning ? 'Scanning…' : 'Scan near-duplicates' }}
+      </button>
+      <button
+        class="btn btn-secondary"
+        (click)="removeSelectedDuplicates()"
+        [disabled]="duplicateCleaning || !duplicateScan?.groups?.length"
+      >
+        Remove selected
+      </button>
+      <button
+        class="btn btn-danger-outline"
+        (click)="autoCleanDuplicates()"
+        [disabled]="duplicateCleaning || !duplicateScan?.groups?.length"
+      >
+        {{ duplicateCleaning ? 'Cleaning…' : 'Auto-clean all' }}
+      </button>
+    </div>
+
+    <div class="stat-grid" *ngIf="analyticsState.cashSummary?.totals_by_currency?.length">
+      <div class="stat-card" *ngFor="let t of analyticsState.cashSummary!.totals_by_currency">
+        <div class="stat-label">Cash position ({{ t.currency }})</div>
+        <div class="stat-value">{{ formatCurrency(t.total, t.currency) }}</div>
+      </div>
+      <div class="stat-card" *ngIf="analyticsState.cashSummary">
+        <div class="stat-label">Active / inactive</div>
+        <div class="stat-value">{{ analyticsState.cashSummary.active_count }} / {{ analyticsState.cashSummary.inactive_count }}</div>
+      </div>
+    </div>
+
+    <div class="stat-grid" *ngIf="forecast?.projected_next_month">
+      <div class="stat-card">
+        <div class="stat-label">Projected {{ forecast.projected_next_month.month }} credits</div>
+        <div class="stat-value credit">₹{{ formatMoney(forecast.projected_next_month.avg_credit) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Projected debits</div>
+        <div class="stat-value debit">₹{{ formatMoney(forecast.projected_next_month.avg_debit) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Projected net</div>
+        <div class="stat-value">₹{{ formatMoney(forecast.projected_next_month.net) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Projected interest</div>
+        <div class="stat-value">₹{{ formatMoney(forecast.projected_next_month.projected_interest) }}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Top merchants / payees</h3>
+      <p class="hint">Ranked by debit in the selected date range. Click a row to open matching transactions.</p>
+      <table class="data-table compact" *ngIf="topPayees.length; else noPayees">
+        <thead>
+          <tr>
+            <th>Payee</th>
+            <th>Times</th>
+            <th>Debit</th>
+            <th>Credit</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let p of topPayees" class="clickable-row" (click)="filterByPayee(p.payee)">
+            <td>{{ p.payee }}</td>
+            <td>{{ p.txn_count }}</td>
+            <td class="debit">₹{{ formatMoney(p.total_debit) }}</td>
+            <td class="credit">₹{{ formatMoney(p.total_credit) }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <ng-template #noPayees>
+        <p class="empty">No payee data for this range yet.</p>
+      </ng-template>
+    </div>
+
+    <div class="card">
+      <h3>Recurring payments / credits</h3>
+      <table class="data-table compact" *ngIf="recurring.length; else noRecurring">
+        <thead>
+          <tr>
+            <th>Payee</th>
+            <th>Amount</th>
+            <th>Times</th>
+            <th>Avg gap</th>
+            <th>Last</th>
+            <th>Next expected</th>
+            <th>Category</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let r of recurring">
+            <td>{{ r.payee }}</td>
+            <td [class.debit]="r.is_debit" [class.credit]="!r.is_debit">₹{{ formatMoney(r.amount) }}</td>
+            <td>{{ r.occurrences }}</td>
+            <td>{{ r.avg_gap_days }}d</td>
+            <td>{{ r.last_date }}</td>
+            <td>{{ r.next_expected }}</td>
+            <td>{{ r.category || '—' }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <ng-template #noRecurring>
+        <p class="empty">No recurring patterns detected yet (needs 3+ similar monthly transactions).</p>
+      </ng-template>
+    </div>
+
+    <div class="card" *ngIf="forecast?.upcoming_outflows?.length">
+      <h3>Upcoming outflows (from recurring)</h3>
+      <table class="data-table compact">
+        <thead>
+          <tr><th>Payee</th><th>Amount</th><th>Expected</th><th>Category</th></tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let u of forecast.upcoming_outflows">
+            <td>{{ u.payee }}</td>
+            <td class="debit">₹{{ formatMoney(u.amount) }}</td>
+            <td>{{ u.next_expected }}</td>
+            <td>{{ u.category || '—' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" *ngIf="continuity">
+      <h3>Balance continuity — {{ continuity.checked }} txns checked</h3>
+      <p class="hint" *ngIf="!continuity.gaps?.length">No gaps found.</p>
+      <table class="data-table compact" *ngIf="continuity.gaps?.length">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Expected</th>
+            <th>Actual</th>
+            <th>Diff</th>
+            <th>Narration</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let g of continuity.gaps">
+            <td>{{ g.txn_date }}</td>
+            <td>₹{{ formatMoney(g.expected_balance) }}</td>
+            <td>₹{{ formatMoney(g.actual_balance) }}</td>
+            <td class="debit">₹{{ formatMoney(g.diff) }}</td>
+            <td class="narration">{{ g.narration }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" *ngIf="duplicateScan">
+      <h3>
+        Near-duplicates —
+        {{ duplicateScan.groups_found || 0 }} group(s)
+        <span *ngIf="duplicateScan.truncated"> (showing {{ duplicateScan.groups?.length || 0 }})</span>
+        · scanned {{ duplicateScan.scanned || 0 }}
+      </h3>
+      <p class="hint">
+        Same account, date, amount, similar closing balance and narration (volatile refs stripped). Keep row stays; selected groups’ extras are deleted.
+      </p>
+      <p class="hint" *ngIf="!duplicateScan.groups?.length">No near-duplicates found.</p>
+      <div class="section-actions wrap" *ngIf="duplicateScan.groups?.length">
+        <button class="link-btn" type="button" (click)="toggleAllDuplicateGroups(true)">Select all</button>
+        <button class="link-btn" type="button" (click)="toggleAllDuplicateGroups(false)">Select none</button>
+      </div>
+      <table class="data-table compact" *ngIf="duplicateScan.groups?.length">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Account</th>
+            <th>Date</th>
+            <th>Debit</th>
+            <th>Credit</th>
+            <th>Balance</th>
+            <th>Keep</th>
+            <th>Remove</th>
+            <th>#</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let g of duplicateScan.groups; let i = index">
+            <td>
+              <input type="checkbox" [(ngModel)]="duplicateGroupSelected[i]" />
+            </td>
+            <td>{{ ctx.accountLabel(g.account_id) }}</td>
+            <td>{{ g.txn_date }}</td>
+            <td class="debit">{{ g.withdrawal ? ('₹' + formatMoney(g.withdrawal)) : '—' }}</td>
+            <td class="credit">{{ g.deposit ? ('₹' + formatMoney(g.deposit)) : '—' }}</td>
+            <td>₹{{ formatMoney(g.balance) }}</td>
+            <td class="narration">{{ g.keep?.narration }}</td>
+            <td class="narration">
+              <div *ngFor="let d of g.duplicates">{{ d.narration }}</div>
+            </td>
+            <td>{{ g.delete_ids?.length || 0 }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>

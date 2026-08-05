@@ -1,0 +1,75 @@
+<div class="stat-grid" *ngIf="analyticsState.analytics">
+      <div class="stat-card credit">
+        <div class="stat-label">Interest earned</div>
+        <div class="stat-value">₹{{ formatMoney(analyticsState.analytics.interestTax?.interest_earned) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">TDS / tax deducted</div>
+        <div class="stat-value">₹{{ formatMoney(analyticsState.analytics.interestTax?.tax_deducted) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Net interest (after TDS)</div>
+        <div class="stat-value credit">
+          ₹{{ formatMoney((analyticsState.analytics.interestTax?.interest_earned || 0) - (analyticsState.analytics.interestTax?.tax_deducted || 0)) }}
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">FD booked</div>
+        <div class="stat-value">₹{{ formatMoney(analyticsState.analytics.interestTax?.fd_booked) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">FD matured / credited</div>
+        <div class="stat-value credit">₹{{ formatMoney(analyticsState.analytics.interestTax?.fd_matured) }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Effective TDS rate</div>
+        <div class="stat-value">
+          {{
+            (analyticsState.analytics.interestTax?.interest_earned || 0) > 0
+              ? (((analyticsState.analytics.interestTax?.tax_deducted || 0) / analyticsState.analytics.interestTax.interest_earned) * 100 | number:'1.1-1')
+              : 0
+          }}%
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Interest, TDS & FD over time</h3>
+      <p class="hint">Monthly view of interest credits, tax recoveries, and fixed-deposit bookings from statement narrations</p>
+      <div class="chart-box x-tall">
+        <canvas baseChart [data]="analyticsState.interestChartData" [options]="barOptions" type="bar"></canvas>
+      </div>
+    </div>
+
+    <div class="card" *ngIf="analyticsState.analytics?.interestByMonth?.length; else noInterest">
+      <h3>Monthly interest / tax / FD table</h3>
+      <table class="data-table compact">
+        <thead>
+          <tr>
+            <th>Month</th>
+            <th class="num">Interest</th>
+            <th class="num">TDS / tax</th>
+            <th class="num">Net interest</th>
+            <th class="num">FD booked</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let r of analyticsState.analytics.interestByMonth">
+            <td>{{ r.month }}</td>
+            <td class="credit num">₹{{ formatMoney(r.interest) }}</td>
+            <td class="debit num">₹{{ formatMoney(r.tax) }}</td>
+            <td class="num" [class.credit]="(r.interest - r.tax) >= 0">₹{{ formatMoney((r.interest || 0) - (r.tax || 0)) }}</td>
+            <td class="num">₹{{ formatMoney(r.fd_booked) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <ng-template #noInterest>
+      <div class="card">
+        <p class="empty">No interest / TDS / FD activity found in the selected range. Import more statements or widen the date filter.</p>
+      </div>
+    </ng-template>
+
+    <div class="section-actions">
+      <button class="btn btn-secondary" (click)="quickFilter('interest')">View interest transactions</button>
+    </div>

@@ -16,7 +16,17 @@ import { MultiSelectFilterComponent } from './components/multi-select-filter/mul
 import { HierarchicalCategoryPickerComponent } from './components/hierarchical-category-picker/hierarchical-category-picker.component';
 import { AssetTrackerComponent } from './components/asset-tracker/asset-tracker.component';
 import { DashboardComponent } from './components/dashboard/dashboard.component';
-import { BankingComponent } from './components/banking/banking.component';
+import { BankingShellComponent } from './components/banking/banking-shell.component';
+import { BankingOverviewComponent } from './components/banking/overview/banking-overview.component';
+import { BankingAccountsComponent } from './components/banking/accounts/banking-accounts.component';
+import { BankingImportComponent } from './components/banking/import/banking-import.component';
+import { BankingTransactionsComponent } from './components/banking/transactions/banking-transactions.component';
+import { BankingRulesComponent } from './components/banking/rules/banking-rules.component';
+import { BankingAnalyticsComponent } from './components/banking/analytics/banking-analytics.component';
+import { BankingChartsComponent } from './components/banking/charts/banking-charts.component';
+import { BankingCashflowComponent } from './components/banking/cashflow/banking-cashflow.component';
+import { BankingInterestComponent } from './components/banking/interest/banking-interest.component';
+import { BankingInsightsComponent } from './components/banking/insights/banking-insights.component';
 import { CashflowsComponent } from './components/cashflows/cashflows.component';
 import { routes } from './app.routes';
 
@@ -32,7 +42,17 @@ import { routes } from './app.routes';
     HierarchicalCategoryPickerComponent,
     AssetTrackerComponent,
     DashboardComponent,
-    BankingComponent,
+    BankingShellComponent,
+    BankingOverviewComponent,
+    BankingAccountsComponent,
+    BankingImportComponent,
+    BankingTransactionsComponent,
+    BankingRulesComponent,
+    BankingAnalyticsComponent,
+    BankingChartsComponent,
+    BankingCashflowComponent,
+    BankingInterestComponent,
+    BankingInsightsComponent,
     CashflowsComponent
   ],
   imports: [

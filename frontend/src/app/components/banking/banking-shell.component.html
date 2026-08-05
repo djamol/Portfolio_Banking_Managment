@@ -1,0 +1,153 @@
+<div class="banking">
+  <div class="bank-header">
+    <div>
+      <h2>Bank Tracker</h2>
+      <p class="subtitle">Import statements, track cashflow, categorize spending, and analyze interest / FD activity</p>
+    </div>
+    <button class="refresh-btn" (click)="refreshAll()" [disabled]="ctx.loading">Refresh</button>
+  </div>
+
+  <div class="banner" *ngIf="ctx.message" [class]="ctx.messageType">{{ ctx.message }}</div>
+
+  <nav class="tabs">
+    <a routerLink="/banking/overview" routerLinkActive="active">Overview</a>
+    <a routerLink="/banking/accounts" routerLinkActive="active">Accounts</a>
+    <a routerLink="/banking/import" routerLinkActive="active">Import</a>
+    <a routerLink="/banking/transactions" routerLinkActive="active">Transactions</a>
+    <a routerLink="/banking/rules" routerLinkActive="active">Rules</a>
+    <a routerLink="/banking/analytics" routerLinkActive="active">Analytics</a>
+    <a routerLink="/banking/charts" routerLinkActive="active">Charts</a>
+    <a routerLink="/banking/cashflow" routerLinkActive="active">Cashflow</a>
+    <a routerLink="/banking/interest" routerLinkActive="active">Interest &amp; FD</a>
+    <a routerLink="/banking/insights" routerLinkActive="active">Insights</a>
+  </nav>
+
+  <div class="filters-shell" *ngIf="filters.showFilterBar">
+    <div class="filter-bar card-lite">
+      <div class="filter-primary">
+        <select [(ngModel)]="filters.filterAccountId" (ngModelChange)="filters.applyFilters()" class="filter-account">
+          <option value="">All accounts</option>
+          <option *ngFor="let a of ctx.accounts" [ngValue]="a.id">
+            {{ a.bank_name }} – {{ a.account_name }}{{ (a.is_active === 0 || a.is_active === false) ? ' (inactive)' : '' }}
+          </option>
+        </select>
+        <div class="preset-row">
+          <button type="button" class="preset-btn" [class.active]="filters.datePreset==='1m'" (click)="filters.applyDatePreset('1m')">1M</button>
+          <button type="button" class="preset-btn" [class.active]="filters.datePreset==='3m'" (click)="filters.applyDatePreset('3m')">3M</button>
+          <button type="button" class="preset-btn" [class.active]="filters.datePreset==='6m'" (click)="filters.applyDatePreset('6m')">6M</button>
+          <button type="button" class="preset-btn" [class.active]="filters.datePreset==='ytd'" (click)="filters.applyDatePreset('ytd')">YTD</button>
+          <button type="button" class="preset-btn" [class.active]="filters.datePreset==='1y'" (click)="filters.applyDatePreset('1y')">1Y</button>
+          <button type="button" class="preset-btn" [class.active]="filters.datePreset==='all'" (click)="filters.applyDatePreset('all')">All</button>
+        </div>
+        <input type="date" [(ngModel)]="filters.filterFrom" (change)="filters.onManualDateChange()" />
+        <input type="date" [(ngModel)]="filters.filterTo" (change)="filters.onManualDateChange()" />
+        <app-multi-select-filter
+          *ngIf="filters.usesCategoryFilter"
+          class="cat-filter"
+          [hierarchical]="true"
+          [options]="ctx.categories"
+          [selected]="filters.filterCategories"
+          allLabel="All categories"
+          placeholder="All categories"
+          (selectedChange)="filters.onCategoryFilterChange($event)">
+        </app-multi-select-filter>
+        <button type="button" class="btn btn-ghost advanced-toggle" (click)="filters.toggleAdvancedFilters()" [class.open]="filters.showAdvancedFilters">
+          Advanced
+          <span class="adv-badge" *ngIf="filters.advancedFilterCount">{{ filters.advancedFilterCount }}</span>
+          <span class="adv-chevron">{{ filters.showAdvancedFilters ? '▴' : '▾' }}</span>
+        </button>
+        <button class="btn btn-primary" (click)="filters.applyFilters()">Apply</button>
+        <button class="btn btn-secondary" (click)="filters.clearFilters()">Clear</button>
+      </div>
+    </div>
+
+    <div class="advanced-filters" *ngIf="filters.showAdvancedFilters">
+      <div class="advanced-filters-head">
+        <div>
+          <h4>Advanced filters</h4>
+          <p>Narrow by flow, amount range, search, and transfer handling.</p>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" (click)="filters.showAdvancedFilters=false">Close</button>
+      </div>
+      <div class="advanced-filters-grid">
+        <label class="adv-field" *ngIf="filters.activeRoute === 'transactions'">
+          <span>Flow</span>
+          <select [(ngModel)]="filters.filterFlow">
+            <option value="">All flows</option>
+            <option value="credit">Credits only</option>
+            <option value="debit">Debits only</option>
+          </select>
+        </label>
+        <label class="adv-field">
+          <span>Min amount (₹)</span>
+          <input type="number" min="0" step="1" placeholder="0" [(ngModel)]="filters.filterMinAmount" />
+        </label>
+        <label class="adv-field">
+          <span>Max amount (₹)</span>
+          <input type="number" min="0" step="1" placeholder="No max" [(ngModel)]="filters.filterMaxAmount" />
+        </label>
+        <label class="adv-field adv-wide" *ngIf="filters.activeRoute === 'transactions'">
+          <span>Search narration / ref / payee</span>
+          <input type="search" placeholder="Type and Apply" [(ngModel)]="filters.filterQ" (keyup.enter)="filters.applyFilters()" />
+        </label>
+        <label class="adv-check">
+          <input type="checkbox" [(ngModel)]="filters.excludeTransfers" />
+          <span>
+            <strong>Exclude transfers</strong>
+            <small>Hide Transfer_* and linked cross-account moves from spend views</small>
+          </span>
+        </label>
+      </div>
+      <div class="advanced-quick" *ngIf="filters.activeRoute === 'transactions'">
+        <span class="adv-quick-label">Quick</span>
+        <button type="button" class="chip" [class.active]="filters.filterFlow==='' && !filters.filterCategories.length" (click)="shellQuickFilter('clear')">All</button>
+        <button type="button" class="chip" [class.active]="filters.filterFlow==='debit'" (click)="shellQuickFilter('debit')">Debits</button>
+        <button type="button" class="chip" [class.active]="filters.filterFlow==='credit'" (click)="shellQuickFilter('credit')">Credits</button>
+        <button type="button" class="chip" [class.active]="isInterestFilterActive()" (click)="shellQuickFilter('interest')">Interest</button>
+        <button type="button" class="chip" [class.active]="isUncategorizedFilterActive()" (click)="shellQuickFilter('uncategorized')">Uncategorized</button>
+      </div>
+      <div class="advanced-filters-actions">
+        <button class="btn btn-primary" (click)="filters.applyFilters()">Apply filters</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card export-panel" *ngIf="showExportPanel">
+    <h3>Export bank statement</h3>
+    <p class="hint">
+      Indian bank–style statement: bank/account header once, then Date · Narration · Ref · Value date · Withdrawal · Deposit · Closing balance, plus summary.
+      XLS also includes a <code>BackupData</code> sheet for re-import. Use “Data backup” for the flat raw table only.
+    </p>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Bank account</label>
+        <select [(ngModel)]="exportAccountId">
+          <option [ngValue]="''">All accounts (one sheet/page each)</option>
+          <option *ngFor="let a of ctx.accounts" [ngValue]="a.id">{{ a.bank_name }} – {{ a.account_name }}</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>From</label>
+        <input type="date" [(ngModel)]="exportFrom" />
+      </div>
+      <div class="form-group">
+        <label>To</label>
+        <input type="date" [(ngModel)]="exportTo" />
+      </div>
+    </div>
+    <div class="section-actions wrap">
+      <button class="btn btn-primary" type="button" (click)="exportStatement('xlsx', false)" [disabled]="exporting">
+        {{ exporting ? 'Exporting…' : 'Statement XLS' }}
+      </button>
+      <button class="btn btn-primary" type="button" (click)="exportStatement('pdf', false)" [disabled]="exporting">
+        {{ exporting ? 'Exporting…' : 'Statement PDF' }}
+      </button>
+      <button class="btn btn-secondary" type="button" (click)="exportStatement('xlsx', false, 'raw')" [disabled]="exporting">
+        Data backup (raw XLS)
+      </button>
+      <button class="btn btn-secondary" type="button" (click)="showExportPanel=false">Cancel</button>
+    </div>
+  </div>
+
+  <router-outlet></router-outlet>
+</div>
