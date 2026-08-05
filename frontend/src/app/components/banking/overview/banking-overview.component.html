@@ -1,7 +1,22 @@
-<div class="quick-links">
-      <a class="quick-link-tile" routerLink="/banking/import">Import statement</a>
-      <a class="quick-link-tile" routerLink="/banking/transactions">Transactions</a>
-      <a class="quick-link-tile" routerLink="/banking/insights">Insights</a>
+<div class="section-head">
+      <div>
+        <h3>Get started</h3>
+        <p class="section-hint">Jump to the most common Bank Tracker workflows.</p>
+      </div>
+    </div>
+    <div class="quick-links">
+      <a class="quick-link-tile" routerLink="/banking/import">
+        Import statement
+        <small>Upload CSV / Excel / bank PDF</small>
+      </a>
+      <a class="quick-link-tile" routerLink="/banking/transactions">
+        Transactions
+        <small>Review, categorize, and export</small>
+      </a>
+      <a class="quick-link-tile" routerLink="/banking/insights">
+        Insights
+        <small>Forecast, duplicates, continuity</small>
+      </a>
     </div>
 
     <div class="stat-grid" *ngIf="analyticsState.cashSummary?.totals_by_currency?.length">

@@ -351,32 +351,75 @@
   color: var(--bank-debit);
 }
 
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.section-head h3 {
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+  color: var(--bank-ink);
+}
+
+.section-head p,
+.section-hint {
+  margin: 0;
+  color: var(--bank-muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
 .quick-links {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .quick-link-tile {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   justify-content: center;
-  min-height: 56px;
-  padding: 12px 16px;
+  gap: 4px;
+  min-height: 72px;
+  padding: 14px 16px;
   background: var(--bank-surface);
   border: 1px solid var(--bank-border);
-  border-radius: 10px;
-  color: var(--bank-accent);
+  border-radius: 12px;
+  color: var(--bank-ink);
   font-weight: 600;
   text-decoration: none;
   box-shadow: var(--bank-shadow);
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+}
+
+.quick-link-tile small {
+  font-weight: 400;
+  color: var(--bank-muted);
+  font-size: 0.8rem;
 }
 
 .quick-link-tile:hover {
   border-color: #93c5fd;
   background: #eff6ff;
+  transform: translateY(-1px);
+}
+
+.empty {
+  margin: 0;
+  padding: 20px 12px;
+  text-align: center;
+  color: var(--bank-muted);
+  font-size: 0.92rem;
+  background: rgba(241, 245, 249, 0.6);
+  border: 1px dashed var(--bank-border);
+  border-radius: 10px;
 }
 
 .card {
@@ -599,11 +642,6 @@
 
 .link-btn.danger {
   color: var(--bank-debit);
-}
-
-.empty {
-  color: var(--bank-muted);
-  padding: 12px 0;
 }
 
 .muted {
