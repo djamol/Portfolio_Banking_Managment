@@ -16,8 +16,8 @@ const bankingRoutes = require('./routes/banking');
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
-// DirectAdmin Application URL path (e.g. /portfolio). Proxy forwards the full path.
-const BASE_PATH = String(process.env.BASE_PATH || '/portfolio').replace(/\/$/, '') || '';
+// DirectAdmin Application URL path (e.g. /v8). Proxy forwards the full path.
+const BASE_PATH = String(process.env.BASE_PATH || '/v8').replace(/\/$/, '') || '';
 const publicPath = path.join(__dirname, 'public');
 const hasFrontend = fs.existsSync(path.join(publicPath, 'index.html'));
 

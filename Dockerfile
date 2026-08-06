@@ -33,6 +33,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 COPY backend/config ./config
 COPY backend/db ./db
+COPY backend/middleware ./middleware
 COPY backend/routes ./routes
 COPY backend/utils ./utils
 COPY backend/server.js ./
