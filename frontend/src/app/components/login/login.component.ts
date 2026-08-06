@@ -5,6 +5,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../services/auth.service';
 import { normalizeApiDomain } from '../../utils/api-url.util';
+import { decryptJson, encryptJson } from '../../utils/storage-crypto.util';
 import { firstValueFrom } from 'rxjs';
 
 type DatabasePreset = {
@@ -51,8 +52,8 @@ export class LoginComponent implements OnInit {
     private authService: AuthService
   ) {}
 
-  ngOnInit() {
-    this.restoreCustomDbConfig();
+  async ngOnInit() {
+    await this.restoreCustomDbConfig();
 
     const storedPreset = localStorage.getItem('dbPreset');
     if (storedPreset) {
@@ -189,9 +190,9 @@ export class LoginComponent implements OnInit {
         next: () => {
           this.testApiConnection()
             .then(() => this.applyDatabaseConfig())
-            .then(() => {
+            .then(async () => {
               localStorage.setItem('dbPreset', this.selectedDbPreset);
-              this.persistCustomDbConfig();
+              await this.persistCustomDbConfig();
               this.router.navigate(['/dashboard']);
             })
             .catch((err: Error) => {
@@ -255,7 +256,7 @@ export class LoginComponent implements OnInit {
     }
   }
 
-  private persistCustomDbConfig() {
+  private async persistCustomDbConfig() {
     const payload = {
       host: this.dbHost,
       port: this.dbPort,
@@ -264,20 +265,38 @@ export class LoginComponent implements OnInit {
       database: this.dbName,
       showAdvancedDb: this.showAdvancedDb
     };
-    localStorage.setItem(DB_CUSTOM_STORAGE_KEY, JSON.stringify(payload));
+    try {
+      const encrypted = await encryptJson(payload);
+      localStorage.setItem(DB_CUSTOM_STORAGE_KEY, encrypted);
+    } catch {
+      // Fall back to nothing rather than writing plaintext credentials
+      localStorage.removeItem(DB_CUSTOM_STORAGE_KEY);
+    }
   }
 
-  private restoreCustomDbConfig() {
+  private async restoreCustomDbConfig() {
     try {
       const raw = localStorage.getItem(DB_CUSTOM_STORAGE_KEY);
       if (!raw) return;
-      const parsed = JSON.parse(raw);
+      const parsed = await decryptJson<{
+        host?: string;
+        port?: number | string;
+        user?: string;
+        password?: string;
+        database?: string;
+        showAdvancedDb?: boolean;
+      }>(raw);
+      if (!parsed) return;
       if (parsed.host) this.dbHost = parsed.host;
       if (parsed.port) this.dbPort = Number(parsed.port) || 3306;
       if (parsed.user) this.dbUser = parsed.user;
       if (parsed.password != null) this.dbPassword = parsed.password;
       if (parsed.database) this.dbName = parsed.database;
       if (parsed.showAdvancedDb) this.showAdvancedDb = !!parsed.showAdvancedDb;
+      // Re-encrypt legacy plaintext on restore
+      if (!raw.startsWith('enc:v1:')) {
+        await this.persistCustomDbConfig();
+      }
     } catch {
       // ignore corrupt storage
     }
