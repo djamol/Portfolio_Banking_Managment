@@ -584,14 +584,14 @@
 }
 
 .cat-cell {
-  min-width: 180px;
-  max-width: 280px;
+  min-width: 220px;
+  max-width: 420px;
   vertical-align: middle;
 }
 
 .cat-display-btn {
   width: 100%;
-  max-width: 260px;
+  max-width: 400px;
   padding: 5px 8px;
   border: 1px solid var(--bank-border);
   border-radius: 6px;
@@ -601,15 +601,34 @@
   color: var(--bank-ink);
   text-align: left;
   cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* Allow full 4-level path: Expense → Land → Purchase → Cheque */
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .cat-display-btn:hover {
   border-color: #93c5fd;
   background: #eff6ff;
   color: #1d4ed8;
+}
+
+.cat-crumbs {
+  display: inline;
+}
+
+.cat-crumb-part {
+  display: inline;
+  font-weight: 700;
+}
+
+.cat-crumb-sep {
+  display: inline;
+  margin: 0 0.2rem;
+  color: #94a3b8;
+  font-weight: 500;
 }
 
 .narration {

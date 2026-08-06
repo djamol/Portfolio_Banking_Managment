@@ -1,5 +1,8 @@
 /** Hierarchical bank category helpers for Category_Sub_Detail (and legacy "A / B"). */
 
+/** Max underscore segments: e.g. Expense_Land_Purchase_Cheque */
+export const MAX_CATEGORY_DEPTH = 4;
+
 export type CategoryTreeNode = {
   /** Path key, e.g. Expense or Expense_Loan */
   key: string;
@@ -40,9 +43,22 @@ export function joinCategoryParts(parts: string[], sampleLeaf?: string): string 
   return clean.join('_');
 }
 
+/** Sanitize a single hierarchy segment (no underscores / slashes). */
+export function sanitizeCategorySegment(raw: string): string {
+  return String(raw || '')
+    .trim()
+    .replace(/[_/]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .map((w) => w.trim())
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join('');
+}
+
 /**
  * Build a selectable tree from flat category strings.
- * Leaf values remain the original full category string.
+ * Supports up to MAX_CATEGORY_DEPTH levels. Leaf values remain the original full string.
  */
 export function buildCategoryTree(categories: string[]): CategoryTreeNode[] {
   const rootChildren: CategoryTreeNode[] = [];
@@ -63,7 +79,7 @@ export function buildCategoryTree(categories: string[]): CategoryTreeNode[] {
   );
 
   for (const cat of sorted) {
-    const parts = splitCategoryParts(cat);
+    const parts = splitCategoryParts(cat).slice(0, MAX_CATEGORY_DEPTH);
     if (!parts.length) continue;
     let parentChildren = rootChildren;
     let path = '';

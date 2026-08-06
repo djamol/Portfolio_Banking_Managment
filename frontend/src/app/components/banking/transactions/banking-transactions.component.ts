@@ -4,6 +4,7 @@ import { BankImportService } from '../../../services/banking/bank-import.service
 import { BankTransaction } from '../../../services/banking/banking.models';
 import { BankTransactionsService } from '../../../services/banking/bank-transactions.service';
 import { formatCat, formatMoney, toIsoDate } from '../shared/banking-format.util';
+import { splitCategoryParts } from '../../../utils/category-tree.util';
 import { BankingAnalyticsState } from '../shared/banking-analytics-state.service';
 import { BankingContextService } from '../shared/banking-context.service';
 import { BankingFilterState } from '../shared/banking-filter-state.service';
@@ -460,4 +461,8 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
 
   formatMoney = formatMoney;
   formatCat = formatCat;
+
+  catParts(category: string | null | undefined): string[] {
+    return splitCategoryParts(category || '');
+  }
 }

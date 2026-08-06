@@ -15,6 +15,8 @@ import {
   CategoryTreeNode,
   formatCategoryLabel,
   joinCategoryParts,
+  MAX_CATEGORY_DEPTH,
+  sanitizeCategorySegment,
   splitCategoryParts
 } from '../../utils/category-tree.util';
 
@@ -25,6 +27,8 @@ import {
   standalone: false
 })
 export class HierarchicalCategoryPickerComponent implements OnChanges, OnInit, OnDestroy {
+  readonly maxDepth = MAX_CATEGORY_DEPTH;
+
   @Input() options: string[] = [];
   /** Optional shared tree — avoids rebuilding per instance. */
   @Input() treeInput: CategoryTreeNode[] | null = null;
@@ -34,12 +38,16 @@ export class HierarchicalCategoryPickerComponent implements OnChanges, OnInit, O
   /** Open immediately (for row edit-in-place). */
   @Input() autoOpen = false;
   @Output() valueChange = new EventEmitter<string>();
+  /** Fired when user creates a new category path (so parent can merge into options). */
+  @Output() categoryCreated = new EventEmitter<string>();
   @Output() dismissed = new EventEmitter<void>();
 
   isOpen = false;
   tree: CategoryTreeNode[] = [];
   browsePath: string[] = [];
   panelStyle: Record<string, string> = {};
+  newSegment = '';
+  addError = '';
 
   private scrollParents: EventTarget[] = [];
 
@@ -47,7 +55,7 @@ export class HierarchicalCategoryPickerComponent implements OnChanges, OnInit, O
 
   ngOnInit(): void {
     this.refreshTree();
-    this.browsePath = splitCategoryParts(this.value || '');
+    this.browsePath = splitCategoryParts(this.value || '').slice(0, MAX_CATEGORY_DEPTH);
     if (this.autoOpen) {
       this.openPanel();
     }
@@ -62,7 +70,7 @@ export class HierarchicalCategoryPickerComponent implements OnChanges, OnInit, O
       this.refreshTree();
     }
     if (changes['value'] && !this.isOpen) {
-      this.browsePath = splitCategoryParts(this.value || '');
+      this.browsePath = splitCategoryParts(this.value || '').slice(0, MAX_CATEGORY_DEPTH);
     }
   }
 
@@ -91,6 +99,26 @@ export class HierarchicalCategoryPickerComponent implements OnChanges, OnInit, O
     return cols;
   }
 
+  get canAddChild(): boolean {
+    return this.browsePath.length < MAX_CATEGORY_DEPTH;
+  }
+
+  get canSelectCurrentPath(): boolean {
+    return this.browsePath.length > 0;
+  }
+
+  get currentPathLabel(): string {
+    return this.browsePath.length ? this.browsePath.join(' → ') : '';
+  }
+
+  get addHint(): string {
+    if (this.browsePath.length === 0) {
+      return `New root or path (max ${MAX_CATEGORY_DEPTH} levels)`;
+    }
+    const remaining = MAX_CATEGORY_DEPTH - this.browsePath.length;
+    return `Add under ${this.browsePath.join(' → ')} (${remaining} level${remaining === 1 ? '' : 's'} left)`;
+  }
+
   toggle(event: Event): void {
     event.stopPropagation();
     if (this.isOpen) {
@@ -107,19 +135,81 @@ export class HierarchicalCategoryPickerComponent implements OnChanges, OnInit, O
   pickNode(colIndex: number, node: CategoryTreeNode, event: Event): void {
     event.stopPropagation();
     this.browsePath = [...this.browsePath.slice(0, colIndex), node.label];
+    this.addError = '';
+    this.newSegment = '';
 
-    if (!node.children.length) {
-      const leaf = node.leaves[0] || joinCategoryParts(this.browsePath);
-      this.commit(leaf);
+    // Always expand when children exist so 3rd/4th levels are reachable
+    // (even if there is only one leaf under this branch).
+    if (node.children.length) {
+      requestAnimationFrame(() => this.updatePanelPosition());
       return;
     }
 
-    if (node.leaves.length === 1) {
-      this.commit(node.leaves[0]);
-    } else {
-      // Expand columns may change panel width — re-anchor
+    const leaf = node.leaves[0] || joinCategoryParts(this.browsePath);
+
+    // At depth < max, keep panel open so user can Add a deeper subcategory
+    // (e.g. under Expense → Land → Purchase add Cheque).
+    if (this.browsePath.length < MAX_CATEGORY_DEPTH) {
       requestAnimationFrame(() => this.updatePanelPosition());
+      return;
     }
+
+    this.commit(leaf);
+  }
+
+  /** Select the path currently browsed (intermediate or leaf). */
+  selectCurrentPath(event: Event): void {
+    event.stopPropagation();
+    if (!this.browsePath.length) return;
+    const path = joinCategoryParts(this.browsePath.slice(0, MAX_CATEGORY_DEPTH));
+    this.commitNewOrExisting(path);
+  }
+
+  addCategory(event?: Event): void {
+    event?.stopPropagation();
+    event?.preventDefault();
+    this.addError = '';
+
+    const segment = sanitizeCategorySegment(this.newSegment);
+    if (!segment) {
+      this.addError = 'Enter a category name';
+      return;
+    }
+
+    if (this.browsePath.length >= MAX_CATEGORY_DEPTH) {
+      this.addError = `Max depth is ${MAX_CATEGORY_DEPTH} (e.g. Expense → Land → Purchase → Cheque)`;
+      return;
+    }
+
+    const nextPath = [...this.browsePath, segment];
+    if (nextPath.length > MAX_CATEGORY_DEPTH) {
+      this.addError = `Max depth is ${MAX_CATEGORY_DEPTH}`;
+      return;
+    }
+
+    const full = joinCategoryParts(nextPath);
+    this.newSegment = '';
+    this.browsePath = nextPath;
+
+    // If still under max depth and user might add another level, keep panel open
+    // but commit so the value is set; also register the new category.
+    this.commitNewOrExisting(full, { keepOpen: nextPath.length < MAX_CATEGORY_DEPTH });
+  }
+
+  private commitNewOrExisting(value: string, opts: { keepOpen?: boolean } = {}): void {
+    const exists = (this.options || []).some((o) => o === value);
+    if (!exists) {
+      this.categoryCreated.emit(value);
+      // Locally refresh so new node appears if panel stays open
+      this.options = [...(this.options || []), value];
+      this.refreshTree();
+    }
+    if (opts.keepOpen) {
+      this.valueChange.emit(value);
+      requestAnimationFrame(() => this.updatePanelPosition());
+      return;
+    }
+    this.commit(value);
   }
 
   clear(event: Event): void {
@@ -130,12 +220,14 @@ export class HierarchicalCategoryPickerComponent implements OnChanges, OnInit, O
   commit(value: string): void {
     this.valueChange.emit(value);
     this.closePanel(false);
-    this.browsePath = splitCategoryParts(value);
+    this.browsePath = splitCategoryParts(value).slice(0, MAX_CATEGORY_DEPTH);
   }
 
   private openPanel(): void {
     this.isOpen = true;
-    this.browsePath = splitCategoryParts(this.value || '');
+    this.browsePath = splitCategoryParts(this.value || '').slice(0, MAX_CATEGORY_DEPTH);
+    this.newSegment = '';
+    this.addError = '';
     this.attachScrollListeners();
     requestAnimationFrame(() => this.updatePanelPosition());
   }
@@ -143,6 +235,8 @@ export class HierarchicalCategoryPickerComponent implements OnChanges, OnInit, O
   private closePanel(emitDismiss: boolean): void {
     this.isOpen = false;
     this.panelStyle = {};
+    this.newSegment = '';
+    this.addError = '';
     this.detachScrollListeners();
     if (emitDismiss) this.dismissed.emit();
   }
@@ -153,8 +247,9 @@ export class HierarchicalCategoryPickerComponent implements OnChanges, OnInit, O
     const anchor =
       (host.querySelector('.cat-picker-trigger') as HTMLElement | null) || host;
     const rect = anchor.getBoundingClientRect();
-    const estimatedWidth = Math.min(520, Math.max(280, rect.width, 280));
-    const estimatedHeight = 300;
+    const colCount = Math.max(1, this.columns.length);
+    const estimatedWidth = Math.min(720, Math.max(280, colCount * 150 + 24));
+    const estimatedHeight = 340;
     const gap = 4;
     const margin = 8;
 
@@ -179,7 +274,7 @@ export class HierarchicalCategoryPickerComponent implements OnChanges, OnInit, O
       left: `${Math.round(left)}px`,
       right: 'auto',
       zIndex: '2000',
-      maxWidth: `min(92vw, 520px)`,
+      maxWidth: `min(96vw, 720px)`,
       minWidth: `${Math.min(estimatedWidth, window.innerWidth - margin * 2)}px`
     };
   }
@@ -220,7 +315,6 @@ export class HierarchicalCategoryPickerComponent implements OnChanges, OnInit, O
     if (!this.isOpen) return;
     const target = event.target as Node;
     if (!this.elementRef.nativeElement.contains(target)) {
-      // Panel is inside host, so contains works
       this.closePanel(true);
     }
   }

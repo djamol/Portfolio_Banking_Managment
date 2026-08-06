@@ -103,7 +103,8 @@
             [options]="ctx.categories"
             [value]="manualTxn.category"
             placeholder="Auto / pick category"
-            (valueChange)="manualTxn.category = $event">
+            (valueChange)="manualTxn.category = $event"
+            (categoryCreated)="ctx.mergeCategories([$event])">
           </app-hierarchical-category-picker>
         </div>
         <div class="form-group">
@@ -159,7 +160,15 @@
                   [title]="formatCat(t.category)"
                   (click)="openCategoryEditor(t, $event)"
                 >
-                  {{ formatCat(t.category) }}
+                  <ng-container *ngIf="catParts(t.category).length; else noCat">
+                    <span class="cat-crumbs">
+                      <ng-container *ngFor="let part of catParts(t.category); let last = last">
+                        <span class="cat-crumb-part">{{ part }}</span>
+                        <span class="cat-crumb-sep" *ngIf="!last">→</span>
+                      </ng-container>
+                    </span>
+                  </ng-container>
+                  <ng-template #noCat>—</ng-template>
                 </button>
                 <app-hierarchical-category-picker
                   *ngIf="categoryEditTxnId === t.id"
@@ -168,6 +177,7 @@
                   [autoOpen]="true"
                   placeholder="Set category"
                   (valueChange)="onRowCategoryPicked(t, $event)"
+                  (categoryCreated)="ctx.mergeCategories([$event])"
                   (dismissed)="closeCategoryEditor()">
                 </app-hierarchical-category-picker>
               </td>

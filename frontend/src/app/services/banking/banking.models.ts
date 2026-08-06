@@ -92,6 +92,7 @@ export const DEFAULT_BANK_CATEGORIES = [
   'Expense_Insurance_Premium',
   'Expense_Loan_EMI',
   'Expense_Land_Purchase',
+  'Expense_Land_Purchase_Cheque',
   'Expense_Cheque_Paid',
   'Expense_Other_Debit',
   'Expense_Peer_UPI',

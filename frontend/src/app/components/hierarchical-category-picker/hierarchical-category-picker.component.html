@@ -19,6 +19,15 @@
     <div class="cat-picker-toolbar">
       <button type="button" class="cat-clear" *ngIf="allowClear" (click)="clear($event)">Clear</button>
       <span class="cat-path-preview">{{ browsePath.length ? browsePath.join(' → ') : displayText }}</span>
+      <button
+        type="button"
+        class="cat-use-path"
+        *ngIf="canSelectCurrentPath"
+        (click)="selectCurrentPath($event)"
+        title="Use current path as category"
+      >
+        Use path
+      </button>
       <button type="button" class="cat-clear" *ngIf="autoOpen" (click)="toggle($event)">Close</button>
     </div>
     <div class="cat-cols" *ngIf="columns.length; else empty">
@@ -37,7 +46,33 @@
       </div>
     </div>
     <ng-template #empty>
-      <div class="cat-empty">No categories</div>
+      <div class="cat-empty">No categories yet — add one below</div>
     </ng-template>
+
+    <form class="cat-add" *ngIf="canAddChild" (submit)="addCategory($event)">
+      <label class="cat-add-label">{{ addHint }}</label>
+      <div class="cat-add-row">
+        <input
+          type="text"
+          class="cat-add-input"
+          [(ngModel)]="newSegment"
+          name="newCategorySegment"
+          [placeholder]="browsePath.length ? 'e.g. Cheque' : 'e.g. Expense'"
+          maxlength="40"
+          autocomplete="off"
+          (click)="$event.stopPropagation()"
+        />
+        <button type="submit" class="cat-add-btn">Add</button>
+      </div>
+      <p class="cat-add-error" *ngIf="addError">{{ addError }}</p>
+      <p class="cat-add-example">
+        Example: Expense → Land → Purchase → Cheque
+        <span *ngIf="browsePath.length === 3"> — add 4th level here</span>
+      </p>
+    </form>
+    <p class="cat-add-max" *ngIf="!canAddChild">
+      Max {{ maxDepth }} levels reached. Use path to select
+      <strong>{{ currentPathLabel }}</strong>.
+    </p>
   </div>
 </div>
