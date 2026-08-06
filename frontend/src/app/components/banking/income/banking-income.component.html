@@ -3,11 +3,14 @@
   <a routerLink="/banking/charts" routerLinkActive="active">Charts</a>
   <a routerLink="/banking/cashflow" routerLinkActive="active">Cashflow</a>
   <a routerLink="/banking/income" routerLinkActive="active">Income</a>
+  <a routerLink="/banking/expense" routerLinkActive="active">Expense</a>
 </nav>
 
 <div class="income-page">
   <p class="hint">
-    Choose which categories count as income. Charts and the table use credits for the selected set within the current account and date filters.
+    Choose which categories count as income. Charts and the table use <strong>credits (deposits) only</strong>
+    for the selected set — expense/debit amounts are never included. Prefer Income_* categories, or any
+    category that receives credits (e.g. salary miscategorized elsewhere).
   </p>
 
   <div class="card income-picker-card">
@@ -29,7 +32,7 @@
     </app-multi-select-filter>
   </div>
 
-  <div class="stat-grid" *ngIf="analyticsState.analytics">
+  <div class="stat-grid" *ngIf="incomeAnalytics">
     <div class="stat-card credit">
       <div class="stat-label">Total income</div>
       <div class="stat-value">₹{{ formatMoney(totalIncome) }}</div>
@@ -48,7 +51,7 @@
     </div>
   </div>
 
-  <div class="chart-grid" *ngIf="analyticsState.analytics">
+  <div class="chart-grid" *ngIf="incomeAnalytics">
     <div class="card chart-card">
       <h3>Income by category</h3>
       <p class="chart-sub">Credit share among selected income categories</p>
@@ -69,9 +72,9 @@
     <p class="empty">No income credits for the selected categories in this range.</p>
   </ng-template>
 
-  <div class="card" *ngIf="analyticsState.analytics">
+  <div class="card" *ngIf="incomeAnalytics">
     <h3>Income breakdown</h3>
-    <p class="hint" *ngIf="incomeTableRows.length">Click a row to open matching transactions</p>
+    <p class="hint" *ngIf="incomeTableRows.length">Click a row to open matching credit transactions</p>
     <table class="data-table compact" *ngIf="incomeTableRows.length; else noIncomeTable">
       <thead>
         <tr>
@@ -104,7 +107,10 @@
       </tfoot>
     </table>
     <ng-template #noIncomeTable>
-      <p class="empty">Select one or more income categories above, or widen the date range.</p>
+      <p class="empty">
+        No credits for the selected categories in this range.
+        Expense categories are mostly debits — pick Income_* (or Reset defaults), or widen the date range.
+      </p>
     </ng-template>
   </div>
 </div>

@@ -164,6 +164,18 @@ export function defaultIncomeCategories(allCategories: string[]): string[] {
   return [...new Set(fromList)].sort((a, b) => a.localeCompare(b));
 }
 
+/** Default spend categories: exclude income and transfers. */
+export function defaultExpenseCategories(allCategories: string[]): string[] {
+  const fromList = (allCategories || []).filter((c) => {
+    const s = String(c || '');
+    if (!s) return false;
+    if (s === 'Interest Income' || s.startsWith('Income_') || s.startsWith('Income /')) return false;
+    if (s.startsWith('Transfer_') || s.startsWith('Transfer /')) return false;
+    return true;
+  });
+  return [...new Set(fromList)].sort((a, b) => a.localeCompare(b));
+}
+
 /** Expand selected income keys (may be parents) to matching leaf rows. */
 export function matchSelectedCategories(
   category: string,

@@ -13,6 +13,7 @@ export type BankingRouteId =
   | 'charts'
   | 'cashflow'
   | 'income'
+  | 'expense'
   | 'interest'
   | 'insights';
 
@@ -111,6 +112,7 @@ export class BankingFilterState {
       r === 'charts' ||
       r === 'cashflow' ||
       r === 'income' ||
+      r === 'expense' ||
       r === 'insights'
     );
   }
@@ -125,6 +127,7 @@ export class BankingFilterState {
       r === 'charts' ||
       r === 'cashflow' ||
       r === 'income' ||
+      r === 'expense' ||
       r === 'interest' ||
       r === 'insights'
     );

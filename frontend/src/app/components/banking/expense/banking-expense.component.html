@@ -1,0 +1,115 @@
+<nav class="analytics-subnav">
+  <a routerLink="/banking/analytics" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Summary</a>
+  <a routerLink="/banking/charts" routerLinkActive="active">Charts</a>
+  <a routerLink="/banking/cashflow" routerLinkActive="active">Cashflow</a>
+  <a routerLink="/banking/income" routerLinkActive="active">Income</a>
+  <a routerLink="/banking/expense" routerLinkActive="active">Expense</a>
+</nav>
+
+<div class="expense-page">
+  <p class="hint">
+    Choose which categories count as expense. Charts and the table use <strong>debits (withdrawals) only</strong>
+    for the selected set — income/credit amounts are never included. Defaults exclude Income_* and transfers.
+  </p>
+
+  <div class="card expense-picker-card">
+    <div class="period-header">
+      <div>
+        <h3>Expense categories</h3>
+        <p class="hint">Defaults to non-income, non-transfer categories. Selection is saved in this browser.</p>
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm" (click)="resetExpenseDefaults()">Reset defaults</button>
+    </div>
+    <app-multi-select-filter
+      class="expense-cat-filter"
+      [hierarchical]="true"
+      [options]="expensePickerOptions"
+      [selected]="expenseCategories"
+      allLabel="No expense categories"
+      placeholder="Select expense categories"
+      (selectedChange)="onExpenseCategoriesChange($event)">
+    </app-multi-select-filter>
+  </div>
+
+  <div class="stat-grid" *ngIf="expenseAnalytics">
+    <div class="stat-card debit">
+      <div class="stat-label">Total expense</div>
+      <div class="stat-value">₹{{ formatMoney(totalExpense) }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Expense categories</div>
+      <div class="stat-value">{{ expenseTableRows.length }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Expense txns</div>
+      <div class="stat-value">{{ totalTxnCount }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Selected filters</div>
+      <div class="stat-value">{{ expenseCategories.length }}</div>
+    </div>
+  </div>
+
+  <div class="chart-grid" *ngIf="expenseAnalytics">
+    <div class="card chart-card">
+      <h3>Expense by category</h3>
+      <p class="chart-sub">Debit share among selected expense categories</p>
+      <div class="chart-box chart-box-lg" *ngIf="expenseTableRows.length; else noExpenseChart">
+        <canvas baseChart [data]="expenseChartData" [options]="doughnutOptions" type="doughnut"></canvas>
+      </div>
+    </div>
+    <div class="card chart-card">
+      <h3>Expense over time</h3>
+      <p class="chart-sub">Monthly debits for selected categories</p>
+      <div class="chart-box chart-box-lg" *ngIf="expenseTableRows.length; else noExpenseChart">
+        <canvas baseChart [data]="expenseTrendChartData" [options]="netLineOptions" type="line"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <ng-template #noExpenseChart>
+    <p class="empty">No expense debits for the selected categories in this range.</p>
+  </ng-template>
+
+  <div class="card" *ngIf="expenseAnalytics">
+    <h3>Expense breakdown</h3>
+    <p class="hint" *ngIf="expenseTableRows.length">Click a row to open matching debit transactions</p>
+    <table class="data-table compact" *ngIf="expenseTableRows.length; else noExpenseTable">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th class="num">Txns</th>
+          <th class="num">Debits</th>
+          <th class="num">Share</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let r of expenseTableRows" class="clickable-row" (click)="openExpenseCategory(r)">
+          <td>{{ r.label }}</td>
+          <td class="num">{{ r.txn_count }}</td>
+          <td class="debit num">₹{{ formatMoney(r.total_debit) }}</td>
+          <td class="num">
+            <div class="share-bar-wrap">
+              <div class="share-bar" [style.width.%]="r.pct"></div>
+              <span>{{ r.pct | number:'1.0-1' }}%</span>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+      <tfoot *ngIf="expenseTableRows.length">
+        <tr>
+          <td><strong>Total</strong></td>
+          <td class="num"><strong>{{ totalTxnCount }}</strong></td>
+          <td class="debit num"><strong>₹{{ formatMoney(totalExpense) }}</strong></td>
+          <td class="num"><strong>100%</strong></td>
+        </tr>
+      </tfoot>
+    </table>
+    <ng-template #noExpenseTable>
+      <p class="empty">
+        No debits for the selected categories in this range.
+        Pick spend categories (or Reset defaults), or widen the date range.
+      </p>
+    </ng-template>
+  </div>
+</div>

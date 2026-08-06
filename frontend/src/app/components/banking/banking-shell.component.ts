@@ -81,6 +81,7 @@ export class BankingShellComponent implements OnInit, OnDestroy {
         'charts',
         'cashflow',
         'income',
+        'expense',
         'interest',
         'insights'
       ] as BankingRouteId[]
@@ -222,7 +223,7 @@ export class BankingShellComponent implements OnInit, OnDestroy {
 
   isAnalyticsTabActive(): boolean {
     const r = this.filters.activeRoute;
-    return r === 'analytics' || r === 'charts' || r === 'cashflow' || r === 'income';
+    return r === 'analytics' || r === 'charts' || r === 'cashflow' || r === 'income' || r === 'expense';
   }
 
   clearPayeeFilter() {

@@ -5,7 +5,7 @@ import { Subject, merge, takeUntil } from 'rxjs';
 import { BankAnalyticsService } from '../../../services/banking/bank-analytics.service';
 import { DEFAULT_BANK_CATEGORIES } from '../../../services/banking/banking.models';
 import {
-  defaultIncomeCategories,
+  defaultExpenseCategories,
   matchSelectedCategories,
   rollupCategoryMonthRows
 } from '../../../utils/category-rollup.util';
@@ -15,34 +15,34 @@ import { formatCat, formatMoney, formatPct } from '../shared/banking-format.util
 import { BankingContextService } from '../shared/banking-context.service';
 import { BankingFilterState } from '../shared/banking-filter-state.service';
 
-const INCOME_CATS_KEY = 'bank-income-categories';
+const EXPENSE_CATS_KEY = 'bank-expense-categories';
 
-export type IncomeTableRow = {
+export type ExpenseTableRow = {
   category: string;
   label: string;
-  total_credit: number;
+  total_debit: number;
   txn_count: number;
   pct: number;
   leaves: string[];
 };
 
 @Component({
-  selector: 'app-banking-income',
-  templateUrl: './banking-income.component.html',
-  styleUrls: ['../shared/banking-shared.css', './banking-income.component.css'],
+  selector: 'app-banking-expense',
+  templateUrl: './banking-expense.component.html',
+  styleUrls: ['../shared/banking-shared.css', './banking-expense.component.css'],
   standalone: false
 })
-export class BankingIncomeComponent implements OnInit, OnDestroy {
+export class BankingExpenseComponent implements OnInit, OnDestroy {
   readonly doughnutOptions = doughnutOptions;
   readonly netLineOptions = netLineOptions;
 
-  /** Credit-only analytics payload (does not share Charts/Summary state). */
-  incomeAnalytics: any = null;
-  incomeCategories: string[] = [];
-  incomeChartData: ChartConfiguration<'doughnut'>['data'] = { labels: [], datasets: [] };
-  incomeTrendChartData: ChartConfiguration<'line'>['data'] = { labels: [], datasets: [] };
-  incomeTableRows: IncomeTableRow[] = [];
-  totalIncome = 0;
+  /** Debit-only analytics payload (does not share Charts/Summary state). */
+  expenseAnalytics: any = null;
+  expenseCategories: string[] = [];
+  expenseChartData: ChartConfiguration<'doughnut'>['data'] = { labels: [], datasets: [] };
+  expenseTrendChartData: ChartConfiguration<'line'>['data'] = { labels: [], datasets: [] };
+  expenseTableRows: ExpenseTableRow[] = [];
+  totalExpense = 0;
   totalTxnCount = 0;
   loading = false;
 
@@ -56,16 +56,16 @@ export class BankingIncomeComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit() {
-    const saved = this.loadSavedIncomeCategories();
-    this.incomeCategories =
-      saved === null ? defaultIncomeCategories(this.incomePickerOptions) : saved;
-    if (saved === null && this.incomeCategories.length) {
-      this.persistIncomeCategories();
+    const saved = this.loadSavedExpenseCategories();
+    this.expenseCategories =
+      saved === null ? defaultExpenseCategories(this.expensePickerOptions) : saved;
+    if (saved === null && this.expenseCategories.length) {
+      this.persistExpenseCategories();
     }
-    this.loadIncomeAnalytics();
+    this.loadExpenseAnalytics();
     merge(this.filters.filtersChanged$, this.filters.refreshRequested$)
       .pipe(takeUntil(this.destroy$))
-      .subscribe(() => this.loadIncomeAnalytics());
+      .subscribe(() => this.loadExpenseAnalytics());
   }
 
   ngOnDestroy() {
@@ -74,68 +74,68 @@ export class BankingIncomeComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Fetch analytics with flow=credit so category totals are deposits only.
-   * Expense categories with only withdrawals will not contribute amounts.
+   * Fetch analytics with flow=debit so category totals are withdrawals only.
+   * Income categories with only deposits will not contribute amounts.
    */
-  private loadIncomeAnalytics() {
+  private loadExpenseAnalytics() {
     this.loading = true;
     this.analyticsService
-      .getAnalytics({ ...this.filters.buildSharedFilters(), flow: 'credit' })
+      .getAnalytics({ ...this.filters.buildSharedFilters(), flow: 'debit' })
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (data) => {
-          this.incomeAnalytics = data;
+          this.expenseAnalytics = data;
           if (data?.categories?.length) {
             this.ctx.mergeCategories(data.categories);
           }
-          this.rebuildIncomeViews();
+          this.rebuildExpenseViews();
           this.loading = false;
         },
         error: (err) => {
           this.loading = false;
-          this.ctx.flash('error', err.message || 'Failed to load income analytics');
+          this.ctx.flash('error', err.message || 'Failed to load expense analytics');
         }
       });
   }
 
-  get incomePickerOptions(): string[] {
-    const fromAnalytics = this.incomeAnalytics?.categories || [];
+  get expensePickerOptions(): string[] {
+    const fromAnalytics = this.expenseAnalytics?.categories || [];
     return [...new Set([...DEFAULT_BANK_CATEGORIES, ...this.ctx.categories, ...fromAnalytics])].sort((a, b) =>
       a.localeCompare(b)
     );
   }
 
-  onIncomeCategoriesChange(selected: string[]) {
-    this.incomeCategories = selected || [];
-    this.persistIncomeCategories();
-    this.rebuildIncomeViews();
+  onExpenseCategoriesChange(selected: string[]) {
+    this.expenseCategories = selected || [];
+    this.persistExpenseCategories();
+    this.rebuildExpenseViews();
   }
 
-  resetIncomeDefaults() {
-    this.incomeCategories = defaultIncomeCategories(this.incomePickerOptions);
-    this.persistIncomeCategories();
-    this.rebuildIncomeViews();
+  resetExpenseDefaults() {
+    this.expenseCategories = defaultExpenseCategories(this.expensePickerOptions);
+    this.persistExpenseCategories();
+    this.rebuildExpenseViews();
   }
 
-  openIncomeCategory(row: IncomeTableRow) {
+  openExpenseCategory(row: ExpenseTableRow) {
     const leaves = row.leaves.length ? row.leaves : [row.category];
     this.filters.filterCategories = [...leaves];
     this.filters.filterCategory = leaves.length === 1 ? leaves[0] : '';
-    this.filters.filterFlow = 'credit';
+    this.filters.filterFlow = 'debit';
     this.filters.filterOffset = 0;
     this.filters.notifyChanged();
     this.router.navigate(['/banking/transactions']);
-    this.ctx.flash('info', `Showing credit transactions for ${row.label}`);
+    this.ctx.flash('info', `Showing debit transactions for ${row.label}`);
   }
 
-  rebuildIncomeViews() {
-    const analytics = this.incomeAnalytics;
+  rebuildExpenseViews() {
+    const analytics = this.expenseAnalytics;
     if (!analytics) {
       this.clearViews();
       return;
     }
 
-    const selected = this.incomeCategories;
+    const selected = this.expenseCategories;
     if (!selected.length) {
       this.clearViews();
       return;
@@ -148,34 +148,34 @@ export class BankingIncomeComponent implements OnInit, OnDestroy {
       total_credit: number;
     }>;
 
-    // Credits only — never use total_debit even if expense categories are selected.
+    // Debits only — never use total_credit even if income categories are selected.
     const matched = byCategory
       .map((r) => ({
         category: r.category,
         txn_count: Number(r.txn_count) || 0,
-        total_credit: Number(r.total_credit) || 0
+        total_debit: Number(r.total_debit) || 0
       }))
-      .filter((r) => matchSelectedCategories(r.category, selected) && r.total_credit > 0);
+      .filter((r) => matchSelectedCategories(r.category, selected) && r.total_debit > 0);
 
-    this.totalIncome = matched.reduce((s, r) => s + r.total_credit, 0);
+    this.totalExpense = matched.reduce((s, r) => s + r.total_debit, 0);
     this.totalTxnCount = matched.reduce((s, r) => s + r.txn_count, 0);
 
-    this.incomeTableRows = matched
+    this.expenseTableRows = matched
       .map((r) => ({
         category: r.category,
         label: formatCategoryLabel(r.category),
-        total_credit: r.total_credit,
+        total_debit: r.total_debit,
         txn_count: r.txn_count,
-        pct: this.totalIncome ? (r.total_credit / this.totalIncome) * 100 : 0,
+        pct: this.totalExpense ? (r.total_debit / this.totalExpense) * 100 : 0,
         leaves: [r.category]
       }))
-      .sort((a, b) => b.total_credit - a.total_credit);
+      .sort((a, b) => b.total_debit - a.total_debit);
 
-    const chartRows = this.incomeTableRows.slice(0, 12);
-    this.incomeChartData = {
+    const chartRows = this.expenseTableRows.slice(0, 12);
+    this.expenseChartData = {
       labels: chartRows.map((r) => r.label),
       datasets: [{
-        data: chartRows.map((r) => r.total_credit),
+        data: chartRows.map((r) => r.total_debit),
         backgroundColor: BANK_CHART_COLORS
       }]
     };
@@ -186,23 +186,23 @@ export class BankingIncomeComponent implements OnInit, OnDestroy {
         month: r.month,
         category: r.category,
         txn_count: Number(r.txn_count) || 0,
-        total_debit: 0,
-        total_credit: Number(r.total_credit) || 0
+        total_debit: Number(r.total_debit) || 0,
+        total_credit: 0
       }))
-      .filter((r: { total_credit: number }) => r.total_credit > 0);
+      .filter((r: { total_debit: number }) => r.total_debit > 0);
     const rolled = rollupCategoryMonthRows(catMonth, 'leaf');
     const byMonth = new Map<string, number>();
     for (const row of rolled) {
-      byMonth.set(row.month, (byMonth.get(row.month) || 0) + (Number(row.total_credit) || 0));
+      byMonth.set(row.month, (byMonth.get(row.month) || 0) + (Number(row.total_debit) || 0));
     }
     const monthLabels = [...byMonth.keys()].sort().slice(-24);
-    this.incomeTrendChartData = {
+    this.expenseTrendChartData = {
       labels: monthLabels,
       datasets: [{
-        label: 'Income (credits)',
+        label: 'Expense (debits)',
         data: monthLabels.map((m) => byMonth.get(m) || 0),
-        borderColor: '#10b981',
-        backgroundColor: 'rgba(16, 185, 129, 0.12)',
+        borderColor: '#ef4444',
+        backgroundColor: 'rgba(239, 68, 68, 0.12)',
         fill: true,
         tension: 0.3,
         pointRadius: 2
@@ -211,17 +211,17 @@ export class BankingIncomeComponent implements OnInit, OnDestroy {
   }
 
   private clearViews() {
-    this.incomeTableRows = [];
-    this.totalIncome = 0;
+    this.expenseTableRows = [];
+    this.totalExpense = 0;
     this.totalTxnCount = 0;
-    this.incomeChartData = { labels: [], datasets: [] };
-    this.incomeTrendChartData = { labels: [], datasets: [] };
+    this.expenseChartData = { labels: [], datasets: [] };
+    this.expenseTrendChartData = { labels: [], datasets: [] };
   }
 
   /** null = never saved (use defaults); array = explicit user selection */
-  private loadSavedIncomeCategories(): string[] | null {
+  private loadSavedExpenseCategories(): string[] | null {
     try {
-      const raw = localStorage.getItem(INCOME_CATS_KEY);
+      const raw = localStorage.getItem(EXPENSE_CATS_KEY);
       if (raw == null) return null;
       const parsed = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
@@ -230,8 +230,8 @@ export class BankingIncomeComponent implements OnInit, OnDestroy {
     }
   }
 
-  private persistIncomeCategories() {
-    localStorage.setItem(INCOME_CATS_KEY, JSON.stringify(this.incomeCategories));
+  private persistExpenseCategories() {
+    localStorage.setItem(EXPENSE_CATS_KEY, JSON.stringify(this.expenseCategories));
   }
 
   formatMoney = formatMoney;
