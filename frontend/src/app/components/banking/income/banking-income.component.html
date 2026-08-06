@@ -1,0 +1,110 @@
+<nav class="analytics-subnav">
+  <a routerLink="/banking/analytics" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Summary</a>
+  <a routerLink="/banking/charts" routerLinkActive="active">Charts</a>
+  <a routerLink="/banking/cashflow" routerLinkActive="active">Cashflow</a>
+  <a routerLink="/banking/income" routerLinkActive="active">Income</a>
+</nav>
+
+<div class="income-page">
+  <p class="hint">
+    Choose which categories count as income. Charts and the table use credits for the selected set within the current account and date filters.
+  </p>
+
+  <div class="card income-picker-card">
+    <div class="period-header">
+      <div>
+        <h3>Income categories</h3>
+        <p class="hint">Defaults to all Income_* categories. Selection is saved in this browser.</p>
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm" (click)="resetIncomeDefaults()">Reset defaults</button>
+    </div>
+    <app-multi-select-filter
+      class="income-cat-filter"
+      [hierarchical]="true"
+      [options]="incomePickerOptions"
+      [selected]="incomeCategories"
+      allLabel="No income categories"
+      placeholder="Select income categories"
+      (selectedChange)="onIncomeCategoriesChange($event)">
+    </app-multi-select-filter>
+  </div>
+
+  <div class="stat-grid" *ngIf="analyticsState.analytics">
+    <div class="stat-card credit">
+      <div class="stat-label">Total income</div>
+      <div class="stat-value">₹{{ formatMoney(totalIncome) }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Income categories</div>
+      <div class="stat-value">{{ incomeTableRows.length }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Income txns</div>
+      <div class="stat-value">{{ totalTxnCount }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Selected filters</div>
+      <div class="stat-value">{{ incomeCategories.length }}</div>
+    </div>
+  </div>
+
+  <div class="chart-grid" *ngIf="analyticsState.analytics">
+    <div class="card chart-card">
+      <h3>Income by category</h3>
+      <p class="chart-sub">Credit share among selected income categories</p>
+      <div class="chart-box chart-box-lg" *ngIf="incomeTableRows.length; else noIncomeChart">
+        <canvas baseChart [data]="incomeChartData" [options]="doughnutOptions" type="doughnut"></canvas>
+      </div>
+    </div>
+    <div class="card chart-card">
+      <h3>Income over time</h3>
+      <p class="chart-sub">Monthly credits for selected categories</p>
+      <div class="chart-box chart-box-lg" *ngIf="incomeTableRows.length; else noIncomeChart">
+        <canvas baseChart [data]="incomeTrendChartData" [options]="netLineOptions" type="line"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <ng-template #noIncomeChart>
+    <p class="empty">No income credits for the selected categories in this range.</p>
+  </ng-template>
+
+  <div class="card" *ngIf="analyticsState.analytics">
+    <h3>Income breakdown</h3>
+    <p class="hint" *ngIf="incomeTableRows.length">Click a row to open matching transactions</p>
+    <table class="data-table compact" *ngIf="incomeTableRows.length; else noIncomeTable">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th class="num">Txns</th>
+          <th class="num">Credits</th>
+          <th class="num">Share</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let r of incomeTableRows" class="clickable-row" (click)="openIncomeCategory(r)">
+          <td>{{ r.label }}</td>
+          <td class="num">{{ r.txn_count }}</td>
+          <td class="credit num">₹{{ formatMoney(r.total_credit) }}</td>
+          <td class="num">
+            <div class="share-bar-wrap">
+              <div class="share-bar" [style.width.%]="r.pct"></div>
+              <span>{{ r.pct | number:'1.0-1' }}%</span>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+      <tfoot *ngIf="incomeTableRows.length">
+        <tr>
+          <td><strong>Total</strong></td>
+          <td class="num"><strong>{{ totalTxnCount }}</strong></td>
+          <td class="credit num"><strong>₹{{ formatMoney(totalIncome) }}</strong></td>
+          <td class="num"><strong>100%</strong></td>
+        </tr>
+      </tfoot>
+    </table>
+    <ng-template #noIncomeTable>
+      <p class="empty">Select one or more income categories above, or widen the date range.</p>
+    </ng-template>
+  </div>
+</div>

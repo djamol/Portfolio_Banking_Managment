@@ -1,1 +1,33 @@
-/* page-specific */
+.cat-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0.75rem 0;
+  font-size: 0.875rem;
+}
+
+.cat-breadcrumb .crumb {
+  background: transparent;
+  border: none;
+  color: #2563eb;
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.cat-breadcrumb .crumb:hover {
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.cat-breadcrumb .crumb-sep {
+  color: #94a3b8;
+  user-select: none;
+}
+
+.drill-hint {
+  color: #94a3b8;
+  margin-left: 0.35rem;
+  font-size: 0.75rem;
+}

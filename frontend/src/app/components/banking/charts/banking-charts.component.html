@@ -3,9 +3,11 @@
     <a routerLink="/banking/analytics" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Summary</a>
     <a routerLink="/banking/charts" routerLinkActive="active">Charts</a>
     <a routerLink="/banking/cashflow" routerLinkActive="active">Cashflow</a>
+    <a routerLink="/banking/income" routerLinkActive="active">Income</a>
   </nav>
   <p class="hint">
     Line and category charts for the selected account and date range. Respects <strong>Exclude transfers</strong>.
+    Use Parent / Sub / Leaf to roll up categories; click a spend bar or mix slice to drill into children.
   </p>
 
   <div class="stat-grid" *ngIf="analyticsState.analytics">
@@ -26,6 +28,27 @@
       <div class="stat-value" [class.credit]="(analyticsState.analytics.summary?.net_cashflow||0) >= 0" [class.debit]="(analyticsState.analytics.summary?.net_cashflow||0) < 0">
         ₹{{ formatMoney(analyticsState.analytics.summary?.net_cashflow) }}
       </div>
+    </div>
+  </div>
+
+  <div class="card category-grain-bar" *ngIf="analyticsState.analytics">
+    <div class="period-header">
+      <div>
+        <h3>Category hierarchy</h3>
+        <p class="hint">Roll up spend, mix, and trend charts by parent, sub-category, or leaf</p>
+      </div>
+      <div class="preset-row">
+        <button type="button" class="preset-btn" [class.active]="analyticsState.categoryGrain==='parent'" (click)="setGrain('parent')">Parent</button>
+        <button type="button" class="preset-btn" [class.active]="analyticsState.categoryGrain==='sub'" (click)="setGrain('sub')">Sub</button>
+        <button type="button" class="preset-btn" [class.active]="analyticsState.categoryGrain==='leaf'" (click)="setGrain('leaf')">Leaf</button>
+      </div>
+    </div>
+    <div class="cat-breadcrumb" *ngIf="analyticsState.categoryDrillPath.length || analyticsState.categoryGrain !== 'leaf'">
+      <button type="button" class="crumb" (click)="analyticsState.clearCategoryDrill()">All</button>
+      <ng-container *ngFor="let key of analyticsState.categoryDrillPath; let i = index">
+        <span class="crumb-sep">→</span>
+        <button type="button" class="crumb" (click)="analyticsState.drillToBreadcrumb(i)">{{ breadcrumbLabel(key) }}</button>
+      </ng-container>
     </div>
   </div>
 
@@ -64,7 +87,7 @@
 
     <div class="card chart-card chart-card-wide">
       <h3>Top category trends</h3>
-      <p class="chart-sub">Monthly spend for the top 5 debit categories</p>
+      <p class="chart-sub">Monthly spend for the top 5 debit categories at current hierarchy level</p>
       <div class="chart-box chart-box-lg">
         <canvas baseChart [data]="analyticsState.categoryTrendChartData" [options]="netLineOptions" type="line"></canvas>
       </div>
@@ -72,17 +95,17 @@
 
     <div class="card chart-card">
       <h3>Spend by category</h3>
-      <p class="chart-sub">Highest debit categories in range</p>
+      <p class="chart-sub">Highest debit categories — click a bar to drill down</p>
       <div class="chart-box chart-box-lg">
-        <canvas baseChart [data]="analyticsState.spendBarChartData" [options]="horizontalBarOptions" type="bar"></canvas>
+        <canvas baseChart [data]="analyticsState.spendBarChartData" [options]="spendBarClickOptions" type="bar"></canvas>
       </div>
     </div>
 
     <div class="card chart-card">
       <h3>Category mix</h3>
-      <p class="chart-sub">Share of activity by category</p>
+      <p class="chart-sub">Share of activity — click a slice to drill down</p>
       <div class="chart-box chart-box-lg">
-        <canvas baseChart [data]="analyticsState.chartsMixChartData" [options]="doughnutOptions" type="doughnut"></canvas>
+        <canvas baseChart [data]="analyticsState.chartsMixChartData" [options]="mixClickOptions" type="doughnut"></canvas>
       </div>
     </div>
   </div>

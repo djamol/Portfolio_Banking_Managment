@@ -1,5 +1,8 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
+import { ChartEvent, ActiveElement, ChartOptions } from 'chart.js';
 import { Subject, merge, takeUntil } from 'rxjs';
+import { CategoryGrain } from '../../../utils/category-rollup.util';
+import { formatCategoryLabel } from '../../../utils/category-tree.util';
 import {
   countLineOptions,
   doughnutOptions,
@@ -24,6 +27,16 @@ export class BankingChartsComponent implements OnInit, OnDestroy {
   readonly countLineOptions = countLineOptions;
   readonly horizontalBarOptions = horizontalBarOptions;
 
+  spendBarClickOptions: ChartOptions<'bar'> = {
+    ...horizontalBarOptions,
+    onClick: (event: ChartEvent, elements: ActiveElement[]) => this.onSpendClick(event, elements)
+  };
+
+  mixClickOptions: ChartOptions<'doughnut'> = {
+    ...doughnutOptions,
+    onClick: (event: ChartEvent, elements: ActiveElement[]) => this.onMixClick(event, elements)
+  };
+
   private readonly destroy$ = new Subject<void>();
 
   constructor(
@@ -41,6 +54,28 @@ export class BankingChartsComponent implements OnInit, OnDestroy {
   ngOnDestroy() {
     this.destroy$.next();
     this.destroy$.complete();
+  }
+
+  setGrain(grain: CategoryGrain) {
+    this.analyticsState.setCategoryGrain(grain);
+  }
+
+  breadcrumbLabel(key: string): string {
+    return formatCategoryLabel(key);
+  }
+
+  onSpendClick(_event: ChartEvent, elements: ActiveElement[]) {
+    if (!elements?.length) return;
+    const idx = elements[0].index;
+    const key = this.analyticsState.spendChartKeys[idx];
+    if (key) this.analyticsState.drillIntoCategory(key);
+  }
+
+  onMixClick(_event: ChartEvent, elements: ActiveElement[]) {
+    if (!elements?.length) return;
+    const idx = elements[0].index;
+    const key = this.analyticsState.mixChartKeys[idx];
+    if (key) this.analyticsState.drillIntoCategory(key);
   }
 
   formatMoney = formatMoney;

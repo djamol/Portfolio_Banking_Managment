@@ -1,0 +1,13 @@
+.income-picker-card {
+  margin-bottom: 1rem;
+}
+
+.income-cat-filter {
+  display: block;
+  margin-top: 0.75rem;
+  max-width: 28rem;
+}
+
+.income-page .chart-grid {
+  margin-bottom: 1rem;
+}

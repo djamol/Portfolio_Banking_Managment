@@ -25,6 +25,7 @@ import { BankingRulesComponent } from './components/banking/rules/banking-rules.
 import { BankingAnalyticsComponent } from './components/banking/analytics/banking-analytics.component';
 import { BankingChartsComponent } from './components/banking/charts/banking-charts.component';
 import { BankingCashflowComponent } from './components/banking/cashflow/banking-cashflow.component';
+import { BankingIncomeComponent } from './components/banking/income/banking-income.component';
 import { BankingInterestComponent } from './components/banking/interest/banking-interest.component';
 import { BankingInsightsComponent } from './components/banking/insights/banking-insights.component';
 import { BankingBudgetsComponent } from './components/banking/budgets/banking-budgets.component';
@@ -53,6 +54,7 @@ import { routes } from './app.routes';
     BankingAnalyticsComponent,
     BankingChartsComponent,
     BankingCashflowComponent,
+    BankingIncomeComponent,
     BankingInterestComponent,
     BankingInsightsComponent,
     BankingBudgetsComponent,

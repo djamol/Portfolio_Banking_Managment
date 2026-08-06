@@ -2,6 +2,13 @@ import { Injectable } from '@angular/core';
 import { ChartConfiguration } from 'chart.js';
 import { BankAnalyticsService } from '../../../services/banking/bank-analytics.service';
 import { PeriodGrain, PeriodRow } from '../../../services/banking/banking.models';
+import {
+  CategoryGrain,
+  RolledCategoryRow,
+  rollupCategoryMonthRows,
+  rollupCategoryRows
+} from '../../../utils/category-rollup.util';
+import { formatCategoryLabel } from '../../../utils/category-tree.util';
 import { BANK_CHART_COLORS } from './banking-chart.util';
 import { BankingContextService } from './banking-context.service';
 import { BankingFilterState } from './banking-filter-state.service';
@@ -36,6 +43,18 @@ export class BankingAnalyticsState {
   categoryTrendChartData: ChartConfiguration<'line'>['data'] = { labels: [], datasets: [] };
   spendBarChartData: ChartConfiguration<'bar'>['data'] = { labels: [], datasets: [] };
   chartsMixChartData: ChartConfiguration<'doughnut'>['data'] = { labels: [], datasets: [] };
+
+  /** Hierarchy grain for charts / hierarchical table */
+  categoryGrain: CategoryGrain = 'parent';
+  /** Drill path keys, e.g. ['Expense', 'Expense_Food'] */
+  categoryDrillPath: string[] = [];
+  /** Rolled rows for spend/mix drill + analytics hierarchy table */
+  rolledSpendRows: RolledCategoryRow[] = [];
+  rolledMixRows: RolledCategoryRow[] = [];
+  hierarchyTableRows: RolledCategoryRow[] = [];
+  /** Keys aligned with spend/mix chart label indices for click → drill */
+  spendChartKeys: string[] = [];
+  mixChartKeys: string[] = [];
 
   cashflowGrain: PeriodGrain = 'month';
   periodRows: PeriodRow[] = [];
@@ -147,9 +166,54 @@ export class BankingAnalyticsState {
     this.buildExploreCharts();
   }
 
+  get categoryDrillKey(): string {
+    return this.categoryDrillPath.length
+      ? this.categoryDrillPath[this.categoryDrillPath.length - 1]
+      : '';
+  }
+
+  setCategoryGrain(grain: CategoryGrain) {
+    this.categoryGrain = grain;
+    if (grain === 'leaf') {
+      this.categoryDrillPath = [];
+    }
+    this.buildExploreCharts();
+    this.buildHierarchyTable();
+  }
+
+  drillIntoCategory(key: string) {
+    if (!key || this.categoryGrain === 'leaf') return;
+    const row =
+      this.rolledSpendRows.find((r) => r.key === key) ||
+      this.rolledMixRows.find((r) => r.key === key) ||
+      this.hierarchyTableRows.find((r) => r.key === key);
+    if (row && !row.canDrill) return;
+    if (this.categoryDrillPath[this.categoryDrillPath.length - 1] === key) return;
+    this.categoryDrillPath = [...this.categoryDrillPath, key];
+    this.buildExploreCharts();
+    this.buildHierarchyTable();
+  }
+
+  drillToBreadcrumb(index: number) {
+    if (index < 0) {
+      this.categoryDrillPath = [];
+    } else {
+      this.categoryDrillPath = this.categoryDrillPath.slice(0, index + 1);
+    }
+    this.buildExploreCharts();
+    this.buildHierarchyTable();
+  }
+
+  clearCategoryDrill() {
+    this.categoryDrillPath = [];
+    this.buildExploreCharts();
+    this.buildHierarchyTable();
+  }
+
   buildExploreCharts() {
     if (!this.analytics) return;
     const months = (this.analytics.byMonth || []).slice(-24);
+    const drillKey = this.categoryDrillKey;
 
     this.txnVolumeChartData = {
       labels: months.map((m: any) => m.month),
@@ -186,30 +250,48 @@ export class BankingAnalyticsState {
       ]
     };
 
-    const expenseCats = (this.analytics.expenseByCategory || []).slice(0, 12);
+    const sourceRows = (this.analytics.byCategory || []) as Array<{
+      category: string;
+      txn_count: number;
+      total_debit: number;
+      total_credit: number;
+    }>;
+    const rolled = rollupCategoryRows(sourceRows, this.categoryGrain, drillKey);
+    this.rolledMixRows = rolled;
+
+    const spendRows = rolled
+      .filter((r) => r.total_debit > 0)
+      .sort((a, b) => b.total_debit - a.total_debit)
+      .slice(0, 12);
+    this.rolledSpendRows = spendRows;
+    this.spendChartKeys = spendRows.map((r) => r.key);
     this.spendBarChartData = {
-      labels: expenseCats.map((c: any) => c.category),
+      labels: spendRows.map((r) => r.label),
       datasets: [{
         label: 'Spend',
-        data: expenseCats.map((c: any) => Number(c.total_debit) || 0),
-        backgroundColor: expenseCats.map((_: any, i: number) => BANK_CHART_COLORS[i % BANK_CHART_COLORS.length])
+        data: spendRows.map((r) => r.total_debit),
+        backgroundColor: spendRows.map((_, i) => BANK_CHART_COLORS[i % BANK_CHART_COLORS.length])
       }]
     };
 
-    const mixCats = (this.analytics.byCategory || []).slice(0, 10);
+    const mixRows = rolled.slice(0, 10);
+    this.mixChartKeys = mixRows.map((r) => r.key);
     this.chartsMixChartData = {
-      labels: mixCats.map((c: any) => c.category),
+      labels: mixRows.map((r) => r.label),
       datasets: [{
-        data: mixCats.map((c: any) => Number(c.total_debit) + Number(c.total_credit)),
+        data: mixRows.map((r) => r.total_debit + r.total_credit),
         backgroundColor: BANK_CHART_COLORS
       }]
     };
 
-    const catMonthRows: any[] = this.analytics.byCategoryMonth || [];
+    const catMonthRows = rollupCategoryMonthRows(
+      this.analytics.byCategoryMonth || [],
+      this.categoryGrain,
+      drillKey
+    );
     const debitByCat: Record<string, number> = {};
     for (const row of catMonthRows) {
-      const cat = row.category || 'Uncategorized';
-      debitByCat[cat] = (debitByCat[cat] || 0) + (Number(row.total_debit) || 0);
+      debitByCat[row.category] = (debitByCat[row.category] || 0) + (Number(row.total_debit) || 0);
     }
     const topCats = Object.entries(debitByCat)
       .sort((a, b) => b[1] - a[1])
@@ -228,7 +310,7 @@ export class BankingAnalyticsState {
     this.categoryTrendChartData = {
       labels: monthLabels,
       datasets: topCats.map((cat, i) => ({
-        label: cat,
+        label: formatCategoryLabel(cat),
         data: monthLabels.map((m) => lookup.get(`${m}::${cat}`) || 0),
         borderColor: BANK_CHART_COLORS[i % BANK_CHART_COLORS.length],
         backgroundColor: 'transparent',
@@ -236,6 +318,26 @@ export class BankingAnalyticsState {
         pointRadius: 2
       }))
     };
+
+    this.buildHierarchyTable();
+  }
+
+  buildHierarchyTable() {
+    if (!this.analytics) {
+      this.hierarchyTableRows = [];
+      return;
+    }
+    const sourceRows = (this.analytics.byCategory || []) as Array<{
+      category: string;
+      txn_count: number;
+      total_debit: number;
+      total_credit: number;
+    }>;
+    this.hierarchyTableRows = rollupCategoryRows(
+      sourceRows,
+      this.categoryGrain,
+      this.categoryDrillKey
+    );
   }
 
   setCashflowGrain(grain: PeriodGrain) {

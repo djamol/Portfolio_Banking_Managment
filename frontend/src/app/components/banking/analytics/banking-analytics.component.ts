@@ -2,13 +2,14 @@ import { Component, OnDestroy, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subject, merge, takeUntil } from 'rxjs';
 import { PeriodGrain, PeriodRow } from '../../../services/banking/banking.models';
+import { CategoryGrain, RolledCategoryRow } from '../../../utils/category-rollup.util';
 import {
   barOptions,
   doughnutOptions,
   lineOptions,
   netLineOptions
 } from '../shared/banking-chart.util';
-import { formatMoney, formatPct, toIsoDate } from '../shared/banking-format.util';
+import { formatCat, formatMoney, formatPct, toIsoDate } from '../shared/banking-format.util';
 import { BankingAnalyticsState } from '../shared/banking-analytics-state.service';
 import { BankingContextService } from '../shared/banking-context.service';
 import { BankingFilterState } from '../shared/banking-filter-state.service';
@@ -50,8 +51,34 @@ export class BankingAnalyticsComponent implements OnInit, OnDestroy {
     this.analyticsState.setCashflowGrain(grain);
   }
 
+  setCategoryGrain(grain: CategoryGrain) {
+    this.analyticsState.setCategoryGrain(grain);
+  }
+
   categoryPct(amount: number): number {
     return this.analyticsState.categoryPct(amount);
+  }
+
+  onHierarchyRowClick(row: RolledCategoryRow) {
+    if (row.canDrill) {
+      this.analyticsState.drillIntoCategory(row.key);
+      return;
+    }
+    this.filterByLeaves(row.leaves.length ? row.leaves : [row.key]);
+  }
+
+  openHierarchyLeaves(event: Event, row: RolledCategoryRow) {
+    event.stopPropagation();
+    this.filterByLeaves(row.leaves.length ? row.leaves : [row.key]);
+  }
+
+  filterByLeaves(leaves: string[]) {
+    this.filters.filterCategories = [...leaves];
+    this.filters.filterCategory = leaves.length === 1 ? leaves[0] : '';
+    this.filters.filterOffset = 0;
+    this.filters.notifyChanged();
+    this.router.navigate(['/banking/transactions']);
+    this.ctx.flash('info', `Filtered transactions by ${leaves.length} categor${leaves.length === 1 ? 'y' : 'ies'}`);
   }
 
   openPeriodInTransactions(row: PeriodRow) {
@@ -90,4 +117,5 @@ export class BankingAnalyticsComponent implements OnInit, OnDestroy {
 
   formatMoney = formatMoney;
   formatPct = formatPct;
+  formatCat = formatCat;
 }

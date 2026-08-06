@@ -2,6 +2,7 @@
   <a routerLink="/banking/analytics" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Summary</a>
   <a routerLink="/banking/charts" routerLinkActive="active">Charts</a>
   <a routerLink="/banking/cashflow" routerLinkActive="active">Cashflow</a>
+  <a routerLink="/banking/income" routerLinkActive="active">Income</a>
 </nav>
 
 <div class="stat-grid" *ngIf="analyticsState.analytics">
@@ -214,10 +215,26 @@
       </div>
     </div>
 
-    <div class="card" *ngIf="analyticsState.analytics?.expenseByCategory?.length">
-      <h3>Category spend breakdown</h3>
-      <p class="hint">Click a category to open matching transactions</p>
-      <table class="data-table compact">
+    <div class="card" *ngIf="analyticsState.hierarchyTableRows.length || analyticsState.analytics?.byCategory?.length">
+      <div class="period-header">
+        <div>
+          <h3>Category hierarchy breakdown</h3>
+          <p class="hint">Parent / Sub / Leaf rollups. Click a row with children to drill; use Open to filter transactions.</p>
+        </div>
+        <div class="preset-row">
+          <button type="button" class="preset-btn" [class.active]="analyticsState.categoryGrain==='parent'" (click)="setCategoryGrain('parent')">Parent</button>
+          <button type="button" class="preset-btn" [class.active]="analyticsState.categoryGrain==='sub'" (click)="setCategoryGrain('sub')">Sub</button>
+          <button type="button" class="preset-btn" [class.active]="analyticsState.categoryGrain==='leaf'" (click)="setCategoryGrain('leaf')">Leaf</button>
+        </div>
+      </div>
+      <div class="cat-breadcrumb" *ngIf="analyticsState.categoryDrillPath.length">
+        <button type="button" class="crumb" (click)="analyticsState.clearCategoryDrill()">All</button>
+        <ng-container *ngFor="let key of analyticsState.categoryDrillPath; let i = index">
+          <span class="crumb-sep">→</span>
+          <button type="button" class="crumb" (click)="analyticsState.drillToBreadcrumb(i)">{{ formatCat(key) }}</button>
+        </ng-container>
+      </div>
+      <table class="data-table compact" *ngIf="analyticsState.hierarchyTableRows.length">
         <thead>
           <tr>
             <th>Category</th>
@@ -225,11 +242,15 @@
             <th class="num">Debits</th>
             <th class="num">Share</th>
             <th class="num">Credits</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let c of analyticsState.analytics.expenseByCategory" class="clickable-row" (click)="filterByCategory(c.category)">
-            <td>{{ c.category }}</td>
+          <tr *ngFor="let c of analyticsState.hierarchyTableRows" class="clickable-row" (click)="onHierarchyRowClick(c)">
+            <td>
+              {{ c.label }}
+              <span class="drill-hint" *ngIf="c.canDrill">▾</span>
+            </td>
             <td class="num">{{ c.txn_count }}</td>
             <td class="debit num">₹{{ formatMoney(c.total_debit) }}</td>
             <td class="num">
@@ -239,6 +260,9 @@
               </div>
             </td>
             <td class="credit num">₹{{ formatMoney(c.total_credit) }}</td>
+            <td class="num">
+              <button type="button" class="btn btn-ghost btn-sm" (click)="openHierarchyLeaves($event, c)">Open</button>
+            </td>
           </tr>
         </tbody>
       </table>
