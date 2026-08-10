@@ -155,6 +155,16 @@ const CATEGORY_RULES = [
     ]
   },
   {
+    category: 'Expense_Tax_GST',
+    patterns: [
+      /\bIGST\b/i,
+      /\bCGST\b/i,
+      /\bSGST\b/i,
+      /IGST\s*\/\s*SGST\s*\/\s*CGST/i,
+      /GST\s*TAX/i
+    ]
+  },
+  {
     category: 'Investment_FD_Book',
     patterns: [
       /FD\s*BOOKED/i,
@@ -199,7 +209,7 @@ const CATEGORY_RULES = [
       /BSESTARMF/i,
       /bsestarmf/i,
       /INDIANCLEARING/i,
-      /INDIAN\s*CLEA/i,
+      /INDIAN\s*CLEARING/i,
       /CLEARING\s*CORPORATION/i,
       /SHRIRAM\s*TRANSPORT/i
     ]
@@ -214,7 +224,15 @@ const CATEGORY_RULES = [
   },
   {
     category: 'Expense_Insurance_Premium',
-    patterns: [/INSUR/i, /PREMIUM/i, /HDFC\s*LIFE/i, /\bLIC\b.*PREM/i]
+    patterns: [
+      /INSUR/i,
+      /PREMIUM/i,
+      /HDFC\s*LIFE/i,
+      /\bLIC\b.*PREM/i,
+      /TATA\s*AIA/i,
+      /TATAAIA/i,
+      /WWW\s*TATAAIA/i
+    ]
   },
   {
     category: 'Expense_Loan_EMI',
@@ -234,7 +252,10 @@ const CATEGORY_RULES = [
       /TATA\s*DOCOMO/i,
       /UNINOR/i,
       /\bAIRTEL\b/i,
-      /GOOGLE\s*IND.*RECHARGE/i
+      /GOOGLE\s*IND.*RECHARGE/i,
+      /BHARAT\s*SANCHAR/i,
+      /\bBSNL\b/i,
+      /CRED\s*TELECOM/i
     ]
   },
   {
@@ -243,14 +264,15 @@ const CATEGORY_RULES = [
       /\bBIL\//i,
       /BILLPAY/i,
       /HDFCBILLPAY/i,
-      /BBPS/i,
+      /BBPS\//i,
       /ELECTRICITY/i,
       /GAS\s*BILL/i,
       /WATER\s*BILL/i,
       /BILLDESK/i,
-      /\bCHEQ\b/i,
       /CHEQ\s*DIGITAL/i,
+      /\bCHEQ\b/i,
       /CRED\s*Club/i,
+      /CRED\s*VISA/i,
       /\bCRED\b/i
     ]
   },
@@ -260,7 +282,7 @@ const CATEGORY_RULES = [
   },
   {
     category: 'Travel_Transit_Bus',
-    patterns: [/\bMSRTC\b/i, /\bPMPML\b/i]
+    patterns: [/\bMSRTC\b/i, /\bPMPML\b/i, /\bREDBUS\b/i]
   },
   {
     category: 'Travel_Transit_Rail',
@@ -271,8 +293,27 @@ const CATEGORY_RULES = [
     patterns: [/\bUBER\b/i, /\bOLA\b/i, /RAPIDO/i]
   },
   {
+    // Petrol / diesel / CNG pump spends (not Expense_Other_Debit)
     category: 'Travel_Fuel_Petrol',
-    patterns: [/PETROL/i, /\bBPCL\b/i, /\bHPCL\b/i, /\bIOCL\b/i, /FASTAG/i]
+    patterns: [
+      /PETROL/i,
+      /PETROLEUM/i,
+      /\bBPCL\b/i,
+      /\bHPCL\b/i,
+      /\bIOCL\b/i,
+      /INDIAN\s*OIL\s*CORP/i,
+      /INDIAN\s*OIL/i,
+      /\bINDIANOIL\b/i,
+      /FASTAG/i,
+      /H\s*P\s*AUTO\s*CARE/i,
+      /HP\s*AUTO\s*CARE/i,
+      /HP\s*SERVICE\s*CENT/i,
+      /HP\s*AUTO\s*CARE\s*CENTER/i,
+      /ADHIRA\s*PETROL/i,
+      /\bCNG\b/i,
+      /FUEL\s*STATION/i,
+      /PETROL\s*PUMP/i
+    ]
   },
   {
     category: 'Food_Delivery_Online',
@@ -287,8 +328,20 @@ const CATEGORY_RULES = [
     patterns: [/DIARY/i, /DAIRY/i]
   },
   {
+    // DMart legal entity often appears as AVENUE SUPERMARTS / AVENUE E COMMERCE (no "DMART" token)
     category: 'Food_Grocery_Store',
-    patterns: [/DMART/i, /BIGBASKET/i, /BLINKIT/i, /ZEPTO/i, /GENRAL\s*STORE/i, /GENERAL\s*STORE/i]
+    patterns: [
+      /DMART/i,
+      /D[\s\-]?MART/i,
+      /AVENUE\s*SUPER\s*MARTS?/i,
+      /AVENUE\s*SUPERMARTS?/i,
+      /AVENUE\s*E[\s\-]?COMMERCE/i,
+      /BIGBASKET/i,
+      /BLINKIT/i,
+      /ZEPTO/i,
+      /GENRAL\s*STORE/i,
+      /GENERAL\s*STORE/i
+    ]
   },
   {
     category: 'Shopping_Online_Amazon',
@@ -300,7 +353,21 @@ const CATEGORY_RULES = [
   },
   {
     category: 'Shopping_Online_Other',
-    patterns: [/EBAY/i, /PAYU/i, /\bONL\b/i, /NUCLEARTRIP/i]
+    patterns: [
+      /EBAY/i,
+      /PAYU/i,
+      /\bONL\b/i,
+      /NUCLEARTRIP/i,
+      /LENSKART/i,
+      /BOATLIFESTYLE/i,
+      /GOOGLE\s*\*?\s*PLAY/i,
+      /DREAMSCAPE\s*NETWORKS/i,
+      /RACKNERD/i
+    ]
+  },
+  {
+    category: 'Shopping_Ads_Marketing',
+    patterns: [/FACEBOOK\s*COM\s*ADS/i, /WWW\s*FACEBOOK\s*COM\s*ADS/i, /META\s*ADS/i]
   },
   {
     category: 'Payment_International_PayPal',
@@ -311,12 +378,32 @@ const CATEGORY_RULES = [
     patterns: [/\bATM\b/i, /CASH\s*WDL/i, /CASH\s*DEP/i, /\bNWD-/i, /\bEAW-/i, /\bATW-/i, /\bCCWD\b/i]
   },
   {
+    // Do NOT match bare "CREDIT CARD" — CC payment credits falsely hit that
     category: 'Expense_Card_POS',
-    patterns: [/\bPOS\b/i, /CREDIT\s*CARD/i, /VISA/i, /MASTERCARD/i, /CRV\s*POS/i]
+    patterns: [/\bPOS\b/i, /CRV\s*POS/i, /VISA\s*POS/i, /MASTERCARD\s*POS/i]
   },
   {
     category: 'Recharge_Mobile_Prepaid',
     patterns: [/RECHARGE/i, /OXIGEN/i, /PREPAID/i, /\bRCHG\b/i]
+  },
+  {
+    category: 'Transfer_Card_Payment',
+    patterns: [
+      /NETBANKING\s*TRANSFER/i,
+      /AUTOPAY\s*THANK\s*YOU/i,
+      /INFINITY\s*PAYMENT\s*RECEIVED/i,
+      /AUTODEBIT\s*PAYMENT\s*RECD/i,
+      /CLICK\s*TO\s*PAY\s*PAYMENT\s*RECEIVED/i,
+      /NEFT\s*PAYMENT\s*RECEIVED/i,
+      /NEFT\s*CREDIT\s*CARD\s*PAYMENT/i,
+      /CREDIT\s*CARD\s*PAYMENT/i,
+      /ONLINE\s*TRF\s*[-–]?\s*PYMT\s*RECD/i,
+      /BPPY\s*CC\s*PAYMENT/i,
+      /BBPS\s*PAYMENT\s*RECEIVED/i,
+      /TELE\s*TRANSFER\s*CREDIT/i,
+      /IMPS\s*PMT\b/i,
+      /PAYMENT\s*RECEIVED,?\s*THANK\s*YOU/i
+    ]
   },
   {
     category: 'Transfer_Internal_Bank',
@@ -338,6 +425,16 @@ const CATEGORY_RULES = [
     patterns: [/NEFT\s*DR/i, /IMPS.*\bDR\b/i, /IB\s*FUNDS\s*TRANSFER\s*DR/i, /TPT-/i, /\bRTGS\b.*DR/i]
   },
   {
+    category: 'Income_Cashback_Card',
+    patterns: [
+      /PETRO\s*SURCHARGE\s*WAIVER/i,
+      /REV\s*OF\s*HPCL\s*SURCHARGE/i,
+      /HPCL\s*SURCHARGE\s*REV/i,
+      /EXGRATIA\s*INTEREST\s*REFUND/i,
+      /SURCHARGE\s*WAIVER/i
+    ]
+  },
+  {
     category: 'Expense_Bank_Charges',
     patterns: [
       /CHGS/i,
@@ -346,6 +443,13 @@ const CATEGORY_RULES = [
       /SMS\s*ALERT/i,
       /AMCB/i,
       /\bFEE\b/i,
+      /LATE\s*FEE/i,
+      /FINANCE\s*CHARGES?/i,
+      /REDEMPTION\s*PROC\s*FEE/i,
+      /REWARD\s*REDEMPTION\s*HANDLING/i,
+      /AUTO\s*DEBIT\s*RETURN\s*FEE/i,
+      /\bDCC\b/i,
+      /%\s*ON\s*ALL\s*DCC/i,
       /SER\s*TAX/i,
       /ED\s*CESS/i,
       /\bDPCHG\b/i,
@@ -370,7 +474,7 @@ const PAYEE_ALIASES = [
   { canonical: 'Moneylicious Securities', patterns: [/moneylicio/i] },
   {
     canonical: 'Indian Clearing Corporation',
-    patterns: [/indian\s*clea/i, /indianclearing/i, /clearing\s*corporation/i, /bsestarmf/i]
+    patterns: [/indian\s*clearing/i, /indianclearing/i, /clearing\s*corporation/i, /bsestarmf/i]
   },
   {
     canonical: 'Amol Vishnu Patil',
@@ -417,6 +521,12 @@ const PAYEE_ALIASES = [
   { canonical: 'CRED', patterns: [/\bcred\s*club\b/i, /^cred$/i] },
   { canonical: 'CHEQ', patterns: [/\bcheq\b/i] },
   { canonical: 'Jio', patterns: [/\bjioin\b/i, /\bmyjio\b/i, /jio\.easebuzz/i] },
+  { canonical: 'DMart', patterns: [/dmart/i, /avenue\s*supermarts?/i, /avenue\s*e[\s\-]?commerce/i] },
+  { canonical: 'Indian Oil', patterns: [/indian\s*oil/i, /\biocl\b/i] },
+  { canonical: 'HP Petrol', patterns: [/h\s*p\s*auto\s*care/i, /hp\s*auto\s*care/i, /hp\s*service\s*cent/i, /\bhpcl\b/i] },
+  { canonical: 'BSNL', patterns: [/bharat\s*sanchar/i, /\bbsnl\b/i] },
+  { canonical: 'RedBus', patterns: [/\bredbus\b/i] },
+  { canonical: 'Tata AIA', patterns: [/tata\s*aia/i, /tataaia/i] },
   { canonical: 'Dhan', patterns: [/\bdhan\b/i] }
 ];
 
@@ -597,6 +707,25 @@ function matchCustomRules(narration, payee, customRules = [], accountId = null) 
   return null;
 }
 
+/** Petrol / diesel / CNG pump merchants (Indian Oil, HP, BPCL, etc.) */
+function isFuelPumpNarration(text) {
+  return (
+    /INDIAN\s*OIL/i.test(text) ||
+    /\bINDIANOIL\b/i.test(text) ||
+    /\bIOCL\b/i.test(text) ||
+    /H\s*P\s*AUTO\s*CARE/i.test(text) ||
+    /HP\s*AUTO\s*CARE/i.test(text) ||
+    /HP\s*SERVICE\s*CENT/i.test(text) ||
+    /\bHPCL\b/i.test(text) ||
+    /\bBPCL\b/i.test(text) ||
+    /ADHIRA\s*PETROL/i.test(text) ||
+    /PETROL\s*PUMP/i.test(text) ||
+    /FUEL\s*STATION/i.test(text) ||
+    (/\bPETROL/i.test(text) && !/SURCHARGE\s*WAIVER/i.test(text)) ||
+    /\bPETROLEUM\b/i.test(text)
+  );
+}
+
 function suggestCategory(narration, withdrawal = 0, deposit = 0, customRules = [], accountId = null, payee = null) {
   const custom = matchCustomRules(narration, payee, customRules, accountId);
   if (custom) return custom;
@@ -605,6 +734,44 @@ function suggestCategory(narration, withdrawal = 0, deposit = 0, customRules = [
   const resolvedPayee = normalizePayee(payee, text) || payee;
   const isCredit = Number(deposit) > 0 && Number(withdrawal) <= 0;
   const isDebit = Number(withdrawal) > 0;
+
+  // Fuel / petrol-pump debits first (never Expense_Other_Debit)
+  // e.g. INDIAN OIL CORPORATION…, HP AUTO CARE CENTER…
+  if (isDebit && isFuelPumpNarration(text)) {
+    return { category: 'Travel_Fuel_Petrol', source: 'auto' };
+  }
+  if (
+    isCredit &&
+    (/PETRO\s*SURCHARGE\s*WAIVER/i.test(text) ||
+      /REV\s*OF\s*HPCL\s*SURCHARGE/i.test(text) ||
+      /HPCL\s*SURCHARGE\s*REV/i.test(text) ||
+      /SURCHARGE\s*WAIVER/i.test(text))
+  ) {
+    return { category: 'Income_Cashback_Card', source: 'auto' };
+  }
+
+  // Credit-card statement payments / autopay (credits) — not income
+  if (
+    isCredit &&
+    (/NETBANKING\s*TRANSFER/i.test(text) ||
+      /AUTOPAY\s*THANK\s*YOU/i.test(text) ||
+      /INFINITY\s*PAYMENT\s*RECEIVED/i.test(text) ||
+      /AUTODEBIT\s*PAYMENT\s*RECD/i.test(text) ||
+      /CLICK\s*TO\s*PAY\s*PAYMENT\s*RECEIVED/i.test(text) ||
+      /NEFT\s*PAYMENT\s*RECEIVED/i.test(text) ||
+      /NEFT\s*CREDIT\s*CARD\s*PAYMENT/i.test(text) ||
+      /CREDIT\s*CARD\s*PAYMENT/i.test(text) ||
+      /ONLINE\s*TRF\s*[-–]?\s*PYMT\s*RECD/i.test(text) ||
+      /BPPY\s*CC\s*PAYMENT/i.test(text) ||
+      /BBPS\s*PAYMENT\s*RECEIVED/i.test(text) ||
+      /TELE\s*TRANSFER\s*CREDIT/i.test(text) ||
+      /IMPS\s*PMT\b/i.test(text) ||
+      /PAYMENT\s*RECEIVED,?\s*THANK\s*YOU/i.test(text) ||
+      (/CHEQ\s*DIGITAL/i.test(text) && /RECEIVED|GURGAON/i.test(text)) ||
+      /CRED\s*VISA\s*DIRECT/i.test(text))
+  ) {
+    return { category: 'Transfer_Card_Payment', source: 'auto' };
+  }
 
   // Directional internal bank transfers
   if (/^IO\s+For\b/i.test(text) || /IB\s*FUNDS\s*TRANSFER/i.test(text)) {
@@ -618,7 +785,12 @@ function suggestCategory(narration, withdrawal = 0, deposit = 0, customRules = [
   }
 
   // MF / broker narrations even when counterparty name is self (e.g. Axis InvestNow NEFT)
-  if (/MUTUAL\s*FUND|MUTUALFUND|INVESTNOW|MONEYLICIO|RAISE\s*SECU|INDIAN\s*CLEA|CLEARING\s*CORPORATION|BSESTARMF|EBA\/MFP|\bMFP-/i.test(text)) {
+  // Use INDIAN CLEARING (not INDIAN CLEA) so INDIAN OIL CORPORATION never matches
+  if (
+    /MUTUAL\s*FUND|MUTUALFUND|INVESTNOW|MONEYLICIO|RAISE\s*SECU|INDIAN\s*CLEARING|INDIANCLEARING|CLEARING\s*CORPORATION|BSESTARMF|EBA\/MFP|\bMFP-/i.test(
+      text
+    )
+  ) {
     return {
       category: isCredit ? 'Investment_MutualFund_Redemption' : 'Investment_MutualFund_Purchase',
       source: 'auto'
@@ -654,19 +826,26 @@ function suggestCategory(narration, withdrawal = 0, deposit = 0, customRules = [
       return { category: 'Bills_Utility_Other', source: 'auto' };
     }
     if (/^cred$/i.test(resolvedPayee) || /^cheq$/i.test(resolvedPayee)) {
-      return { category: 'Bills_Utility_Other', source: 'auto' };
+      return { category: isCredit ? 'Transfer_Card_Payment' : 'Bills_Utility_Other', source: 'auto' };
     }
-    if (/^jio$/i.test(resolvedPayee)) {
+    if (/^jio$/i.test(resolvedPayee) || /^bsnl$/i.test(resolvedPayee)) {
       return { category: 'Bills_Telecom_Mobile', source: 'auto' };
     }
-    if (/pune metro|msrtc|pmpml/i.test(resolvedPayee)) {
+    if (/^dmart$/i.test(resolvedPayee)) {
+      return { category: 'Food_Grocery_Store', source: 'auto' };
+    }
+    if (/indian oil|^hp petrol$/i.test(resolvedPayee)) {
+      if (isDebit) return { category: 'Travel_Fuel_Petrol', source: 'auto' };
+      // credits at pump merchants are rare; leave for waiver / generic credit rules
+    }
+    if (/pune metro|msrtc|pmpml|redbus/i.test(resolvedPayee)) {
       if (/metro/i.test(resolvedPayee)) return { category: 'Travel_Transit_Metro', source: 'auto' };
       return { category: 'Travel_Transit_Bus', source: 'auto' };
     }
   }
 
   // MF redemption credits often say Mutual Fund / Clearing without debit patterns
-  if (isCredit && /MUTUAL\s*FUND|INDIAN\s*CLEA|CLEARING\s*CORPORATION|KMMF\s*REDEMPTION/i.test(text)) {
+  if (isCredit && /MUTUAL\s*FUND|INDIAN\s*CLEARING|INDIANCLEARING|CLEARING\s*CORPORATION|KMMF\s*REDEMPTION/i.test(text)) {
     return { category: 'Investment_MutualFund_Redemption', source: 'auto' };
   }
 
@@ -687,6 +866,24 @@ function suggestCategory(narration, withdrawal = 0, deposit = 0, customRules = [
     }
     if (category === 'Travel_Fuel_Petrol' && isCredit) {
       continue; // e.g. HPCL cashback / CRV — not fuel spend
+    }
+    if (category === 'Transfer_Card_Payment' && isDebit) {
+      continue; // payment patterns are credit-side on CC statements
+    }
+    if (category === 'Bills_Utility_Other' && isCredit) {
+      // CRED/CHEQ/BBPS credits on CC = card repayment, not utility spend
+      if (/BBPS|CHEQ|CRED|PAYMENT\s*RECEIVED/i.test(text)) {
+        return { category: 'Transfer_Card_Payment', source: 'auto' };
+      }
+    }
+    if (category === 'Expense_Tax_GST' && isCredit) {
+      category = 'Income_Cashback_Card'; // GST / tax reversal on card
+    }
+    if (category === 'Expense_Bank_Charges' && isCredit) {
+      // Fee reversal stays under bank charges for netting, unless explicit waiver
+      if (/WAIVER|SURCHARGE\s*REV|EXGRATIA/i.test(text)) {
+        category = 'Income_Cashback_Card';
+      }
     }
     if (category === 'Transfer_Other_In' && isDebit) category = 'Transfer_Other_Out';
     if (category === 'Transfer_Other_Out' && isCredit) category = 'Transfer_Other_In';
