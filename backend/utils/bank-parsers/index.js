@@ -9,6 +9,11 @@ const { detectKotak, parseKotakStatement } = require('./kotak');
 const { parseGenericCsv, parseGenericXls } = require('./generic');
 const { extractPdfText } = require('./pdf-text');
 const { detectHdfcCreditCard, parseHdfcCcFromLines, parseHdfcCreditCardPdf } = require('./hdfc-cc-pdf');
+const {
+  detectIciciCreditCardPdf,
+  parseIciciCcFromLines,
+  parseIciciCreditCardPdf
+} = require('./icici-cc-pdf');
 
 function extensionOf(filename = '') {
   return path.extname(filename).toLowerCase();
@@ -35,6 +40,7 @@ function parseByHint(hint, buffer, accountId, ext, options) {
     case 'HDFC_CC':
       return null; // PDF-only path
     case 'ICICI_CC':
+      if (ext === '.pdf') return null; // PDF-only path below
       return parseIciciCreditCardCsv(buffer, accountId, options);
     case 'DCB':
       return parseDcbXls(buffer, accountId, options);
@@ -85,14 +91,20 @@ async function parsePdfStatement(buffer, accountId, { password, bankHint, custom
   if (hint === 'HDFC_CC') {
     return parseHdfcCreditCardPdf(buffer, accountId, { password, customRules });
   }
+  if (hint === 'ICICI_CC') {
+    return parseIciciCreditCardPdf(buffer, accountId, { password, customRules });
+  }
 
   const extracted = await extractPdfText(buffer, { password });
-  if (detectHdfcCreditCard(extracted.text) || /credit\s*card/i.test(hint)) {
+  if (detectIciciCreditCardPdf(extracted.text)) {
+    return parseIciciCcFromLines(extracted.lines, accountId, customRules || []);
+  }
+  if (detectHdfcCreditCard(extracted.text)) {
     return parseHdfcCcFromLines(extracted.lines, accountId, customRules || []);
   }
 
   throw new Error(
-    'PDF bank savings/current statements are not supported yet. For credit cards: HDFC Millennia/year-end PDF, or ICICI CreditCardStatement CSV. Otherwise export CSV/Excel.'
+    'PDF bank savings/current statements are not supported yet. For credit cards: HDFC CC PDF (Millennia / Regalia / year-end) or ICICI CC PDF / CreditCardStatement CSV. Otherwise export CSV/Excel.'
   );
 }
 
@@ -189,6 +201,7 @@ module.exports = {
   parseHdfcXls,
   parseIciciXls,
   parseIciciCreditCardCsv,
+  parseIciciCreditCardPdf,
   parseDcbXls,
   parseGenericCsv,
   parseGenericXls,

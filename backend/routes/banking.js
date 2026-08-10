@@ -482,7 +482,11 @@ router.post('/import', upload.single('file'), async (req, res) => {
     });
   } catch (error) {
     console.error('Error importing bank statement:', error);
-    res.status(400).json({ success: false, error: error.message });
+    res.status(400).json({
+      success: false,
+      error: error.message,
+      code: error.code || undefined
+    });
   }
 });
 
@@ -553,7 +557,11 @@ router.post('/import/preview', upload.single('file'), async (req, res) => {
     });
   } catch (error) {
     console.error('Error previewing bank statement:', error);
-    res.status(400).json({ success: false, error: error.message });
+    res.status(400).json({
+      success: false,
+      error: error.message,
+      code: error.code || undefined
+    });
   }
 });
 

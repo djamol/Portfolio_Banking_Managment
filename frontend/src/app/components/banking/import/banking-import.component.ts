@@ -17,6 +17,7 @@ export class BankingImportComponent implements OnInit, OnDestroy {
   importFile: File | null = null;
   importPdfPassword = '';
   showPdfPassword = false;
+  pdfPasswordError = '';
   importPreview: any = null;
   importing = false;
   lastImportResult: any = null;
@@ -26,9 +27,9 @@ export class BankingImportComponent implements OnInit, OnDestroy {
 
   readonly bankSupport = [
     { name: 'HDFC', formats: 'CSV / Excel', status: 'Full' },
-    { name: 'HDFC Credit Card', formats: 'PDF (password OK)', status: 'Full' },
+    { name: 'HDFC Credit Card', formats: 'PDF (Millennia / Regalia; password OK)', status: 'Full' },
     { name: 'ICICI', formats: 'XLS / XLSX', status: 'Full' },
-    { name: 'ICICI Credit Card', formats: 'CSV (CreditCardStatement)', status: 'Full' },
+    { name: 'ICICI Credit Card', formats: 'PDF (password OK) / CSV', status: 'Full' },
     { name: 'DCB', formats: 'XLS / XLSX', status: 'Full' },
     { name: 'SBI', formats: 'CSV / Excel', status: 'Generic+' },
     { name: 'Axis', formats: 'CSV / Excel', status: 'Generic+' },
@@ -71,14 +72,49 @@ export class BankingImportComponent implements OnInit, OnDestroy {
     this.importFile = file;
     this.importPreview = null;
     this.lastImportResult = null;
+    this.pdfPasswordError = '';
     this.showPdfPassword = !!(file && /\.pdf$/i.test(file.name));
     if (!this.showPdfPassword) this.importPdfPassword = '';
+  }
+
+  onPdfPasswordChange() {
+    this.pdfPasswordError = '';
   }
 
   onBackupFileSelected(event: Event) {
     const input = event.target as HTMLInputElement;
     this.backupImportFile = input.files?.[0] || null;
     this.lastBackupImportResult = null;
+  }
+
+  private extractApiError(err: any, fallback: string): { message: string; code?: string } {
+    const body = err?.error;
+    const code = body?.code || err?.code;
+    const message =
+      (typeof body === 'string' ? body : null) ||
+      body?.error ||
+      err?.message ||
+      fallback;
+    return { message: String(message), code };
+  }
+
+  private handleImportError(err: any, fallback: string) {
+    const { message, code } = this.extractApiError(err, fallback);
+    if (
+      code === 'PDF_PASSWORD_INCORRECT' ||
+      code === 'PDF_PASSWORD_REQUIRED' ||
+      /incorrect\s*pdf\s*password/i.test(message) ||
+      /password-protected/i.test(message)
+    ) {
+      this.pdfPasswordError =
+        code === 'PDF_PASSWORD_REQUIRED' || /password-protected/i.test(message)
+          ? 'This PDF is password-protected. Enter the statement password and try again.'
+          : 'Incorrect PDF password. Check the password and try again.';
+      this.ctx.flash('error', this.pdfPasswordError);
+      return;
+    }
+    this.pdfPasswordError = '';
+    this.ctx.flash('error', message || fallback);
   }
 
   runBackupImport() {
@@ -126,8 +162,11 @@ export class BankingImportComponent implements OnInit, OnDestroy {
       this.ctx.flash('error', 'Select a target account before preview');
       return;
     }
+    this.pdfPasswordError = '';
     if (this.showPdfPassword && !this.importPdfPassword.trim()) {
-      this.ctx.flash('error', 'Enter the PDF password (credit card statements are usually locked)');
+      this.pdfPasswordError =
+        'Enter the PDF password (credit card statements are usually locked)';
+      this.ctx.flash('error', this.pdfPasswordError);
       return;
     }
     this.importing = true;
@@ -144,13 +183,14 @@ export class BankingImportComponent implements OnInit, OnDestroy {
         next: (data) => {
           this.importPreview = data;
           this.importing = false;
+          this.pdfPasswordError = '';
           const existing = data.existing_count ?? 0;
           const neu = data.new_count ?? data.count ?? 0;
           this.ctx.flash('info', `${data.bank}: ${data.count} in file · ${existing} already exist · ${neu} new`);
         },
         error: (err) => {
           this.importing = false;
-          this.ctx.flash('error', err.error?.error || err.message || 'Preview failed');
+          this.handleImportError(err, 'Preview failed');
         }
       });
   }
@@ -160,8 +200,11 @@ export class BankingImportComponent implements OnInit, OnDestroy {
       this.ctx.flash('error', 'Select an account and a statement file');
       return;
     }
+    this.pdfPasswordError = '';
     if (this.showPdfPassword && !this.importPdfPassword.trim()) {
-      this.ctx.flash('error', 'Enter the PDF password (credit card statements are usually locked)');
+      this.pdfPasswordError =
+        'Enter the PDF password (credit card statements are usually locked)';
+      this.ctx.flash('error', this.pdfPasswordError);
       return;
     }
     this.importing = true;
@@ -178,6 +221,7 @@ export class BankingImportComponent implements OnInit, OnDestroy {
         next: (data) => {
           this.lastImportResult = data;
           this.importing = false;
+          this.pdfPasswordError = '';
           let msg = `Imported ${data.inserted} new · skipped ${data.skipped} duplicates · parsed ${data.parsed}`;
           if (data.opening_warning) {
             msg += ' · opening balance may not match first statement balance';
@@ -188,7 +232,7 @@ export class BankingImportComponent implements OnInit, OnDestroy {
         },
         error: (err) => {
           this.importing = false;
-          this.ctx.flash('error', err.error?.error || err.message || 'Import failed');
+          this.handleImportError(err, 'Import failed');
         }
       });
   }

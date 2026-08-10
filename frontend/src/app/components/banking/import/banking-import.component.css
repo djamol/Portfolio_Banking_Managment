@@ -1,1 +1,12 @@
 /* page-specific */
+.input-error {
+  border-color: #c0392b !important;
+  box-shadow: 0 0 0 2px rgba(192, 57, 43, 0.15);
+}
+
+.field-error {
+  margin: 6px 0 0;
+  color: #c0392b;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
