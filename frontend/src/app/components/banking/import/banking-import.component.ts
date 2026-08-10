@@ -54,6 +54,7 @@ export class BankingImportComponent implements OnInit, OnDestroy {
     { name: 'ICICI Credit Card', formats: 'PDF (password OK) / CSV', status: 'Full' },
     { name: 'DCB', formats: 'XLS / XLSX', status: 'Full' },
     { name: 'SBI', formats: 'CSV / Excel', status: 'Generic+' },
+    { name: 'SBI Credit Card', formats: 'PDF (password OK)', status: 'Full' },
     { name: 'Axis', formats: 'CSV / Excel', status: 'Generic+' },
     { name: 'Kotak', formats: 'CSV / Excel', status: 'Full' }
   ];
@@ -213,6 +214,7 @@ export class BankingImportComponent implements OnInit, OnDestroy {
     if (/credit\s*card/i.test(type) || /\bcc\b/i.test(type)) {
       if (/icici/i.test(bank)) return 'ICICI_CC';
       if (/hdfc/i.test(bank)) return 'HDFC_CC';
+      if (/sbi/i.test(bank) || /state\s*bank/i.test(bank)) return 'SBI_CC';
       return '';
     }
     return bank;

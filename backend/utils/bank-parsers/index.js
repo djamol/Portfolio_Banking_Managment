@@ -14,6 +14,11 @@ const {
   parseIciciCcFromLines,
   parseIciciCreditCardPdf
 } = require('./icici-cc-pdf');
+const {
+  detectSbiCreditCardPdf,
+  parseSbiCcFromLines,
+  parseSbiCreditCardPdf
+} = require('./sbi-cc-pdf');
 
 function extensionOf(filename = '') {
   return path.extname(filename).toLowerCase();
@@ -24,10 +29,16 @@ function normalizeBankHint(bankHint) {
   if (!h || h === 'OTHER' || h === 'AUTO') return '';
   if (h.includes('HDFC') && (h.includes('CC') || h.includes('CREDIT'))) return 'HDFC_CC';
   if (h.includes('ICICI') && (h.includes('CC') || h.includes('CREDIT'))) return 'ICICI_CC';
+  if (
+    (h.includes('SBI') || h.includes('STATEBANK') || h.includes('SBICARD')) &&
+    (h.includes('CC') || h.includes('CREDIT'))
+  ) {
+    return 'SBI_CC';
+  }
   if (h.includes('HDFC')) return 'HDFC';
   if (h.includes('ICICI')) return 'ICICI';
   if (h.includes('DCB')) return 'DCB';
-  if (h.includes('SBI') || h.includes('STATEBANK')) return 'SBI';
+  if (h.includes('SBI') || h.includes('STATEBANK') || h.includes('SBICARD')) return 'SBI';
   if (h.includes('AXIS')) return 'AXIS';
   if (h.includes('KOTAK')) return 'KOTAK';
   return h;
@@ -42,6 +53,8 @@ function parseByHint(hint, buffer, accountId, ext, options) {
     case 'ICICI_CC':
       if (ext === '.pdf') return null; // PDF-only path below
       return parseIciciCreditCardCsv(buffer, accountId, options);
+    case 'SBI_CC':
+      return null; // PDF-only path
     case 'DCB':
       return parseDcbXls(buffer, accountId, options);
     case 'ICICI':
@@ -94,8 +107,14 @@ async function parsePdfStatement(buffer, accountId, { password, bankHint, custom
   if (hint === 'ICICI_CC') {
     return parseIciciCreditCardPdf(buffer, accountId, { password, customRules });
   }
+  if (hint === 'SBI_CC') {
+    return parseSbiCreditCardPdf(buffer, accountId, { password, customRules });
+  }
 
   const extracted = await extractPdfText(buffer, { password });
+  if (detectSbiCreditCardPdf(extracted.text)) {
+    return parseSbiCcFromLines(extracted.lines, accountId, customRules || []);
+  }
   if (detectIciciCreditCardPdf(extracted.text)) {
     return parseIciciCcFromLines(extracted.lines, accountId, customRules || []);
   }
@@ -104,7 +123,7 @@ async function parsePdfStatement(buffer, accountId, { password, bankHint, custom
   }
 
   throw new Error(
-    'PDF bank savings/current statements are not supported yet. For credit cards: HDFC CC PDF (Millennia / Regalia / year-end) or ICICI CC PDF / CreditCardStatement CSV. Otherwise export CSV/Excel.'
+    'PDF bank savings/current statements are not supported yet. For credit cards: HDFC / ICICI / SBI Card PDF (password OK), or ICICI CreditCardStatement CSV. Otherwise export CSV/Excel.'
   );
 }
 
@@ -202,6 +221,7 @@ module.exports = {
   parseIciciXls,
   parseIciciCreditCardCsv,
   parseIciciCreditCardPdf,
+  parseSbiCreditCardPdf,
   parseDcbXls,
   parseGenericCsv,
   parseGenericXls,
