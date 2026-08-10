@@ -33,7 +33,7 @@
     <div class="card">
       <h3>Import bank / credit card statement</h3>
       <p class="hint">
-        Duplicate transactions are skipped automatically (same date, amounts, ref, narration).
+        Select multiple statement files at once. Duplicates are skipped automatically (same date, amounts, ref, narration).
         Credit cards: HDFC / ICICI PDF (password OK) or ICICI <code>CreditCardStatement</code> CSV. Savings/current: CSV/Excel.
       </p>
       <table class="data-table compact" style="margin-bottom: 1rem;">
@@ -73,11 +73,29 @@
           </select>
         </div>
         <div class="form-group full">
-          <label>Statement file (CSV / Excel / Credit card PDF)</label>
-          <input type="file" accept=".csv,.xls,.xlsx,.pdf,.PDF" (change)="onFileSelected($event)" />
+          <label>Statement files (CSV / Excel / Credit card PDF) — multi-select</label>
+          <input
+            type="file"
+            multiple
+            accept=".csv,.xls,.xlsx,.pdf,.PDF"
+            (change)="onFileSelected($event)"
+          />
+        </div>
+        <div class="form-group full" *ngIf="importFiles.length">
+          <div class="file-list-header">
+            <span>{{ importFiles.length }} file{{ importFiles.length === 1 ? '' : 's' }} selected</span>
+            <button type="button" class="btn-link" (click)="clearImportFiles()" [disabled]="importing">Clear all</button>
+          </div>
+          <ul class="file-list">
+            <li *ngFor="let f of importFiles; let i = index">
+              <span class="file-name" [title]="f.name">{{ f.name }}</span>
+              <span class="file-meta">{{ (f.size / 1024) | number:'1.0-0' }} KB</span>
+              <button type="button" class="btn-link danger" (click)="removeImportFile(i)" [disabled]="importing">Remove</button>
+            </li>
+          </ul>
         </div>
         <div class="form-group" *ngIf="showPdfPassword">
-          <label>PDF password</label>
+          <label>PDF password (applied to all selected PDFs)</label>
           <input
             type="password"
             [(ngModel)]="importPdfPassword"
@@ -94,19 +112,24 @@
         </div>
       </div>
 
+      <p class="hint" *ngIf="importProgress">{{ importProgress }}</p>
       <div class="section-actions">
-        <button class="btn btn-secondary" (click)="previewImport()" [disabled]="importing || !importFile || !importAccountId">Preview</button>
-        <button class="btn btn-primary" (click)="runImport()" [disabled]="importing || !importFile || !importAccountId">
-          {{ importing ? 'Working…' : 'Import (skip duplicates)' }}
+        <button class="btn btn-secondary" (click)="previewImport()" [disabled]="importing || !hasImportFiles || !importAccountId">Preview</button>
+        <button class="btn btn-primary" (click)="runImport()" [disabled]="importing || !hasImportFiles || !importAccountId">
+          {{ importing ? 'Working…' : (importFiles.length > 1 ? 'Import all (skip duplicates)' : 'Import (skip duplicates)') }}
         </button>
       </div>
     </div>
 
     <div class="card" *ngIf="importPreview">
-      <h3>Preview — {{ importPreview.bank }}</h3>
+      <h3>
+        Preview
+        <span *ngIf="importPreview.multi"> — {{ importPreview.file_count }} files</span>
+        <span *ngIf="!importPreview.multi && importPreview.bank"> — {{ importPreview.bank }}</span>
+      </h3>
       <div class="preview-stats">
         <div class="preview-stat">
-          <span class="preview-stat-label">In file</span>
+          <span class="preview-stat-label">In file(s)</span>
           <span class="preview-stat-value">{{ importPreview.count }}</span>
         </div>
         <div class="preview-stat existing">
@@ -128,13 +151,36 @@
         <span *ngIf="importPreview.meta.ifsc"> · IFSC {{ importPreview.meta.ifsc }}</span>
         <span *ngIf="importPreview.meta.customerName"> · {{ importPreview.meta.customerName }}</span>
       </p>
-      <p class="hint" *ngIf="(importPreview.new_count || 0) === 0">
-        All transactions in this file already exist for the selected account. Nothing new to import.
+      <p class="hint" *ngIf="(importPreview.new_count || 0) === 0 && (importPreview.ok_count || 0) > 0">
+        All transactions in these files already exist for the selected account. Nothing new to import.
       </p>
+
+      <table class="data-table compact" *ngIf="importPreview.files?.length > 1 || importPreview.fail_count">
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Status</th>
+            <th>Bank</th>
+            <th>In file</th>
+            <th>New</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let f of importPreview.files" [class.row-error]="!f.ok">
+            <td class="narration">{{ f.file }}</td>
+            <td>{{ f.ok ? 'OK' : 'Failed' }}</td>
+            <td>{{ f.ok ? (f.bank || '—') : (f.error || 'Error') }}</td>
+            <td>{{ f.ok ? f.count : '—' }}</td>
+            <td>{{ f.ok ? f.new_count : '—' }}</td>
+          </tr>
+        </tbody>
+      </table>
+
       <h4 *ngIf="importPreview.preview?.length">New transactions (sample)</h4>
       <table class="data-table compact" *ngIf="importPreview.preview?.length">
         <thead>
           <tr>
+            <th *ngIf="importPreview.multi">File</th>
             <th>Date</th>
             <th>Narration</th>
             <th>Withdrawal</th>
@@ -144,6 +190,7 @@
         </thead>
         <tbody>
           <tr *ngFor="let t of importPreview.preview">
+            <td *ngIf="importPreview.multi" class="narration">{{ t._file }}</td>
             <td>{{ t.txn_date }}</td>
             <td class="narration">{{ t.narration }}</td>
             <td class="debit">{{ t.withdrawal ? formatMoney(t.withdrawal) : '' }}</td>
@@ -157,18 +204,47 @@
     <div class="card" *ngIf="lastImportResult">
       <h3>Last import result</h3>
       <ul class="result-list">
+        <li *ngIf="lastImportResult.file_count">Files: {{ lastImportResult.ok_count }}/{{ lastImportResult.file_count }} succeeded</li>
         <li>Bank format: {{ lastImportResult.bank }}</li>
         <li>Parsed: {{ lastImportResult.parsed }}</li>
         <li>Inserted: {{ lastImportResult.inserted }}</li>
         <li>Skipped duplicates: {{ lastImportResult.skipped }}</li>
-        <li>Batch: {{ lastImportResult.import_batch_id }}</li>
+        <li *ngIf="lastImportResult.import_batch_ids?.length === 1">Batch: {{ lastImportResult.import_batch_id }}</li>
+        <li *ngIf="lastImportResult.import_batch_ids?.length > 1">Batches: {{ lastImportResult.import_batch_ids.length }}</li>
         <li *ngIf="lastImportResult.opening_warning">
           Opening balance warning: account opening ₹{{ formatMoney(lastImportResult.opening_warning.opening_balance) }}
           vs first txn balance ₹{{ formatMoney(lastImportResult.opening_warning.first_txn_balance) }}
           on {{ lastImportResult.opening_warning.first_txn_date }}
         </li>
       </ul>
+      <table class="data-table compact" *ngIf="lastImportResult.files?.length > 1 || lastImportResult.fail_count" style="margin-top: 12px;">
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Status</th>
+            <th>Inserted</th>
+            <th>Skipped</th>
+            <th>Detail</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let f of lastImportResult.files" [class.row-error]="!f.ok">
+            <td class="narration">{{ f.file }}</td>
+            <td>{{ f.ok ? 'OK' : 'Failed' }}</td>
+            <td>{{ f.ok ? f.inserted : '—' }}</td>
+            <td>{{ f.ok ? f.skipped : '—' }}</td>
+            <td>{{ f.ok ? (f.import_batch_id || f.bank) : f.error }}</td>
+          </tr>
+        </tbody>
+      </table>
       <div class="section-actions">
-        <button class="btn btn-danger-outline" type="button" (click)="undoLastImport()">Undo this import</button>
+        <button
+          class="btn btn-danger-outline"
+          type="button"
+          (click)="undoLastImport()"
+          [disabled]="!lastImportResult.import_batch_ids?.length && !lastImportResult.import_batch_id"
+        >
+          Undo this import
+        </button>
       </div>
     </div>
