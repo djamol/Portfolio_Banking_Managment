@@ -1,11 +1,154 @@
 /**
  * Extract text lines from PDF (supports password-protected statements).
- * Uses pdfjs-dist; lines are rebuilt by Y position for table-like statements.
+ * Uses pdfjs-dist legacy build; polyfills browser globals for Node hosts
+ * (shared hosting often lacks @napi-rs/canvas → "DOMMatrix is not defined").
  */
 
+let pdfJsLoadPromise = null;
+
+function installMinimalDomMatrix() {
+  if (typeof globalThis.DOMMatrix !== 'undefined') return;
+
+  class DOMMatrixPolyfill {
+    constructor(init) {
+      this.a = 1;
+      this.b = 0;
+      this.c = 0;
+      this.d = 1;
+      this.e = 0;
+      this.f = 0;
+      this.m11 = 1;
+      this.m12 = 0;
+      this.m13 = 0;
+      this.m14 = 0;
+      this.m21 = 0;
+      this.m22 = 1;
+      this.m23 = 0;
+      this.m24 = 0;
+      this.m31 = 0;
+      this.m32 = 0;
+      this.m33 = 1;
+      this.m34 = 0;
+      this.m41 = 0;
+      this.m42 = 0;
+      this.m43 = 0;
+      this.m44 = 1;
+      this.is2D = true;
+      this.isIdentity = true;
+      if (Array.isArray(init) && init.length >= 6) {
+        [this.a, this.b, this.c, this.d, this.e, this.f] = init;
+        this.m11 = this.a;
+        this.m12 = this.b;
+        this.m21 = this.c;
+        this.m22 = this.d;
+        this.m41 = this.e;
+        this.m42 = this.f;
+        this.isIdentity = this.a === 1 && this.b === 0 && this.c === 0 && this.d === 1 && this.e === 0 && this.f === 0;
+      }
+    }
+
+    multiplySelf() {
+      return this;
+    }
+    preMultiplySelf() {
+      return this;
+    }
+    translateSelf() {
+      return this;
+    }
+    scaleSelf() {
+      return this;
+    }
+    rotateSelf() {
+      return this;
+    }
+    invertSelf() {
+      return this;
+    }
+    multiply() {
+      return new DOMMatrixPolyfill();
+    }
+    inverse() {
+      return new DOMMatrixPolyfill();
+    }
+    transformPoint(p) {
+      return p || { x: 0, y: 0, z: 0, w: 1 };
+    }
+    toFloat32Array() {
+      return new Float32Array([this.a, this.b, this.c, this.d, this.e, this.f]);
+    }
+    toFloat64Array() {
+      return new Float64Array([this.a, this.b, this.c, this.d, this.e, this.f]);
+    }
+    toString() {
+      return `matrix(${this.a}, ${this.b}, ${this.c}, ${this.d}, ${this.e}, ${this.f})`;
+    }
+  }
+
+  globalThis.DOMMatrix = DOMMatrixPolyfill;
+}
+
+function ensurePdfJsGlobals() {
+  // Prefer real canvas polyfills when the native module loads (Docker / full Node).
+  try {
+    // eslint-disable-next-line import/no-extraneous-dependencies
+    const canvas = require('@napi-rs/canvas');
+    if (canvas.DOMMatrix && typeof globalThis.DOMMatrix === 'undefined') {
+      globalThis.DOMMatrix = canvas.DOMMatrix;
+    }
+    if (canvas.ImageData && typeof globalThis.ImageData === 'undefined') {
+      globalThis.ImageData = canvas.ImageData;
+    }
+    if (canvas.Path2D && typeof globalThis.Path2D === 'undefined') {
+      globalThis.Path2D = canvas.Path2D;
+    }
+  } catch {
+    // Shared hosts often cannot load the native canvas binary — fall through.
+  }
+
+  installMinimalDomMatrix();
+
+  if (typeof globalThis.ImageData === 'undefined') {
+    globalThis.ImageData = class ImageData {
+      constructor(data, width, height) {
+        if (typeof data === 'number') {
+          this.width = data;
+          this.height = width;
+          this.data = new Uint8ClampedArray(this.width * this.height * 4);
+        } else {
+          this.data = data;
+          this.width = width;
+          this.height = height;
+        }
+        this.colorSpace = 'srgb';
+      }
+    };
+  }
+
+  if (typeof globalThis.Path2D === 'undefined') {
+    globalThis.Path2D = class Path2D {
+      constructor() {}
+      addPath() {}
+      closePath() {}
+      moveTo() {}
+      lineTo() {}
+      bezierCurveTo() {}
+      quadraticCurveTo() {}
+      arc() {}
+      arcTo() {}
+      ellipse() {}
+      rect() {}
+    };
+  }
+}
+
 async function loadPdfJs() {
-  // Prefer legacy build for Node (no DOMMatrix / worker issues)
-  return import('pdfjs-dist/legacy/build/pdf.mjs');
+  if (!pdfJsLoadPromise) {
+    ensurePdfJsGlobals();
+    // Legacy build is required in Node; still needs DOMMatrix on many hosts.
+    pdfJsLoadPromise = import('pdfjs-dist/legacy/build/pdf.mjs');
+  }
+  return pdfJsLoadPromise;
 }
 
 function isPasswordError(err) {
@@ -99,5 +242,6 @@ async function extractPdfText(buffer, options = {}) {
 
 module.exports = {
   extractPdfText,
-  isPasswordError
+  isPasswordError,
+  ensurePdfJsGlobals
 };
