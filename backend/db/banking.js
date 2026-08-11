@@ -146,12 +146,13 @@ async function mysqlCreateAccount(data) {
   const pool = getPool();
   const [result] = await pool.query(
     `INSERT INTO bank_accounts
-      (bank_name, account_name, account_number, ifsc, account_type, currency, opening_balance, notes, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (bank_name, account_name, account_number, branch, ifsc, account_type, currency, opening_balance, notes, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.bank_name,
       data.account_name,
       data.account_number || null,
+      data.branch || null,
       data.ifsc || null,
       data.account_type || 'Savings',
       data.currency || 'INR',
@@ -167,13 +168,14 @@ async function mysqlUpdateAccount(id, data) {
   const pool = getPool();
   await pool.query(
     `UPDATE bank_accounts SET
-      bank_name = ?, account_name = ?, account_number = ?, ifsc = ?,
+      bank_name = ?, account_name = ?, account_number = ?, branch = ?, ifsc = ?,
       account_type = ?, currency = ?, opening_balance = ?, notes = ?, is_active = ?
      WHERE id = ?`,
     [
       data.bank_name,
       data.account_name,
       data.account_number || null,
+      data.branch || null,
       data.ifsc || null,
       data.account_type || 'Savings',
       data.currency || 'INR',
@@ -833,6 +835,7 @@ async function mongoCreateAccount(data) {
     bank_name: data.bank_name,
     account_name: data.account_name,
     account_number: data.account_number || null,
+    branch: data.branch || null,
     ifsc: data.ifsc || null,
     account_type: data.account_type || 'Savings',
     currency: data.currency || 'INR',
@@ -855,6 +858,7 @@ async function mongoUpdateAccount(id, data) {
         bank_name: data.bank_name,
         account_name: data.account_name,
         account_number: data.account_number || null,
+        branch: data.branch || null,
         ifsc: data.ifsc || null,
         account_type: data.account_type || 'Savings',
         currency: data.currency || 'INR',
@@ -1321,7 +1325,7 @@ async function mysqlGetTransactionsExport(filters = {}) {
   const limit = Math.min(Number(filters.limit) || 100000, 100000);
   const [rows] = await pool.query(
     `SELECT t.*, a.bank_name, a.account_name, a.account_number,
-            a.ifsc, a.account_type, a.currency, a.opening_balance, a.notes AS account_notes
+            a.branch, a.ifsc, a.account_type, a.currency, a.opening_balance, a.notes AS account_notes
      FROM bank_transactions t
      JOIN bank_accounts a ON a.id = t.account_id
      WHERE ${whereSql}
@@ -1351,6 +1355,7 @@ async function mongoGetTransactionsExport(filters = {}) {
       bank_name: a.bank_name,
       account_name: a.account_name,
       account_number: a.account_number,
+      branch: a.branch,
       ifsc: a.ifsc,
       account_type: a.account_type,
       currency: a.currency,

@@ -189,17 +189,18 @@ function buildStatementAoA(account, rows, meta = {}, pageNo = 1) {
   const bank = bankTitle(account.bank_name || rows[0]?.bank_name);
   const name = account.account_name || rows[0]?.account_name || '';
   const acctNo = account.account_number || rows[0]?.account_number || '';
-  const ifsc = account.ifsc || '';
+  const branch = account.branch || rows[0]?.branch || '';
+  const ifsc = account.ifsc || rows[0]?.ifsc || '';
   const currency = account.currency || 'INR';
-  const acctType = account.account_type || 'Savings';
+  const acctType = account.account_type || rows[0]?.account_type || 'Savings';
   const notes = noteLines(account.notes);
   const aoa = [];
 
   aoa.push([bank, '', `Page No. : ${pageNo}`, '', 'Statement of account']);
   aoa.push([]);
-  aoa.push([name, '', '', 'Account Branch', notes[0] || account.bank_name || '']);
-  aoa.push([notes[1] || '', '', '', 'Address', notes[1] || notes[0] || '']);
-  aoa.push([notes[2] || '', '', '', '', notes[2] || '']);
+  aoa.push([name, '', '', 'Account Branch', branch]);
+  aoa.push([notes[0] || '', '', '', 'Address', notes[0] || '']);
+  aoa.push([notes[1] || '', '', '', '', notes[1] || '']);
   aoa.push(['Joint Holders', '', '', 'Currency', currency]);
   aoa.push([`Nomination :`, '', '', 'Email', '']);
   aoa.push([]);
@@ -309,6 +310,7 @@ function groupRowsByAccount(rows, accountsById) {
       bank_name: fromRow.bank_name,
       account_name: fromRow.account_name,
       account_number: fromRow.account_number,
+      branch: fromRow.branch || null,
       ifsc: fromRow.ifsc || null,
       account_type: fromRow.account_type || 'Savings',
       currency: fromRow.currency || 'INR',
@@ -399,9 +401,10 @@ function drawStatementPage(doc, account, rows, meta, pageNo, isFirst) {
   const bank = bankTitle(account.bank_name || rows[0]?.bank_name);
   const name = account.account_name || rows[0]?.account_name || '';
   const acctNo = account.account_number || rows[0]?.account_number || '';
-  const ifsc = account.ifsc || '';
+  const branch = account.branch || rows[0]?.branch || '';
+  const ifsc = account.ifsc || rows[0]?.ifsc || '';
   const currency = account.currency || 'INR';
-  const acctType = account.account_type || 'Savings';
+  const acctType = account.account_type || rows[0]?.account_type || 'Savings';
   const notes = noteLines(account.notes);
   const left = doc.page.margins.left;
   const right = doc.page.width - doc.page.margins.right;
@@ -432,7 +435,7 @@ function drawStatementPage(doc, account, rows, meta, pageNo, isFirst) {
   doc.text('Nomination :', left + 6, y + 82, { width: mid - left - 24 });
 
   const rightLines = [
-    ['Account Branch', notes[0] || account.bank_name || ''],
+    ['Account Branch', branch],
     ['Currency', currency],
     ['Account No', acctNo],
     ['Account Type', acctType],

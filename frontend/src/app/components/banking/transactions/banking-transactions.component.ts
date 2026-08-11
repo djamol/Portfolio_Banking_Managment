@@ -1,7 +1,8 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { Subject, merge, takeUntil } from 'rxjs';
 import { BankImportService } from '../../../services/banking/bank-import.service';
-import { BankTransaction } from '../../../services/banking/banking.models';
+import { BankAccount, BankTransaction } from '../../../services/banking/banking.models';
+import { BankAccountsService } from '../../../services/banking/bank-accounts.service';
 import { BankTransactionsService } from '../../../services/banking/bank-transactions.service';
 import { formatCat, formatMoney, toIsoDate } from '../shared/banking-format.util';
 import { splitCategoryParts } from '../../../utils/category-tree.util';
@@ -32,6 +33,20 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
 
   showManualTxn = false;
   manualTxn: Partial<BankTransaction> = this.emptyManualTxn();
+
+  showAccountDetails = false;
+  accountDetailsSaving = false;
+  accountDetailsForm: Partial<BankAccount> = {};
+  readonly accountTypeOptions = [
+    'Savings',
+    'Current',
+    'Salary',
+    'Credit Card',
+    'NRE',
+    'NRO',
+    'Fixed Deposit',
+    'Other'
+  ];
 
   readonly pageSizeOptions = [25, 50, 100, 200];
   readonly sortOptions = [
@@ -77,20 +92,33 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
     public ctx: BankingContextService,
     public filters: BankingFilterState,
     private txnService: BankTransactionsService,
+    private accountsService: BankAccountsService,
     private importService: BankImportService,
     private analyticsState: BankingAnalyticsState
   ) {}
 
   ngOnInit() {
+    this.ctx.loadAccounts();
     this.loadTransactions();
+    this.syncAccountDetailsForm();
     merge(this.filters.filtersChanged$, this.filters.refreshRequested$)
       .pipe(takeUntil(this.destroy$))
-      .subscribe(() => this.loadTransactions());
+      .subscribe(() => {
+        this.loadTransactions();
+        this.syncAccountDetailsForm();
+      });
+    this.ctx.accounts$.pipe(takeUntil(this.destroy$)).subscribe(() => this.syncAccountDetailsForm());
   }
 
   ngOnDestroy() {
     this.destroy$.next();
     this.destroy$.complete();
+  }
+
+  get filteredAccount(): BankAccount | null {
+    const id = this.filters.filterAccountId ? Number(this.filters.filterAccountId) : 0;
+    if (!id) return null;
+    return this.ctx.accounts.find((a) => Number(a.id) === id) || null;
   }
 
   get currentPage(): number {
@@ -136,6 +164,71 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
       tags: '',
       notes: ''
     };
+  }
+
+  syncAccountDetailsForm() {
+    const a = this.filteredAccount;
+    if (!a) {
+      this.showAccountDetails = false;
+      this.accountDetailsForm = {};
+      return;
+    }
+    this.accountDetailsForm = {
+      id: a.id,
+      bank_name: a.bank_name,
+      account_name: a.account_name,
+      branch: a.branch || '',
+      account_number: a.account_number || '',
+      account_type: a.account_type || 'Savings',
+      ifsc: a.ifsc || '',
+      notes: a.notes || '',
+      currency: a.currency || 'INR',
+      opening_balance: a.opening_balance ?? 0,
+      is_active: a.is_active
+    };
+  }
+
+  toggleAccountDetails() {
+    if (!this.filteredAccount) {
+      this.ctx.flash('error', 'Select one account in the filter to edit account details');
+      return;
+    }
+    this.syncAccountDetailsForm();
+    this.showAccountDetails = !this.showAccountDetails;
+  }
+
+  saveAccountDetails() {
+    const id = this.accountDetailsForm.id || this.filteredAccount?.id;
+    if (!id) {
+      this.ctx.flash('error', 'Select one account in the filter first');
+      return;
+    }
+    if (!this.accountDetailsForm.bank_name || !this.accountDetailsForm.account_name) {
+      this.ctx.flash('error', 'Bank and account name are required');
+      return;
+    }
+    this.accountDetailsSaving = true;
+    const payload: Partial<BankAccount> = {
+      ...this.filteredAccount,
+      ...this.accountDetailsForm,
+      ifsc: String(this.accountDetailsForm.ifsc || '')
+        .trim()
+        .toUpperCase(),
+      branch: String(this.accountDetailsForm.branch || '').trim() || null,
+      account_number: String(this.accountDetailsForm.account_number || '').trim() || null
+    };
+    this.accountsService.updateAccount(Number(id), payload).subscribe({
+      next: () => {
+        this.accountDetailsSaving = false;
+        this.ctx.flash('success', 'Account details saved — used in statement export');
+        this.ctx.refreshCore();
+        this.filters.requestRefresh();
+      },
+      error: (err) => {
+        this.accountDetailsSaving = false;
+        this.ctx.flash('error', err.message || 'Failed to save account details');
+      }
+    });
   }
 
   loadTransactions() {

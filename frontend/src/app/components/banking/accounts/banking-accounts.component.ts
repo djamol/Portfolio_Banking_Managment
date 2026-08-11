@@ -18,6 +18,16 @@ export class BankingAccountsComponent implements OnInit, OnDestroy {
   accountForm: Partial<BankAccount> = this.emptyAccountForm();
 
   readonly bankOptions = ['HDFC', 'ICICI', 'DCB', 'SBI', 'Axis', 'Kotak', 'Other'];
+  readonly accountTypeOptions = [
+    'Savings',
+    'Current',
+    'Salary',
+    'Credit Card',
+    'NRE',
+    'NRO',
+    'Fixed Deposit',
+    'Other'
+  ];
 
   private readonly destroy$ = new Subject<void>();
 
@@ -42,6 +52,7 @@ export class BankingAccountsComponent implements OnInit, OnDestroy {
       bank_name: 'HDFC',
       account_name: '',
       account_number: '',
+      branch: '',
       ifsc: '',
       account_type: 'Savings',
       currency: 'INR',

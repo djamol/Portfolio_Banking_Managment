@@ -61,6 +61,15 @@
       </select>
       <button class="btn btn-secondary" (click)="recategorize()">Auto-categorize</button>
       <button class="btn btn-secondary" (click)="openManualTxn()">Add manual</button>
+      <button
+        class="btn btn-secondary"
+        type="button"
+        (click)="toggleAccountDetails()"
+        [disabled]="!filteredAccount"
+        title="Select one account in the filter to edit statement header details"
+      >
+        {{ showAccountDetails ? 'Hide account details' : 'Account details' }}
+      </button>
       <button class="btn btn-secondary" (click)="requestExportPanel()" [disabled]="exporting">
         Export statement…
       </button>
@@ -70,6 +79,55 @@
       <button class="btn btn-secondary" (click)="exportStatement('pdf', true)" [disabled]="exporting || !txnTotal">
         {{ exporting ? 'Exporting…' : 'Statement PDF (filters)' }}
       </button>
+    </div>
+
+    <div class="card" *ngIf="showAccountDetails && filteredAccount">
+      <h3>Account details for statement export</h3>
+      <p class="hint">
+        These fields appear on Statement XLS / PDF: Account Branch, Account No, Account Type, RTGS/NEFT IFSC.
+      </p>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Bank</label>
+          <input [(ngModel)]="accountDetailsForm.bank_name" />
+        </div>
+        <div class="form-group">
+          <label>Account name</label>
+          <input [(ngModel)]="accountDetailsForm.account_name" />
+        </div>
+        <div class="form-group">
+          <label>Account Branch</label>
+          <input [(ngModel)]="accountDetailsForm.branch" placeholder="e.g. Aurangabad CIDCO" />
+        </div>
+        <div class="form-group">
+          <label>Account No</label>
+          <input [(ngModel)]="accountDetailsForm.account_number" />
+        </div>
+        <div class="form-group">
+          <label>Account Type</label>
+          <select [(ngModel)]="accountDetailsForm.account_type">
+            <option *ngFor="let t of accountTypeOptions" [value]="t">{{ t }}</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>RTGS/NEFT IFSC</label>
+          <input
+            [(ngModel)]="accountDetailsForm.ifsc"
+            placeholder="e.g. HDFC0000123"
+            (ngModelChange)="accountDetailsForm.ifsc = ($event || '').toUpperCase()"
+          />
+        </div>
+        <div class="form-group full">
+          <label>Notes / Address (optional)</label>
+          <input [(ngModel)]="accountDetailsForm.notes" placeholder="Shown as address on statement" />
+        </div>
+      </div>
+      <div class="section-actions">
+        <button class="btn btn-primary" type="button" (click)="saveAccountDetails()" [disabled]="accountDetailsSaving">
+          {{ accountDetailsSaving ? 'Saving…' : 'Save account details' }}
+        </button>
+        <button class="btn btn-secondary" type="button" (click)="showAccountDetails = false">Close</button>
+      </div>
     </div>
 
     <div class="card" *ngIf="showManualTxn">

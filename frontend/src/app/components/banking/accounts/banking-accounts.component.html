@@ -16,23 +16,26 @@
           <input [(ngModel)]="accountForm.account_name" placeholder="e.g. Salary HDFC" />
         </div>
         <div class="form-group">
-          <label>Account number</label>
-          <input [(ngModel)]="accountForm.account_number" />
+          <label>Account Branch</label>
+          <input [(ngModel)]="accountForm.branch" placeholder="e.g. Aurangabad CIDCO" />
         </div>
         <div class="form-group">
-          <label>IFSC</label>
-          <input [(ngModel)]="accountForm.ifsc" />
+          <label>Account No</label>
+          <input [(ngModel)]="accountForm.account_number" placeholder="Account number" />
         </div>
         <div class="form-group">
-          <label>Type</label>
+          <label>Account Type</label>
           <select [(ngModel)]="accountForm.account_type">
-            <option>Savings</option>
-            <option>Current</option>
-            <option>Salary</option>
-            <option>Credit Card</option>
-            <option>NRE</option>
-            <option>NRO</option>
+            <option *ngFor="let t of accountTypeOptions" [value]="t">{{ t }}</option>
           </select>
+        </div>
+        <div class="form-group">
+          <label>RTGS/NEFT IFSC</label>
+          <input
+            [(ngModel)]="accountForm.ifsc"
+            placeholder="e.g. HDFC0000123"
+            (ngModelChange)="accountForm.ifsc = ($event || '').toUpperCase()"
+          />
         </div>
         <div class="form-group">
           <label>Opening balance</label>
@@ -55,8 +58,8 @@
           </select>
         </div>
         <div class="form-group full">
-          <label>Notes</label>
-          <input [(ngModel)]="accountForm.notes" />
+          <label>Notes / Address (optional)</label>
+          <input [(ngModel)]="accountForm.notes" placeholder="Shown as address lines on statement export" />
         </div>
       </div>
       <div class="section-actions">
@@ -71,9 +74,10 @@
           <tr>
             <th>Bank</th>
             <th>Name</th>
-            <th>Number</th>
-            <th>IFSC</th>
+            <th>Branch</th>
+            <th>Account No</th>
             <th>Type</th>
+            <th>IFSC</th>
             <th>Status</th>
             <th>Txns</th>
             <th>Balance</th>
@@ -84,9 +88,10 @@
           <tr *ngFor="let a of ctx.accounts" [class.inactive-row]="a.is_active === 0 || a.is_active === false">
             <td>{{ a.bank_name }}</td>
             <td>{{ a.account_name }}</td>
+            <td>{{ a.branch || '—' }}</td>
             <td>{{ a.account_number || '—' }}</td>
-            <td>{{ a.ifsc || '—' }}</td>
             <td>{{ a.account_type }}</td>
+            <td>{{ a.ifsc || '—' }}</td>
             <td>{{ (a.is_active === 0 || a.is_active === false) ? 'Inactive' : 'Active' }}</td>
             <td>{{ a.txn_count || 0 }}</td>
             <td>{{ formatCurrency(a.latest_balance, a.currency) }}</td>
@@ -98,6 +103,6 @@
         </tbody>
       </table>
       <ng-template #noAccounts>
-        <p class="empty">No bank ctx.accounts yet. Add one, then import a statement.</p>
+        <p class="empty">No bank accounts yet. Add one, then import a statement.</p>
       </ng-template>
     </div>

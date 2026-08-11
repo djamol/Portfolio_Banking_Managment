@@ -11,6 +11,7 @@ export interface BankAccount {
   bank_name: string;
   account_name: string;
   account_number?: string | null;
+  branch?: string | null;
   ifsc?: string | null;
   account_type?: string;
   currency?: string;

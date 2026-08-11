@@ -325,6 +325,7 @@ const createTables = async () => {
         bank_name VARCHAR(100) NOT NULL,
         account_name VARCHAR(255) NOT NULL,
         account_number VARCHAR(64) NULL,
+        branch VARCHAR(255) NULL,
         ifsc VARCHAR(32) NULL,
         account_type VARCHAR(64) DEFAULT 'Savings',
         currency VARCHAR(8) DEFAULT 'INR',
@@ -405,6 +406,7 @@ const createTables = async () => {
 
     // Migrate existing installs: add new columns if missing
     const alterStatements = [
+      'ALTER TABLE bank_accounts ADD COLUMN branch VARCHAR(255) NULL',
       'ALTER TABLE bank_transactions ADD COLUMN category_source VARCHAR(16) DEFAULT \'auto\'',
       'ALTER TABLE bank_transactions ADD COLUMN payee VARCHAR(255) NULL',
       'ALTER TABLE bank_transactions ADD COLUMN linked_transfer_id INT NULL',
