@@ -6,12 +6,14 @@ const path = require('path');
 const fs = require('fs');
 const db = require('./config/index');
 const logger = require('./utils/logger');
+const { authGate } = require('./middleware/auth');
 const investmentRoutes = require('./routes/investments');
 const analyticsRoutes = require('./routes/analytics');
 const categoriesRoutes = require('./routes/categories');
 const portfolioRoutes = require('./routes/portfolio');
 const configRoutes = require('./routes/config');
 const bankingRoutes = require('./routes/banking');
+const authRoutes = require('./routes/auth');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -54,7 +56,12 @@ logger.info('Portfolio app starting', {
 });
 
 app.enable('trust proxy');
-app.use(cors());
+app.use(
+  cors({
+    origin: true,
+    credentials: true
+  })
+);
 app.use(express.json({ limit: '50mb' }));
 
 app.use((req, res, next) => {
@@ -85,6 +92,8 @@ router.get('/api/health', (req, res) => {
   });
 });
 
+router.use('/api', authGate);
+router.use('/api/auth', authRoutes);
 router.use('/api/investments', investmentRoutes);
 router.use('/api/analytics', analyticsRoutes);
 router.use('/api/categories', categoriesRoutes);
