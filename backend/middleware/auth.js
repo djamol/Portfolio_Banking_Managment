@@ -117,8 +117,20 @@ function requireAuth(req, res, next) {
   next();
 }
 
+function apiPathRelative(req) {
+  // authGate is mounted at /api — prefer mount-relative path (/config, /auth/login).
+  const mounted = String(req.path || '').split('?')[0];
+  if (mounted && mounted !== '/') return mounted;
+
+  // Fallback for BASE_PATH hosts (e.g. /v8/api/config → /config).
+  const raw = String(req.originalUrl || '').split('?')[0];
+  const apiIdx = raw.indexOf('/api/');
+  if (apiIdx !== -1) return raw.slice(apiIdx + 4) || '/';
+  return raw.replace(/^\/api/, '') || '/';
+}
+
 function publicApiPath(req) {
-  const path = (req.originalUrl || req.path || '').split('?')[0].replace(/^\/api/, '') || req.path;
+  const path = apiPathRelative(req);
   if (req.method === 'GET' && (path === '/health' || path === 'health')) return true;
   if (req.method === 'POST' && (path === '/auth/login' || path === '/auth/logout')) return true;
   if (req.method === 'GET' && path === '/config') return true;
