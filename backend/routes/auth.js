@@ -24,10 +24,11 @@ router.post('/login', (req, res) => {
       logger.warn('Login failed', { username });
       return res.status(401).json({ success: false, error: 'Invalid username or password' });
     }
-    const session = createSession(username);
-    setSessionCookie(res, session.id, session.expiresAt);
-    logger.info('Login success', { username });
-    res.json({ success: true, data: { username } });
+    const rememberMe = !!req.body?.rememberMe;
+    const session = createSession(username, rememberMe);
+    setSessionCookie(res, session.id, session.expiresAt, rememberMe);
+    logger.info('Login success', { username, rememberMe });
+    res.json({ success: true, data: { username, rememberMe } });
   } catch (error) {
     logger.logError('Login error', error);
     res.status(500).json({ success: false, error: error.message });

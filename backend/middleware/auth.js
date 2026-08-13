@@ -2,7 +2,10 @@ const crypto = require('crypto');
 const logger = require('../utils/logger');
 
 const SESSION_COOKIE = 'pfm_session';
-const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Browser-close / short session when Remember me is off */
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+/** Persistent session when Remember me is on — until explicit logout */
+const REMEMBER_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 const sessions = new Map();
 
 function getSessionSecret() {
@@ -67,11 +70,12 @@ function verifyPassword(password) {
   return password === fallbackPass && fallbackUser === getAppUser();
 }
 
-function createSession(username) {
+function createSession(username, rememberMe = false) {
   const id = crypto.randomBytes(24).toString('hex');
-  const expiresAt = Date.now() + SESSION_TTL_MS;
-  sessions.set(id, { username, expiresAt });
-  return { id, expiresAt };
+  const ttl = rememberMe ? REMEMBER_TTL_MS : SESSION_TTL_MS;
+  const expiresAt = Date.now() + ttl;
+  sessions.set(id, { username, expiresAt, rememberMe: !!rememberMe });
+  return { id, expiresAt, rememberMe: !!rememberMe };
 }
 
 function destroySession(id) {
@@ -91,13 +95,16 @@ function getSession(req) {
   return { id, ...session };
 }
 
-function setSessionCookie(res, sessionId, expiresAt) {
-  const maxAge = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+function setSessionCookie(res, sessionId, expiresAt, rememberMe = false) {
   const secure = process.env.COOKIE_SECURE === 'true' ? '; Secure' : '';
-  res.setHeader(
-    'Set-Cookie',
-    `${SESSION_COOKIE}=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`
-  );
+  let cookie = `${SESSION_COOKIE}=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax${secure}`;
+  if (rememberMe) {
+    // Persistent cookie — survives browser restart until Max-Age or logout
+    const maxAge = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+    cookie += `; Max-Age=${maxAge}`;
+  }
+  // Without rememberMe: session cookie (no Max-Age) — cleared when browser closes
+  res.setHeader('Set-Cookie', cookie);
 }
 
 function clearSessionCookie(res) {

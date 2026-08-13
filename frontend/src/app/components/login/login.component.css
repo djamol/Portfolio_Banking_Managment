@@ -150,6 +150,26 @@
   }
 }
 
+.remember-row {
+  margin-bottom: 16px;
+}
+
+.remember-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-weight: 500;
+  color: #555;
+  cursor: pointer;
+}
+
+.remember-label input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
 .error-message {
   background-color: #fee;
   color: #c33;

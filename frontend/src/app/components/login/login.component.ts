@@ -28,6 +28,7 @@ const DB_CUSTOM_STORAGE_KEY = 'dbCustomConfig';
 export class LoginComponent implements OnInit {
   username: string = '';
   password: string = '';
+  rememberMe: boolean = false;
   apiDomain: string = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
   errorMessage: string = '';
   loading: boolean = false;
@@ -54,6 +55,7 @@ export class LoginComponent implements OnInit {
 
   async ngOnInit() {
     await this.restoreCustomDbConfig();
+    await this.restoreRememberedLogin();
 
     const storedPreset = localStorage.getItem('dbPreset');
     if (storedPreset) {
@@ -73,6 +75,15 @@ export class LoginComponent implements OnInit {
     }
 
     this.loadDatabaseConfig();
+  }
+
+  private async restoreRememberedLogin() {
+    const creds = await this.authService.loadRememberCredentials();
+    if (!creds) return;
+    this.rememberMe = true;
+    this.username = creds.username;
+    this.password = creds.password;
+    this.apiDomain = normalizeApiDomain(creds.apiDomain);
   }
 
   onApiDomainBlur() {
@@ -185,7 +196,7 @@ export class LoginComponent implements OnInit {
     }
 
     this.authService
-      .loginRemote(this.username.trim(), this.password, this.apiDomain)
+      .loginRemote(this.username.trim(), this.password, this.apiDomain, this.rememberMe)
       .subscribe({
         next: () => {
           this.testApiConnection()
