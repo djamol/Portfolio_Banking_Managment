@@ -153,8 +153,8 @@
   <div class="card export-panel" *ngIf="showExportPanel">
     <h3>Export bank statement</h3>
     <p class="hint">
-      Indian bank–style statement: bank/account header once, then Date · Narration · Ref · Value date · Withdrawal · Deposit · Closing balance, plus summary.
-      XLS also includes a <code>BackupData</code> sheet for re-import. Use “Data backup” for the flat raw table only.
+      Full statement includes every transaction (including transfers) so opening/closing balances match the bank.
+      XLS also has a Summary sheet and a <code>BackupData</code> sheet for re-import.
     </p>
     <div class="form-grid">
       <div class="form-group">
@@ -173,12 +173,36 @@
         <input type="date" [(ngModel)]="exportTo" />
       </div>
     </div>
+    <div class="preset-row" style="margin: 0 0 12px;">
+      <button type="button" class="preset-btn" (click)="setExportDatePreset('tm')">This mo</button>
+      <button type="button" class="preset-btn" (click)="setExportDatePreset('lm')">Last mo</button>
+      <button type="button" class="preset-btn" (click)="setExportDatePreset('ytd')">YTD</button>
+      <button type="button" class="preset-btn" (click)="setExportDatePreset('all')">All dates</button>
+    </div>
+    <label class="adv-check" style="margin-bottom: 8px;">
+      <input type="checkbox" [(ngModel)]="exportIncludeCategory" />
+      <span>
+        <strong>Include category &amp; payee columns</strong>
+        <small>Adds extra columns on XLS / PDF / CSV. PDF switches to landscape.</small>
+      </span>
+    </label>
+    <label class="adv-check" style="margin-bottom: 8px;">
+      <input type="checkbox" [(ngModel)]="exportApplyFilters" />
+      <span>
+        <strong>Apply current list filters</strong>
+        <small>Use category, search, payee, and exclude-transfers. Balances may not match the bank.</small>
+      </span>
+    </label>
+    <p class="hint">File name: <code>{{ exportFilenameHint }}</code></p>
     <div class="section-actions wrap">
       <button class="btn btn-primary" type="button" (click)="exportStatement('xlsx', false)" [disabled]="exporting">
         {{ exporting ? 'Exporting…' : 'Statement XLS' }}
       </button>
       <button class="btn btn-primary" type="button" (click)="exportStatement('pdf', false)" [disabled]="exporting">
         {{ exporting ? 'Exporting…' : 'Statement PDF' }}
+      </button>
+      <button class="btn btn-secondary" type="button" (click)="exportStatement('csv', false)" [disabled]="exporting">
+        Statement CSV
       </button>
       <button class="btn btn-secondary" type="button" (click)="exportStatement('xlsx', false, 'raw')" [disabled]="exporting">
         Data backup (raw XLS)

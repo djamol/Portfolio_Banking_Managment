@@ -7,6 +7,9 @@ const {
   buildTransactionsWorkbook,
   buildStatementWorkbook,
   buildStatementPdf,
+  buildStatementCsv,
+  statementDownloadName,
+  contentDisposition,
   workbookToBuffer,
   parseTransactionsUpload
 } = require('../utils/bank-txn-io');
@@ -580,73 +583,103 @@ router.post('/import/preview', upload.single('file'), async (req, res) => {
   }
 });
 
+const EXPORT_FILTER_KEYS = [
+  'exclude_transfers',
+  'transfers_only',
+  'category',
+  'needs_review',
+  'category_source',
+  'min_amount',
+  'max_amount',
+  'flow',
+  'q',
+  'payee',
+  'sort'
+];
+
+function truthyQuery(v) {
+  return v === true || v === 1 || v === '1' || v === 'true';
+}
+
+function setExportHeaders(res, { filename, format, rowCount, truncated }) {
+  if (format === 'pdf') res.setHeader('Content-Type', 'application/pdf');
+  else if (format === 'csv') res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  else {
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+  }
+  res.setHeader('Content-Disposition', contentDisposition(filename));
+  res.setHeader('X-Export-Filename', filename);
+  res.setHeader('X-Export-Row-Count', String(rowCount));
+  res.setHeader('X-Export-Truncated', truncated ? '1' : '0');
+  res.setHeader(
+    'Access-Control-Expose-Headers',
+    'Content-Disposition, X-Export-Filename, X-Export-Row-Count, X-Export-Truncated'
+  );
+}
+
 router.get('/export/transactions', async (req, res) => {
   try {
+    const format = String(req.query.format || 'xlsx').toLowerCase();
+    const layout = String(req.query.layout || 'statement').toLowerCase();
+    const applyFilters = layout === 'raw' || truthyQuery(req.query.apply_filters);
+    const includeCategory = truthyQuery(req.query.include_category);
     const filters = { ...req.query };
     delete filters.limit;
     delete filters.offset;
     delete filters.format;
     delete filters.layout;
+    delete filters.apply_filters;
+    delete filters.include_category;
+    if (!applyFilters) {
+      for (const key of EXPORT_FILTER_KEYS) delete filters[key];
+    }
+
     const rows = await banking.getTransactionsExport(filters);
-    const format = String(req.query.format || 'xlsx').toLowerCase();
-    const layout = String(req.query.layout || 'statement').toLowerCase();
+    const truncated = rows.length >= 100000;
     const meta = {
       exported_at: new Date().toISOString(),
       account_id: req.query.account_id || '',
       from: req.query.from || '',
       to: req.query.to || '',
-      row_count: rows.length
+      row_count: rows.length,
+      truncated,
+      apply_filters: applyFilters
     };
-    const dateStamp = new Date().toISOString().slice(0, 10);
 
-    if (layout === 'raw' || format === 'csv') {
+    const accounts = await banking.getAccounts();
+    const accountsById = new Map(accounts.map((a) => [Number(a.id), a]));
+    const filename = statementDownloadName({ rows, accountsById, meta, format, layout });
+    const headerOpts = { filename, format, rowCount: rows.length, truncated };
+
+    if (layout === 'raw') {
       const wb = buildTransactionsWorkbook(rows, meta);
       if (format === 'csv') {
         const XLSX = require('xlsx');
         const csv = XLSX.utils.sheet_to_csv(wb.Sheets.Transactions);
-        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        res.setHeader(
-          'Content-Disposition',
-          `attachment; filename="bank_transactions_${dateStamp}.csv"`
-        );
+        setExportHeaders(res, headerOpts);
         return res.send(csv);
       }
-      const buf = workbookToBuffer(wb);
-      res.setHeader(
-        'Content-Type',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      );
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="bank_transactions_backup_${dateStamp}.xlsx"`
-      );
-      return res.send(buf);
+      setExportHeaders(res, headerOpts);
+      return res.send(workbookToBuffer(wb));
     }
 
-    const accounts = await banking.getAccounts();
-    const accountsById = new Map(accounts.map((a) => [Number(a.id), a]));
+    if (format === 'csv') {
+      setExportHeaders(res, headerOpts);
+      return res.send(buildStatementCsv(rows, accountsById, meta, { includeCategory }));
+    }
 
     if (format === 'pdf') {
-      const buf = await buildStatementPdf(rows, accountsById, meta);
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="Acct_Statement_${dateStamp}.pdf"`
-      );
+      const buf = await buildStatementPdf(rows, accountsById, meta, { includeCategory });
+      setExportHeaders(res, headerOpts);
       return res.send(buf);
     }
 
-    const wb = buildStatementWorkbook(rows, accountsById, meta);
-    const buf = workbookToBuffer(wb);
-    res.setHeader(
-      'Content-Type',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    );
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="Acct_Statement_${dateStamp}.xlsx"`
-    );
-    return res.send(buf);
+    const wb = buildStatementWorkbook(rows, accountsById, meta, { includeCategory });
+    setExportHeaders(res, headerOpts);
+    return res.send(workbookToBuffer(wb));
   } catch (error) {
     console.error('Error exporting bank transactions:', error);
     res.status(500).json({ success: false, error: error.message });

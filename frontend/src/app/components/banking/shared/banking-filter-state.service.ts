@@ -102,6 +102,14 @@ export class BankingFilterState {
     return filters;
   }
 
+  buildStatementExportFilters(): Record<string, any> {
+    const filters: Record<string, any> = {};
+    if (this.filterAccountId) filters['account_id'] = this.filterAccountId;
+    if (this.filterFrom) filters['from'] = this.filterFrom;
+    if (this.filterTo) filters['to'] = this.filterTo;
+    return filters;
+  }
+
   buildTxnFilters(forExport = false): Record<string, any> {
     const filters: Record<string, any> = {
       ...this.buildSharedFilters(),

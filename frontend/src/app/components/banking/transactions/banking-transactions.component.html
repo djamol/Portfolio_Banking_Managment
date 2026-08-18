@@ -31,7 +31,7 @@
       </div>
     </div>
 
-    <div class="txn-toolbar">
+    <div class="txn-toolbar section-actions">
       <label class="txn-search">
         <span class="sr-only">Search transactions</span>
         <input
@@ -85,10 +85,10 @@
       <button class="btn btn-secondary" (click)="requestExportPanel()" [disabled]="exporting">
         Export statement…
       </button>
-      <button class="btn btn-secondary" (click)="exportStatement('xlsx', true)" [disabled]="exporting || !txnTotal">
+      <button class="btn btn-secondary" (click)="exportStatement('xlsx')" [disabled]="exporting || !txnTotal" title="Full statement for the selected account and dates, including transfers">
         {{ exporting ? 'Exporting…' : 'Statement XLS' }}
       </button>
-      <button class="btn btn-secondary" (click)="exportStatement('pdf', true)" [disabled]="exporting || !txnTotal">
+      <button class="btn btn-secondary" (click)="exportStatement('pdf')" [disabled]="exporting || !txnTotal" title="Full statement PDF for the selected account and dates">
         {{ exporting ? 'Exporting…' : 'Statement PDF' }}
       </button>
     </div>

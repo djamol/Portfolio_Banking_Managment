@@ -314,38 +314,44 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
     this.ctx.requestExportPanel(true);
   }
 
-  exportStatement(format: 'xlsx' | 'pdf' = 'xlsx', useTxnFilters = false) {
+  exportStatement(format: 'xlsx' | 'pdf' = 'xlsx', _useTxnFilters = false) {
     this.exporting = true;
-    const filterPayload = useTxnFilters
-      ? this.filters.buildSharedFilters()
-      : this.filters.buildSharedFilters();
-    this.importService.exportTransactions(filterPayload, { format, layout: 'statement' }).subscribe({
-      next: (blob) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Acct_Statement_${toIsoDate(new Date())}.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
-        a.click();
-        URL.revokeObjectURL(url);
-        this.exporting = false;
-        this.ctx.flash('success', `Exported bank statement (${format.toUpperCase()})`);
-      },
-      error: async (err) => {
-        this.exporting = false;
-        let msg = 'Export failed';
-        try {
-          if (err.error instanceof Blob) {
-            const text = await err.error.text();
-            msg = JSON.parse(text).error || msg;
-          } else {
-            msg = err.message || msg;
+    this.importService
+      .exportTransactions(this.filters.buildStatementExportFilters(), {
+        format,
+        layout: 'statement',
+        applyFilters: false
+      })
+      .subscribe({
+        next: (result) => {
+          this.importService.downloadExport(result);
+          this.exporting = false;
+          const extra = result.truncated
+            ? ' (stopped at 100,000 rows)'
+            : result.rowCount
+              ? ` · ${result.rowCount} txn${result.rowCount === 1 ? '' : 's'}`
+              : '';
+          this.ctx.flash(
+            result.truncated ? 'info' : 'success',
+            `Exported bank statement (${format.toUpperCase()})${extra}`
+          );
+        },
+        error: async (err) => {
+          this.exporting = false;
+          let msg = 'Export failed';
+          try {
+            if (err.error instanceof Blob) {
+              const text = await err.error.text();
+              msg = JSON.parse(text).error || msg;
+            } else {
+              msg = err.message || msg;
+            }
+          } catch {
+            /* ignore */
           }
-        } catch {
-          /* ignore */
+          this.ctx.flash('error', msg);
         }
-        this.ctx.flash('error', msg);
-      }
-    });
+      });
   }
 
   quickFilter(

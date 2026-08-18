@@ -184,7 +184,83 @@ function computeStatementSummary(account, rows, meta = {}) {
   };
 }
 
-function buildStatementAoA(account, rows, meta = {}, pageNo = 1) {
+function csvCell(value) {
+  if (value === null || value === undefined) return '';
+  const s = String(value);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function slugFilenamePart(s, fallback = 'Bank') {
+  const t = String(s || '')
+    .replace(/[^\w]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 28);
+  return t || fallback;
+}
+
+function periodStamp(meta = {}, rows = []) {
+  const dates = (rows || []).map((r) => normalizeDate(r.txn_date)).filter(Boolean).sort();
+  const from = normalizeDate(meta.from) || dates[0] || '';
+  const to = normalizeDate(meta.to) || dates[dates.length - 1] || '';
+  const compact = (s) => String(s || '').replace(/-/g, '');
+  if (from && to) return from === to ? compact(from) : `${compact(from)}_${compact(to)}`;
+  return new Date().toISOString().slice(0, 10).replace(/-/g, '');
+}
+
+function statementDownloadName({ rows = [], accountsById, meta = {}, format = 'xlsx', layout = 'statement' }) {
+  const ext = format === 'pdf' ? 'pdf' : format === 'csv' ? 'csv' : 'xlsx';
+  const period = periodStamp(meta, rows);
+  if (layout === 'raw') return `bank_transactions_backup_${period}.${ext}`;
+  const groups = accountsById ? groupRowsByAccount(rows, accountsById) : [];
+  if (groups.length === 1) {
+    const a = groups[0].account;
+    return `${slugFilenamePart(a.bank_name)}_${slugFilenamePart(a.account_name, 'Account')}_${period}.${ext}`;
+  }
+  return `Bank_Statements_${period}.${ext}`;
+}
+
+function contentDisposition(filename) {
+  const ascii = String(filename || 'download')
+    .replace(/[^\x20-\x7E]/g, '_')
+    .replace(/"/g, '');
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
+
+function statementColumnWidths(includeCategory) {
+  const cols = [
+    { wch: 12 },
+    { wch: 48 },
+    { wch: 22 },
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 14 },
+    { wch: 16 }
+  ];
+  if (includeCategory) {
+    cols.push({ wch: 22 }, { wch: 18 });
+  }
+  return cols;
+}
+
+function applyAmountFormats(ws, startRow, endRow, amountCols) {
+  for (let r = startRow; r <= endRow; r++) {
+    for (const c of amountCols) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      const cell = ws[addr];
+      if (cell && cell.t === 'n') cell.z = '#,##,##0.00';
+    }
+  }
+}
+
+function extraCategoryCells(includeCategory, category, payee) {
+  return includeCategory ? [category || '', payee || ''] : [];
+}
+
+function buildStatementAoA(account, rows, meta = {}, pageNo = 1, opts = {}) {
+  const includeCategory = !!opts.includeCategory;
+  const accountCount = Number(opts.accountCount) || 1;
   const s = computeStatementSummary(account, rows, meta);
   const bank = bankTitle(account.bank_name || rows[0]?.bank_name);
   const name = account.account_name || rows[0]?.account_name || '';
@@ -196,13 +272,19 @@ function buildStatementAoA(account, rows, meta = {}, pageNo = 1) {
   const notes = noteLines(account.notes);
   const aoa = [];
 
-  aoa.push([bank, '', `Page No. : ${pageNo}`, '', 'Statement of account']);
+  aoa.push([
+    bank,
+    '',
+    accountCount > 1 ? `Account ${pageNo} of ${accountCount}` : '',
+    '',
+    'Statement of account'
+  ]);
   aoa.push([]);
   aoa.push([name, '', '', 'Account Branch', branch]);
   aoa.push([notes[0] || '', '', '', 'Address', notes[0] || '']);
   aoa.push([notes[1] || '', '', '', '', notes[1] || '']);
   aoa.push(['Joint Holders', '', '', 'Currency', currency]);
-  aoa.push([`Nomination :`, '', '', 'Email', '']);
+  aoa.push(['Nomination :', '', '', 'IFSC', ifsc]);
   aoa.push([]);
   aoa.push([
     `Statement From : ${fmtDateDmy(s.from)} To : ${fmtDateDmy(s.to)}`,
@@ -212,11 +294,12 @@ function buildStatementAoA(account, rows, meta = {}, pageNo = 1) {
     acctNo
   ]);
   aoa.push(['', '', '', 'Account Type', acctType]);
-  aoa.push(['', '', '', 'RTGS/NEFT IFSC', ifsc]);
-  aoa.push(['', '', '', 'Opening Balance', fmtAmt(s.opening)]);
+  aoa.push(['', '', '', 'Currency', currency]);
+  aoa.push(['', '', '', 'Opening Balance', s.opening]);
   aoa.push([]);
   aoa.push([STARS]);
-  aoa.push([
+  const headerRowIndex = aoa.length;
+  const headers = [
     'Date',
     'Narration',
     'Chq./Ref.No.',
@@ -224,8 +307,22 @@ function buildStatementAoA(account, rows, meta = {}, pageNo = 1) {
     'Withdrawal Amt.',
     'Deposit Amt.',
     'Closing Balance'
-  ]);
+  ];
+  if (includeCategory) headers.push('Category', 'Payee');
+  aoa.push(headers);
   aoa.push([DASH]);
+  const dataStart = aoa.length;
+
+  aoa.push([
+    fmtDateDmy(s.from, true),
+    'OPENING BALANCE',
+    '',
+    '',
+    '',
+    '',
+    s.opening,
+    ...extraCategoryCells(includeCategory)
+  ]);
 
   for (const r of s.rows) {
     aoa.push([
@@ -233,26 +330,39 @@ function buildStatementAoA(account, rows, meta = {}, pageNo = 1) {
       String(r.narration || '').replace(/\s+/g, ' ').trim(),
       r.ref_no || '',
       fmtDateDmy(r.value_date || r.txn_date, true),
-      num(r.withdrawal) > 0 ? fmtAmt(r.withdrawal) : '',
-      num(r.deposit) > 0 ? fmtAmt(r.deposit) : '',
-      r.balance != null && r.balance !== '' ? fmtAmt(r.balance) : ''
+      num(r.withdrawal) > 0 ? num(r.withdrawal) : '',
+      num(r.deposit) > 0 ? num(r.deposit) : '',
+      r.balance != null && r.balance !== '' ? num(r.balance) : '',
+      ...extraCategoryCells(includeCategory, r.category, r.payee)
     ]);
   }
+
+  aoa.push([
+    '',
+    'TOTAL',
+    '',
+    '',
+    s.totalDebit,
+    s.totalCredit,
+    s.closing,
+    ...extraCategoryCells(includeCategory)
+  ]);
+  const dataEnd = aoa.length - 1;
 
   aoa.push([STARS]);
   aoa.push([]);
   aoa.push(['STATEMENT SUMMARY :-']);
   aoa.push([
     'Opening Balance',
-    fmtAmt(s.opening),
+    s.opening,
     'Debits',
-    fmtAmt(s.totalDebit),
+    s.totalDebit,
     'Credits',
-    fmtAmt(s.totalCredit),
+    s.totalCredit,
     'Closing Bal',
-    fmtAmt(s.closing)
+    s.closing
   ]);
-  aoa.push(['Dr Count', s.drCount, 'Cr Count', s.crCount]);
+  aoa.push(['Dr Count', s.drCount, 'Cr Count', s.crCount, 'Txn Count', s.rows.length]);
   aoa.push([]);
   aoa.push([
     `Generated On : ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`,
@@ -261,7 +371,7 @@ function buildStatementAoA(account, rows, meta = {}, pageNo = 1) {
     'This is a computer generated statement and does not require signature.'
   ]);
 
-  return { aoa, summary: s };
+  return { aoa, summary: s, headerRowIndex, dataStart, dataEnd, includeCategory };
 }
 
 function sheetNameForAccount(account, index) {
@@ -326,26 +436,78 @@ function groupRowsByAccount(rows, accountsById) {
   return out;
 }
 
-function buildStatementWorkbook(rows, accountsById, meta = {}) {
+function appendSummarySheet(wb, groups, meta = {}) {
+  const rows = groups.map((g) => {
+    const s = computeStatementSummary(g.account, g.rows, meta);
+    return {
+      Bank: g.account.bank_name || '',
+      Account: g.account.account_name || '',
+      Account_No: g.account.account_number || '',
+      From: s.from || '',
+      To: s.to || '',
+      Opening: s.opening,
+      Debits: s.totalDebit,
+      Credits: s.totalCredit,
+      Closing: s.closing,
+      Dr_Count: s.drCount,
+      Cr_Count: s.crCount,
+      Txns: s.rows.length
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 16 },
+    { wch: 22 },
+    { wch: 18 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 8 }
+  ];
+  applyAmountFormats(ws, 1, rows.length, [5, 6, 7, 8]);
+  XLSX.utils.book_append_sheet(wb, ws, 'Summary');
+}
+
+function applyStatementSheetView(ws, built) {
+  const includeCategory = !!built.includeCategory;
+  const ySplit = (built.headerRowIndex || 0) + 1;
+  ws['!cols'] = statementColumnWidths(includeCategory);
+  ws['!views'] = [
+    {
+      state: 'frozen',
+      xSplit: 0,
+      ySplit,
+      topLeftCell: `A${ySplit + 1}`,
+      activeCell: `A${ySplit + 1}`
+    }
+  ];
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } },
+    { s: { r: 0, c: 4 }, e: { r: 0, c: includeCategory ? 8 : 6 } }
+  ];
+  applyAmountFormats(ws, built.dataStart, built.dataEnd, [4, 5, 6]);
+  applyAmountFormats(ws, 11, 11, [4]);
+}
+
+function buildStatementWorkbook(rows, accountsById, meta = {}, opts = {}) {
+  const includeCategory = !!opts.includeCategory;
   const wb = XLSX.utils.book_new();
   const groups = groupRowsByAccount(rows, accountsById);
   if (!groups.length) {
-    const empty = buildStatementAoA(
+    const built = buildStatementAoA(
       { bank_name: 'BANK', account_name: 'No transactions', account_number: '' },
       [],
       meta,
-      1
+      1,
+      { includeCategory, accountCount: 1 }
     );
-    const ws = XLSX.utils.aoa_to_sheet(empty.aoa);
-    ws['!cols'] = [
-      { wch: 12 },
-      { wch: 48 },
-      { wch: 22 },
-      { wch: 12 },
-      { wch: 16 },
-      { wch: 14 },
-      { wch: 16 }
-    ];
+    const ws = XLSX.utils.aoa_to_sheet(built.aoa);
+    applyStatementSheetView(ws, built);
     XLSX.utils.book_append_sheet(wb, ws, 'Statement');
   } else {
     const used = new Set();
@@ -356,19 +518,15 @@ function buildStatementWorkbook(rows, accountsById, meta = {}) {
         name = `${sheetNameForAccount(g.account, i).slice(0, 25)}_${n++}`;
       }
       used.add(name);
-      const { aoa } = buildStatementAoA(g.account, g.rows, meta, i + 1);
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
-      ws['!cols'] = [
-        { wch: 12 },
-        { wch: 48 },
-        { wch: 22 },
-        { wch: 12 },
-        { wch: 16 },
-        { wch: 14 },
-        { wch: 16 }
-      ];
+      const built = buildStatementAoA(g.account, g.rows, meta, i + 1, {
+        includeCategory,
+        accountCount: groups.length
+      });
+      const ws = XLSX.utils.aoa_to_sheet(built.aoa);
+      applyStatementSheetView(ws, built);
       XLSX.utils.book_append_sheet(wb, ws, name);
     });
+    appendSummarySheet(wb, groups, meta);
   }
 
   // Raw backup sheet for re-import
@@ -377,6 +535,7 @@ function buildStatementWorkbook(rows, accountsById, meta = {}) {
   backupWs['!cols'] = EXPORT_COLUMNS.map((c) => ({
     wch: Math.min(40, Math.max(12, c.length + 2))
   }));
+  backupWs['!views'] = [{ state: 'frozen', xSplit: 0, ySplit: 1, topLeftCell: 'A2' }];
   XLSX.utils.book_append_sheet(wb, backupWs, 'BackupData');
 
   const metaRows = [
@@ -385,6 +544,9 @@ function buildStatementWorkbook(rows, accountsById, meta = {}) {
     { key: 'from', value: meta.from ?? '' },
     { key: 'to', value: meta.to ?? '' },
     { key: 'row_count', value: rows.length },
+    { key: 'truncated', value: meta.truncated ? '1' : '0' },
+    { key: 'apply_filters', value: meta.apply_filters ? '1' : '0' },
+    { key: 'include_category', value: includeCategory ? '1' : '0' },
     { key: 'format', value: 'portfolio_bank_transactions_v1' },
     { key: 'layout', value: 'statement' }
   ];
@@ -396,7 +558,9 @@ function workbookToBuffer(wb) {
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 }
 
-function drawStatementPage(doc, account, rows, meta, pageNo, isFirst) {
+function drawStatementPage(doc, account, rows, meta, pageNo, isFirst, opts = {}) {
+  const includeCategory = !!opts.includeCategory;
+  const accountCount = Number(opts.accountCount) || 1;
   const s = computeStatementSummary(account, rows, meta);
   const bank = bankTitle(account.bank_name || rows[0]?.bank_name);
   const name = account.account_name || rows[0]?.account_name || '';
@@ -412,11 +576,13 @@ function drawStatementPage(doc, account, rows, meta, pageNo, isFirst) {
 
   if (!isFirst) doc.addPage();
 
-  doc.font('Helvetica-Bold').fontSize(12).text(bank, left, 40, { width: 220 });
-  doc.font('Helvetica').fontSize(9).text(`Page No. : ${pageNo}`, mid, 40, {
-    width: right - mid,
-    align: 'right'
-  });
+  doc.font('Helvetica-Bold').fontSize(12).text(bank, left, 40, { width: 260 });
+  if (accountCount > 1) {
+    doc.font('Helvetica').fontSize(9).text(`Account ${pageNo} of ${accountCount}`, mid, 40, {
+      width: right - mid,
+      align: 'right'
+    });
+  }
   doc.font('Helvetica-Bold').fontSize(11).text('Statement of account', left, 58, {
     width: right - left,
     align: 'center'
@@ -431,8 +597,8 @@ function drawStatementPage(doc, account, rows, meta, pageNo, isFirst) {
     doc.text(line, left + 6, ly, { width: mid - left - 24 });
     ly += 11;
   }
- // doc.text('Joint Holders :', left + 6, y + 70, { width: mid - left - 24 });
- // doc.text('Nomination :', left + 6, y + 82, { width: mid - left - 24 });
+  doc.text('Joint Holders :', left + 6, y + 70, { width: mid - left - 24 });
+  doc.text('Nomination :', left + 6, y + 82, { width: mid - left - 24 });
 
   const rightLines = [
     ['Account Branch', branch],
@@ -458,21 +624,24 @@ function drawStatementPage(doc, account, rows, meta, pageNo, isFirst) {
 
   y = 210;
   const cols = [
-    { key: 'date', label: 'Date', w: 48 },
-    { key: 'narration', label: 'Narration', w: 170 },
-    { key: 'ref', label: 'Chq./Ref.No.', w: 78 },
-    { key: 'value', label: 'Value Dt', w: 48 },
-    { key: 'wd', label: 'Withdrawal', w: 62 },
-    { key: 'dep', label: 'Deposit', w: 58 },
-    { key: 'bal', label: 'Closing Balance', w: 70 }
+    { key: 'date', label: 'Date', w: includeCategory ? 46 : 48 },
+    { key: 'narration', label: 'Narration', w: includeCategory ? 128 : 170 },
+    { key: 'ref', label: 'Chq./Ref.No.', w: includeCategory ? 70 : 78 },
+    { key: 'value', label: 'Value Dt', w: includeCategory ? 46 : 48 },
+    { key: 'wd', label: 'Withdrawal', w: includeCategory ? 58 : 62 },
+    { key: 'dep', label: 'Deposit', w: includeCategory ? 54 : 58 },
+    { key: 'bal', label: 'Closing Balance', w: includeCategory ? 64 : 70 }
   ];
+  if (includeCategory) {
+    cols.push({ key: 'cat', label: 'Category', w: 78 });
+    cols.push({ key: 'payee', label: 'Payee', w: 70 });
+  }
   const tableWidth = cols.reduce((a, c) => a + c.w, 0);
   const minRowH = 12;
   const cellPadY = 2;
-  const fontSize = 7;
+  const fontSize = includeCategory ? 6.5 : 7;
   const narrColW = cols[1].w - 4;
 
-  /** Soft-break long UPI/ref tokens so PDFKit can wrap without spaces. */
   function wrapFriendly(text, chunk = 26) {
     return String(text || '')
       .replace(/\s+/g, ' ')
@@ -487,7 +656,7 @@ function drawStatementPage(doc, account, rows, meta, pageNo, isFirst) {
     for (const c of cols) {
       doc.text(c.label, hx + 2, y + 5, {
         width: c.w - 4,
-        align: c.key === 'narration' ? 'left' : 'center'
+        align: c.key === 'narration' || c.key === 'cat' || c.key === 'payee' ? 'left' : 'center'
       });
       hx += c.w;
     }
@@ -521,17 +690,17 @@ function drawStatementPage(doc, account, rows, meta, pageNo, isFirst) {
     doc.font('Helvetica').fontSize(fontSize).fillColor('#000');
     let cx = left;
     cells.forEach((text, i) => {
-      const align = i === 1 ? 'left' : i >= 4 ? 'right' : 'center';
+      const align = i === 1 || i >= 7 ? 'left' : i >= 4 && i <= 6 ? 'right' : 'center';
       const raw = i === 1 ? narr : String(text || '');
-      const opts = {
+      const optsRow = {
         width: cols[i].w - 4,
         align,
         lineGap: 1
       };
       if (i === 1) {
-        doc.text(raw, cx + 2, y + cellPadY, opts);
+        doc.text(raw, cx + 2, y + cellPadY, optsRow);
       } else {
-        doc.text(raw, cx + 2, y + cellPadY, { ...opts, lineBreak: false });
+        doc.text(raw, cx + 2, y + cellPadY, { ...optsRow, lineBreak: false });
       }
       cx += cols[i].w;
     });
@@ -542,8 +711,19 @@ function drawStatementPage(doc, account, rows, meta, pageNo, isFirst) {
     y += rowH;
   };
 
+  drawRow([
+    fmtDateDmy(s.from, true),
+    'OPENING BALANCE',
+    '',
+    '',
+    '',
+    '',
+    fmtAmt(s.opening),
+    ...(includeCategory ? ['', ''] : [])
+  ]);
+
   for (const r of s.rows) {
-    drawRow([
+    const cells = [
       fmtDateDmy(r.txn_date, true),
       String(r.narration || '').replace(/\s+/g, ' ').trim(),
       String(r.ref_no || '').slice(0, 28),
@@ -551,7 +731,11 @@ function drawStatementPage(doc, account, rows, meta, pageNo, isFirst) {
       num(r.withdrawal) > 0 ? fmtAmt(r.withdrawal) : '',
       num(r.deposit) > 0 ? fmtAmt(r.deposit) : '',
       r.balance != null && r.balance !== '' ? fmtAmt(r.balance) : ''
-    ]);
+    ];
+    if (includeCategory) {
+      cells.push(String(r.category || '').slice(0, 28), String(r.payee || '').slice(0, 24));
+    }
+    drawRow(cells);
   }
 
   y += 16;
@@ -569,7 +753,7 @@ function drawStatementPage(doc, account, rows, meta, pageNo, isFirst) {
     { width: right - left }
   );
   y += 14;
-  doc.text(`Dr Count : ${s.drCount}     Cr Count : ${s.crCount}`, left, y);
+  doc.text(`Dr Count : ${s.drCount}     Cr Count : ${s.crCount}     Txn Count : ${s.rows.length}`, left, y);
   y += 24;
   doc.fontSize(7).fillColor('#444');
   doc.text(
@@ -586,11 +770,14 @@ function drawStatementPage(doc, account, rows, meta, pageNo, isFirst) {
   doc.fillColor('#000');
 }
 
-function buildStatementPdf(rows, accountsById, meta = {}) {
+function buildStatementPdf(rows, accountsById, meta = {}, opts = {}) {
+  const includeCategory = !!opts.includeCategory;
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: 'A4',
-      margins: { top: 36, bottom: 36, left: 36, right: 36 },
+      layout: includeCategory ? 'landscape' : 'portrait',
+      bufferPages: true,
+      margins: { top: 36, bottom: 40, left: 36, right: 36 },
       info: {
         Title: 'Statement of account',
         Author: 'Portfolio Bank Tracker'
@@ -609,15 +796,92 @@ function buildStatementPdf(rows, accountsById, meta = {}) {
         [],
         meta,
         1,
-        true
+        true,
+        { includeCategory, accountCount: 1 }
       );
     } else {
       groups.forEach((g, i) => {
-        drawStatementPage(doc, g.account, g.rows, meta, i + 1, i === 0);
+        drawStatementPage(doc, g.account, g.rows, meta, i + 1, i === 0, {
+          includeCategory,
+          accountCount: groups.length
+        });
       });
     }
+
+    const range = doc.bufferedPageRange();
+    for (let i = 0; i < range.count; i++) {
+      doc.switchToPage(range.start + i);
+      const left = doc.page.margins.left;
+      const right = doc.page.width - doc.page.margins.right;
+      doc.font('Helvetica').fontSize(8).fillColor('#666');
+      doc.text(`Page ${i + 1} of ${range.count}`, left, doc.page.height - 28, {
+        width: right - left,
+        align: 'center'
+      });
+      doc.fillColor('#000');
+    }
+
     doc.end();
   });
+}
+
+function buildStatementCsv(rows, accountsById, meta = {}, opts = {}) {
+  const includeCategory = !!opts.includeCategory;
+  const groups = groupRowsByAccount(rows, accountsById);
+  const headers = [
+    'Date',
+    'Narration',
+    'Chq./Ref.No.',
+    'Value Dt',
+    'Withdrawal Amt.',
+    'Deposit Amt.',
+    'Closing Balance'
+  ];
+  if (includeCategory) headers.push('Category', 'Payee');
+  const lines = [];
+  const list = groups.length
+    ? groups
+    : [{ account: { bank_name: 'BANK', account_name: 'No transactions', account_number: '' }, rows: [] }];
+
+  list.forEach((g, i) => {
+    const s = computeStatementSummary(g.account, g.rows, meta);
+    if (i > 0) lines.push('');
+    lines.push(
+      `# ${bankTitle(g.account.bank_name)} | ${g.account.account_name || ''} | ${g.account.account_number || ''}`
+    );
+    lines.push(
+      `# From ${s.from || ''} To ${s.to || ''} | Opening ${s.opening} | Closing ${s.closing} | Dr ${s.drCount} | Cr ${s.crCount}`
+    );
+    lines.push(headers.map(csvCell).join(','));
+    const opening = [
+      s.from || '',
+      'OPENING BALANCE',
+      '',
+      '',
+      '',
+      '',
+      s.opening
+    ];
+    if (includeCategory) opening.push('', '');
+    lines.push(opening.map(csvCell).join(','));
+    for (const r of s.rows) {
+      const row = [
+        normalizeDate(r.txn_date) || '',
+        String(r.narration || '').replace(/\s+/g, ' ').trim(),
+        r.ref_no || '',
+        normalizeDate(r.value_date || r.txn_date) || '',
+        num(r.withdrawal) > 0 ? num(r.withdrawal) : '',
+        num(r.deposit) > 0 ? num(r.deposit) : '',
+        r.balance != null && r.balance !== '' ? num(r.balance) : ''
+      ];
+      if (includeCategory) row.push(r.category || '', r.payee || '');
+      lines.push(row.map(csvCell).join(','));
+    }
+    const total = ['', 'TOTAL', '', '', s.totalDebit, s.totalCredit, s.closing];
+    if (includeCategory) total.push('', '');
+    lines.push(total.map(csvCell).join(','));
+  });
+  return `\uFEFF${lines.join('\r\n')}`;
 }
 
 function parseTransactionsUpload(buffer, filename = '') {
@@ -707,6 +971,9 @@ module.exports = {
   buildTransactionsWorkbook,
   buildStatementWorkbook,
   buildStatementPdf,
+  buildStatementCsv,
+  statementDownloadName,
+  contentDisposition,
   workbookToBuffer,
   parseTransactionsUpload,
   buildFingerprint,

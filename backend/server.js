@@ -44,7 +44,13 @@ app.enable('trust proxy');
 app.use(
   cors({
     origin: true,
-    credentials: true
+    credentials: true,
+    exposedHeaders: [
+      'Content-Disposition',
+      'X-Export-Filename',
+      'X-Export-Row-Count',
+      'X-Export-Truncated'
+    ]
   })
 );
 app.use(express.json({ limit: '50mb' }));
