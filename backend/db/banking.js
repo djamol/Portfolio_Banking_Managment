@@ -35,6 +35,16 @@ function wantsTransfersOnly(filters = {}) {
   return v === true || v === 1 || v === '1' || v === 'true';
 }
 
+function isNeedsReviewCategory(category) {
+  const c = String(category || '').trim();
+  return !c || NEEDS_REVIEW_CATEGORIES.includes(c);
+}
+
+function pctChange(current, previous) {
+  if (previous == null || Number(previous) === 0) return null;
+  return ((num(current) - num(previous)) / Math.abs(num(previous))) * 100;
+}
+
 function sqlInterestCase(depositCol = 'deposit') {
   return `CASE WHEN category IN ('Interest Income','Income_Interest_Bank','Income_Interest_Bond') OR category LIKE 'Income\\_Interest\\_%' OR txn_type = 'interest' THEN ${depositCol} ELSE 0 END`;
 }
@@ -612,7 +622,7 @@ async function mysqlGetAnalytics(filters = {}) {
   );
 
   const [topExpenses] = await pool.query(
-    `SELECT id, txn_date, narration, withdrawal, deposit, category, account_id
+    `SELECT id, txn_date, narration, payee, withdrawal, deposit, category, account_id
      FROM bank_transactions
      WHERE ${whereSql} AND withdrawal > 0
      ORDER BY withdrawal DESC
@@ -621,7 +631,7 @@ async function mysqlGetAnalytics(filters = {}) {
   );
 
   const [topCredits] = await pool.query(
-    `SELECT id, txn_date, narration, withdrawal, deposit, category, account_id
+    `SELECT id, txn_date, narration, payee, withdrawal, deposit, category, account_id
      FROM bank_transactions
      WHERE ${whereSql} AND deposit > 0
      ORDER BY deposit DESC
@@ -631,9 +641,8 @@ async function mysqlGetAnalytics(filters = {}) {
 
   const [uncatRows] = await pool.query(
     `SELECT COUNT(*) AS cnt FROM bank_transactions
-     WHERE ${whereSql} AND (category IS NULL OR category = '' OR category = 'Uncategorized'
-       OR category IN ('Expense / Debit', 'Income / Credit'))`,
-    params
+     WHERE ${whereSql} AND (category IS NULL OR TRIM(category) = '' OR category IN (${NEEDS_REVIEW_CATEGORIES.map(() => '?').join(',')}))`,
+    [...params, ...NEEDS_REVIEW_CATEGORIES]
   );
 
   const [interestTax] = await pool.query(
@@ -674,7 +683,8 @@ async function mysqlGetAnalytics(filters = {}) {
     `SELECT a.id, a.bank_name, a.account_name, a.account_number,
             COUNT(t.id) AS txn_count,
             COALESCE(SUM(t.withdrawal),0) AS total_debit,
-            COALESCE(SUM(t.deposit),0) AS total_credit
+            COALESCE(SUM(t.deposit),0) AS total_credit,
+            COALESCE(SUM(t.deposit) - SUM(t.withdrawal),0) AS net
      FROM bank_accounts a
      LEFT JOIN bank_transactions t ON t.account_id = a.id
      WHERE 1=1 ${accountFilter}
@@ -704,6 +714,7 @@ async function mysqlGetAnalytics(filters = {}) {
     byAccount,
     insights: extras.insights,
     mom: extras.mom,
+    yoy: extras.yoy,
     categories: categories.map((c) => c.category)
   };
 }
@@ -741,16 +752,32 @@ function buildAnalyticsExtras(summary, byMonth, byCategory, uncategorizedCount) 
         previous_debit: prev ? num(prev.total_debit) : null,
         previous_credit: prev ? num(prev.total_credit) : null,
         previous_net: prev ? num(prev.net) : null,
-        debit_change_pct:
-          prev && num(prev.total_debit) > 0
-            ? ((num(last.total_debit) - num(prev.total_debit)) / num(prev.total_debit)) * 100
-            : null,
-        credit_change_pct:
-          prev && num(prev.total_credit) > 0
-            ? ((num(last.total_credit) - num(prev.total_credit)) / num(prev.total_credit)) * 100
-            : null
+        debit_change_pct: pctChange(last.total_debit, prev?.total_debit),
+        credit_change_pct: pctChange(last.total_credit, prev?.total_credit),
+        net_change_pct: pctChange(last.net, prev?.net)
       }
     : null;
+
+  let yoy = null;
+  if (last?.month) {
+    const [y, m] = String(last.month).split('-');
+    const prior = months.find((row) => row.month === `${Number(y) - 1}-${m}`);
+    if (prior) {
+      yoy = {
+        current_month: last.month,
+        prior_month: prior.month,
+        current_debit: num(last.total_debit),
+        prior_debit: num(prior.total_debit),
+        current_credit: num(last.total_credit),
+        prior_credit: num(prior.total_credit),
+        current_net: num(last.net),
+        prior_net: num(prior.net),
+        debit_change_pct: pctChange(last.total_debit, prior.total_debit),
+        credit_change_pct: pctChange(last.total_credit, prior.total_credit),
+        net_change_pct: pctChange(last.net, prior.net)
+      };
+    }
+  }
 
   const insights = [];
   if (txnCount > 0) {
@@ -789,6 +816,7 @@ function buildAnalyticsExtras(summary, byMonth, byCategory, uncategorizedCount) 
     },
     expenseByCategory,
     mom,
+    yoy,
     insights
   };
 }
@@ -1307,7 +1335,8 @@ async function mongoGetAnalytics(filters = {}) {
       account_number: a.account_number,
       txn_count: txns.length,
       total_debit: txns.reduce((s, r) => s + num(r.withdrawal), 0),
-      total_credit: txns.reduce((s, r) => s + num(r.deposit), 0)
+      total_credit: txns.reduce((s, r) => s + num(r.deposit), 0),
+      net: txns.reduce((s, r) => s + num(r.deposit) - num(r.withdrawal), 0)
     };
   });
 
@@ -1339,20 +1368,7 @@ async function mongoGetAnalytics(filters = {}) {
     .filter((r) => r.interest > 0 || r.tax > 0 || r.fd_booked > 0)
     .sort((a, b) => a.month.localeCompare(b.month));
 
-  const uncategorizedCount = rows.filter((r) => {
-    const c = r.category || 'Uncategorized';
-    return (
-      !r.category ||
-      c === 'Uncategorized' ||
-      c === 'Expense / Debit' ||
-      c === 'Income / Credit' ||
-      c === 'Expense_Other_Debit' ||
-      c === 'Income_Other_Credit' ||
-      c === 'Expense_Peer_UPI' ||
-      c === 'Income_Peer_UPI' ||
-      c === 'UPI'
-    );
-  }).length;
+  const uncategorizedCount = rows.filter((r) => isNeedsReviewCategory(r.category)).length;
   const extras = buildAnalyticsExtras(summary, byMonth, byCategory, uncategorizedCount);
   const categories = [...new Set(rows.map((r) => r.category).filter(Boolean))].sort();
 
@@ -1370,6 +1386,7 @@ async function mongoGetAnalytics(filters = {}) {
     byAccount,
     insights: extras.insights,
     mom: extras.mom,
+    yoy: extras.yoy,
     categories
   };
 }

@@ -13,9 +13,27 @@ import { BANK_CHART_COLORS } from './banking-chart.util';
 import { BankingContextService } from './banking-context.service';
 import { BankingFilterState } from './banking-filter-state.service';
 
+export type PeriodViewRow = PeriodRow & {
+  debit_delta_pct: number | null;
+  credit_delta_pct: number | null;
+  net_delta: number | null;
+};
+
+export type PayeeRow = {
+  payee: string;
+  txn_count: number;
+  total_debit: number;
+  total_credit: number;
+};
+
 @Injectable({ providedIn: 'root' })
 export class BankingAnalyticsState {
   analytics: any = null;
+  loading = false;
+  payees: PayeeRow[] = [];
+  payeeChartData: ChartConfiguration<'bar'>['data'] = { labels: [], datasets: [] };
+  accountChartData: ChartConfiguration<'doughnut'>['data'] = { labels: [], datasets: [] };
+  periodViewRows: PeriodViewRow[] = [];
   cashSummary: {
     accounts: Array<{
       id: number;
@@ -68,6 +86,7 @@ export class BankingAnalyticsState {
   ) {}
 
   loadAnalytics(done?: () => void) {
+    this.loading = true;
     this.analyticsService.getAnalytics(this.filters.buildSharedFilters()).subscribe({
       next: (data) => {
         this.analytics = data;
@@ -75,11 +94,32 @@ export class BankingAnalyticsState {
         if (data?.categories?.length) {
           this.ctx.mergeCategories(data.categories);
         }
+        this.loading = false;
         done?.();
       },
       error: (err) => {
+        this.loading = false;
         this.ctx.flash('error', err.message || 'Failed to load analytics');
         done?.();
+      }
+    });
+    this.loadPayees();
+  }
+
+  loadPayees() {
+    this.analyticsService.getAnalyticsByPayee({ ...this.filters.buildSharedFilters(), limit: 12 }).subscribe({
+      next: (rows) => {
+        this.payees = (rows || []).map((r: any) => ({
+          payee: r.payee || 'Unknown',
+          txn_count: Number(r.txn_count) || 0,
+          total_debit: Number(r.total_debit) || 0,
+          total_credit: Number(r.total_credit) || 0
+        }));
+        this.buildPayeeChart();
+      },
+      error: () => {
+        this.payees = [];
+        this.buildPayeeChart();
       }
     });
   }
@@ -164,6 +204,33 @@ export class BankingAnalyticsState {
     this.buildPeriodCharts();
     this.buildInterestCharts();
     this.buildExploreCharts();
+    this.buildPayeeChart();
+    this.buildAccountChart();
+  }
+
+  buildPayeeChart() {
+    const top = [...this.payees].sort((a, b) => b.total_debit - a.total_debit).slice(0, 8);
+    this.payeeChartData = {
+      labels: top.map((p) => p.payee),
+      datasets: [{
+        label: 'Debits',
+        data: top.map((p) => p.total_debit),
+        backgroundColor: top.map((_, i) => BANK_CHART_COLORS[i % BANK_CHART_COLORS.length])
+      }]
+    };
+  }
+
+  buildAccountChart() {
+    const accounts = (this.analytics?.byAccount || [])
+      .filter((a: any) => Number(a.total_debit) > 0 || Number(a.total_credit) > 0)
+      .slice(0, 8);
+    this.accountChartData = {
+      labels: accounts.map((a: any) => `${a.bank_name} · ${a.account_name}`),
+      datasets: [{
+        data: accounts.map((a: any) => Number(a.total_debit) + Number(a.total_credit)),
+        backgroundColor: BANK_CHART_COLORS
+      }]
+    };
   }
 
   get categoryDrillKey(): string {
@@ -385,6 +452,20 @@ export class BankingAnalyticsState {
       this.periodBest = null;
       this.periodWorst = null;
     }
+    this.periodViewRows = this.periodRows.map((row, i) => {
+      const prev = i > 0 ? this.periodRows[i - 1] : null;
+      return {
+        ...row,
+        debit_delta_pct: this.pctChange(row.total_debit, prev?.total_debit),
+        credit_delta_pct: this.pctChange(row.total_credit, prev?.total_credit),
+        net_delta: prev ? row.net - prev.net : null
+      };
+    });
+  }
+
+  pctChange(current?: number, previous?: number | null): number | null {
+    if (previous == null || Number(previous) === 0) return null;
+    return ((Number(current) - Number(previous)) / Math.abs(Number(previous))) * 100;
   }
 
   buildInterestCharts() {

@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, Subject } from 'rxjs';
-import { DatePreset } from '../../../services/banking/banking.models';
+import { DatePreset, PeriodGrain } from '../../../services/banking/banking.models';
 
 export type BankingRouteId =
   | 'overview'
@@ -296,6 +296,49 @@ export class BankingFilterState {
 
   applyPayeeFilter(payee: string) {
     this.filterPayee = (payee || '').trim();
+    this.filterOffset = 0;
+    this.notifyChanged();
+  }
+
+  applyAccountFilter(accountId: number | '') {
+    this.filterAccountId = accountId;
+    this.filterOffset = 0;
+    this.notifyChanged();
+  }
+
+  applyPeriodRange(row: { key: string; label?: string }, grain: PeriodGrain) {
+    if (grain === 'month') {
+      this.filterFrom = `${row.key}-01`;
+      const [y, m] = row.key.split('-').map(Number);
+      this.filterTo = this.toIsoDate(new Date(y, m, 0));
+    } else if (grain === 'quarter') {
+      const [yPart, qPart] = row.key.split('-Q');
+      const y = Number(yPart);
+      const q = Number(qPart);
+      const startMonth = (q - 1) * 3;
+      this.filterFrom = this.toIsoDate(new Date(y, startMonth, 1));
+      this.filterTo = this.toIsoDate(new Date(y, startMonth + 3, 0));
+    } else {
+      const y = Number(row.key);
+      this.filterFrom = `${y}-01-01`;
+      this.filterTo = `${y}-12-31`;
+    }
+    this.datePreset = 'custom';
+    this.filterOffset = 0;
+    this.notifyChanged();
+  }
+
+  applyTxnDay(date: string, query = '') {
+    this.filterFrom = date;
+    this.filterTo = date;
+    this.datePreset = 'custom';
+    this.filterQ = query;
+    this.filterPayee = '';
+    this.filterNeedsReview = false;
+    this.filterTransfersOnly = false;
+    this.filterFlow = '';
+    this.filterCategories = [];
+    this.filterCategory = '';
     this.filterOffset = 0;
     this.notifyChanged();
   }

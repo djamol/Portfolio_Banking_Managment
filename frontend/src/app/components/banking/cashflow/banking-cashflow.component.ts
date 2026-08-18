@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 import { Subject, merge, takeUntil } from 'rxjs';
 import { PeriodGrain, PeriodRow } from '../../../services/banking/banking.models';
 import { barOptions, netLineOptions } from '../shared/banking-chart.util';
-import { formatMoney, formatPct, toIsoDate } from '../shared/banking-format.util';
+import { formatMoney, formatPct } from '../shared/banking-format.util';
 import { BankingAnalyticsState } from '../shared/banking-analytics-state.service';
 import { BankingContextService } from '../shared/banking-context.service';
 import { BankingFilterState } from '../shared/banking-filter-state.service';
@@ -44,26 +44,7 @@ export class BankingCashflowComponent implements OnInit, OnDestroy {
   }
 
   openPeriodInTransactions(row: PeriodRow) {
-    const grain = this.analyticsState.cashflowGrain;
-    if (grain === 'month') {
-      this.filters.filterFrom = `${row.key}-01`;
-      const [y, m] = row.key.split('-').map(Number);
-      this.filters.filterTo = toIsoDate(new Date(y, m, 0));
-    } else if (grain === 'quarter') {
-      const [yPart, qPart] = row.key.split('-Q');
-      const y = Number(yPart);
-      const q = Number(qPart);
-      const startMonth = (q - 1) * 3;
-      this.filters.filterFrom = toIsoDate(new Date(y, startMonth, 1));
-      this.filters.filterTo = toIsoDate(new Date(y, startMonth + 3, 0));
-    } else {
-      const y = Number(row.key);
-      this.filters.filterFrom = `${y}-01-01`;
-      this.filters.filterTo = `${y}-12-31`;
-    }
-    this.filters.datePreset = 'custom';
-    this.filters.filterOffset = 0;
-    this.filters.notifyChanged();
+    this.filters.applyPeriodRange(row, this.analyticsState.cashflowGrain);
     this.router.navigate(['/banking/transactions']);
     this.ctx.flash('info', `Showing transactions for ${row.label}`);
   }
