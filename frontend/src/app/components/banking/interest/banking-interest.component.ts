@@ -38,16 +38,7 @@ export class BankingInterestComponent implements OnInit, OnDestroy {
   }
 
   quickFilter(kind: 'interest') {
-    this.filters.filterCategories = this.ctx.categories.filter(
-      (c) => c === 'Interest Income' || c.startsWith('Income_Interest')
-    );
-    if (!this.filters.filterCategories.length) {
-      this.filters.filterCategories = ['Income_Interest_Bank', 'Income_Interest_Bond', 'Interest Income'];
-    }
-    this.filters.filterCategory = '';
-    this.filters.filterFlow = '';
-    this.filters.filterOffset = 0;
-    this.filters.notifyChanged();
+    this.filters.applyQuickFilter(kind, this.ctx.categories);
     this.router.navigate(['/banking/transactions']);
   }
 

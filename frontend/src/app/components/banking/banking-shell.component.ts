@@ -158,67 +158,13 @@ export class BankingShellComponent implements OnInit, OnDestroy {
     });
   }
 
-  shellQuickFilter(kind: 'uncategorized' | 'interest' | 'debit' | 'credit' | 'clear') {
-    this.applyQuickFilter(kind);
+  shellQuickFilter(
+    kind: 'uncategorized' | 'interest' | 'debit' | 'credit' | 'clear' | 'transfers' | 'manual' | 'auto'
+  ) {
+    this.filters.applyQuickFilter(kind, this.ctx.categories);
     if (kind !== 'clear' && this.filters.activeRoute !== 'transactions') {
       this.router.navigate(['/banking/transactions']);
     }
-  }
-
-  applyQuickFilter(kind: 'uncategorized' | 'interest' | 'debit' | 'credit' | 'clear') {
-    if (kind === 'clear') {
-      this.filters.filterCategories = [];
-      this.filters.filterCategory = '';
-      this.filters.filterFlow = '';
-      this.filters.filterQ = '';
-    } else if (kind === 'uncategorized') {
-      this.filters.filterCategories = [
-        'Uncategorized',
-        'Expense_Other_Debit',
-        'Income_Other_Credit',
-        'Expense_Peer_UPI',
-        'Income_Peer_UPI'
-      ];
-      this.filters.filterCategory = '';
-      this.filters.filterFlow = '';
-    } else if (kind === 'interest') {
-      this.filters.filterCategories = this.ctx.categories.filter(
-        (c) => c === 'Interest Income' || c.startsWith('Income_Interest')
-      );
-      if (!this.filters.filterCategories.length) {
-        this.filters.filterCategories = ['Income_Interest_Bank', 'Income_Interest_Bond', 'Interest Income'];
-      }
-      this.filters.filterCategory = '';
-      this.filters.filterFlow = '';
-    } else if (kind === 'debit') {
-      this.filters.filterFlow = 'debit';
-      this.filters.filterCategories = [];
-      this.filters.filterCategory = '';
-    } else if (kind === 'credit') {
-      this.filters.filterFlow = 'credit';
-      this.filters.filterCategories = [];
-      this.filters.filterCategory = '';
-    }
-    this.filters.filterOffset = 0;
-    this.filters.notifyChanged();
-  }
-
-  isInterestFilterActive(): boolean {
-    return (
-      this.filters.filterCategories.length > 0 &&
-      this.filters.filterCategories.every((c) => c === 'Interest Income' || c.startsWith('Income_Interest'))
-    );
-  }
-
-  isUncategorizedFilterActive(): boolean {
-    const set = new Set([
-      'Uncategorized',
-      'Expense_Other_Debit',
-      'Income_Other_Credit',
-      'Expense_Peer_UPI',
-      'Income_Peer_UPI'
-    ]);
-    return this.filters.filterCategories.length > 0 && this.filters.filterCategories.every((c) => set.has(c));
   }
 
   isAnalyticsTabActive(): boolean {
@@ -228,6 +174,18 @@ export class BankingShellComponent implements OnInit, OnDestroy {
 
   clearPayeeFilter() {
     this.filters.clearPayeeFilter();
+  }
+
+  clearSearchFilter() {
+    this.filters.filterQ = '';
+    this.filters.filterOffset = 0;
+    this.filters.notifyChanged();
+  }
+
+  clearSourceFilter() {
+    this.filters.filterCategorySource = '';
+    this.filters.filterOffset = 0;
+    this.filters.notifyChanged();
   }
 
   formatMoney = formatMoney;

@@ -29,6 +29,9 @@ export class BankingFilterState {
   filterPayee = '';
   filterMinAmount: number | '' = '';
   filterMaxAmount: number | '' = '';
+  filterCategorySource: '' | 'manual' | 'auto' | 'rule' = '';
+  filterNeedsReview = false;
+  filterTransfersOnly = false;
   filterSort = 'date_desc';
   filterLimit = Math.min(
     200,
@@ -76,10 +79,12 @@ export class BankingFilterState {
     if (this.filterAccountId) filters['account_id'] = this.filterAccountId;
     if (this.filterFrom) filters['from'] = this.filterFrom;
     if (this.filterTo) filters['to'] = this.filterTo;
-    if (this.filterCategories.length) {
-      filters['category'] = this.filterCategories.join(',');
-    } else if (this.filterCategory) {
-      filters['category'] = this.filterCategory;
+    if (!this.filterNeedsReview) {
+      if (this.filterCategories.length) {
+        filters['category'] = this.filterCategories.join(',');
+      } else if (this.filterCategory) {
+        filters['category'] = this.filterCategory;
+      }
     }
     if (this.filterMinAmount !== '' && this.filterMinAmount != null) {
       filters['min_amount'] = this.filterMinAmount;
@@ -87,7 +92,13 @@ export class BankingFilterState {
     if (this.filterMaxAmount !== '' && this.filterMaxAmount != null) {
       filters['max_amount'] = this.filterMaxAmount;
     }
-    if (this.excludeTransfers) filters['exclude_transfers'] = '1';
+    if (this.filterTransfersOnly) {
+      filters['transfers_only'] = '1';
+    } else if (this.excludeTransfers) {
+      filters['exclude_transfers'] = '1';
+    }
+    if (this.filterNeedsReview) filters['needs_review'] = '1';
+    if (this.filterCategorySource) filters['category_source'] = this.filterCategorySource;
     return filters;
   }
 
@@ -140,6 +151,9 @@ export class BankingFilterState {
     if (this.filterMaxAmount !== '' && this.filterMaxAmount != null) n += 1;
     if (this.filterQ) n += 1;
     if (this.filterPayee) n += 1;
+    if (this.filterCategorySource) n += 1;
+    if (this.filterNeedsReview) n += 1;
+    if (this.filterTransfersOnly) n += 1;
     return n;
   }
 
@@ -182,6 +196,9 @@ export class BankingFilterState {
     this.filterPayee = '';
     this.filterMinAmount = '';
     this.filterMaxAmount = '';
+    this.filterCategorySource = '';
+    this.filterNeedsReview = false;
+    this.filterTransfersOnly = false;
     this.filterSort = 'date_desc';
     this.filterOffset = 0;
     this.datePreset = 'all';
@@ -204,6 +221,81 @@ export class BankingFilterState {
   onCategoryFilterChange(selected: string[]) {
     this.filterCategories = selected || [];
     this.filterCategory = this.filterCategories.length === 1 ? this.filterCategories[0] : '';
+    this.filterNeedsReview = false;
+    this.filterTransfersOnly = false;
+    this.filterOffset = 0;
+    this.notifyChanged();
+  }
+
+  applyQuickFilter(
+    kind: 'uncategorized' | 'interest' | 'debit' | 'credit' | 'clear' | 'transfers' | 'manual' | 'auto',
+    interestCategories: string[] = []
+  ) {
+    const wasTransfers = this.filterTransfersOnly;
+    this.filterOffset = 0;
+    this.filterNeedsReview = false;
+    this.filterTransfersOnly = false;
+    this.filterCategorySource = '';
+    if (kind === 'clear') {
+      if (wasTransfers) this.excludeTransfers = true;
+      this.filterCategories = [];
+      this.filterCategory = '';
+      this.filterFlow = '';
+    } else if (kind === 'uncategorized') {
+      this.filterCategories = [];
+      this.filterCategory = '';
+      this.filterFlow = '';
+      this.filterNeedsReview = true;
+    } else if (kind === 'interest') {
+      const cats = (interestCategories || []).filter(
+        (c) => c === 'Interest Income' || c.startsWith('Income_Interest')
+      );
+      this.filterCategories = cats.length
+        ? cats
+        : ['Income_Interest_Bank', 'Income_Interest_Bond', 'Interest Income'];
+      this.filterCategory = '';
+      this.filterFlow = '';
+    } else if (kind === 'debit') {
+      this.filterFlow = 'debit';
+      this.filterCategories = [];
+      this.filterCategory = '';
+    } else if (kind === 'credit') {
+      this.filterFlow = 'credit';
+      this.filterCategories = [];
+      this.filterCategory = '';
+    } else if (kind === 'transfers') {
+      this.filterCategories = [];
+      this.filterCategory = '';
+      this.filterFlow = '';
+      this.filterTransfersOnly = true;
+      this.excludeTransfers = false;
+    } else if (kind === 'manual') {
+      this.filterCategorySource = 'manual';
+    } else if (kind === 'auto') {
+      this.filterCategorySource = 'auto';
+    }
+    this.notifyChanged();
+  }
+
+  isInterestFilterActive(): boolean {
+    return (
+      !this.filterNeedsReview &&
+      !this.filterTransfersOnly &&
+      this.filterCategories.length > 0 &&
+      this.filterCategories.every((c) => c === 'Interest Income' || c.startsWith('Income_Interest'))
+    );
+  }
+
+  isUncategorizedFilterActive(): boolean {
+    return this.filterNeedsReview;
+  }
+
+  isTransfersFilterActive(): boolean {
+    return this.filterTransfersOnly;
+  }
+
+  applyPayeeFilter(payee: string) {
+    this.filterPayee = (payee || '').trim();
     this.filterOffset = 0;
     this.notifyChanged();
   }

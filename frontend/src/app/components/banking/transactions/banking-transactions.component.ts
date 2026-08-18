@@ -1,8 +1,9 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { Subject, merge, takeUntil } from 'rxjs';
 import { BankImportService } from '../../../services/banking/bank-import.service';
-import { BankAccount, BankTransaction } from '../../../services/banking/banking.models';
+import { BankAccount, BankTransaction, CategoryRule } from '../../../services/banking/banking.models';
 import { BankAccountsService } from '../../../services/banking/bank-accounts.service';
+import { BankRulesService } from '../../../services/banking/bank-rules.service';
 import { BankTransactionsService } from '../../../services/banking/bank-transactions.service';
 import { formatCat, formatMoney, toIsoDate } from '../shared/banking-format.util';
 import { splitCategoryParts } from '../../../utils/category-tree.util';
@@ -17,11 +18,17 @@ import { BankingFilterState } from '../shared/banking-filter-state.service';
   standalone: false
 })
 export class BankingTransactionsComponent implements OnInit, OnDestroy {
+  @ViewChild('txnSearch') txnSearch?: ElementRef<HTMLInputElement>;
+
   transactions: BankTransaction[] = [];
   txnTotal = 0;
   txnTotals = { total_debit: 0, total_credit: 0, net_cashflow: 0 };
   txnLoading = false;
   exporting = false;
+  bulkWorking = false;
+  recategorizing = false;
+  savingManual = false;
+  ruleSaving = false;
 
   selectedIds = new Set<number>();
   selectedSummaryCache = { count: 0, debit: 0, credit: 0 };
@@ -30,6 +37,9 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
   expandedTxnId: number | null = null;
   recategorizeMode: 'auto_only' | 'uncategorized' | 'all' = 'auto_only';
   jumpPage: number | null = null;
+  searchDraft = '';
+  private searchTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastClickedIndex = -1;
 
   showManualTxn = false;
   manualTxn: Partial<BankTransaction> = this.emptyManualTxn();
@@ -37,6 +47,12 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
   showAccountDetails = false;
   accountDetailsSaving = false;
   accountDetailsForm: Partial<BankAccount> = {};
+  ruleDraft: Pick<CategoryRule, 'pattern' | 'match_field' | 'category'> = {
+    pattern: '',
+    match_field: 'narration',
+    category: ''
+  };
+
   readonly accountTypeOptions = [
     'Savings',
     'Current',
@@ -94,16 +110,19 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
     private txnService: BankTransactionsService,
     private accountsService: BankAccountsService,
     private importService: BankImportService,
+    private rulesService: BankRulesService,
     private analyticsState: BankingAnalyticsState
   ) {}
 
   ngOnInit() {
+    this.searchDraft = this.filters.filterQ || '';
     this.ctx.loadAccounts();
     this.loadTransactions();
     this.syncAccountDetailsForm();
     merge(this.filters.filtersChanged$, this.filters.refreshRequested$)
       .pipe(takeUntil(this.destroy$))
       .subscribe(() => {
+        this.searchDraft = this.filters.filterQ || '';
         this.loadTransactions();
         this.syncAccountDetailsForm();
       });
@@ -111,6 +130,7 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    if (this.searchTimer) clearTimeout(this.searchTimer);
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -153,6 +173,15 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
     return this.selectedSummaryCache;
   }
 
+  get pageAllSelected(): boolean {
+    return this.transactions.length > 0 && this.selectedIds.size === this.transactions.length;
+  }
+
+  get avgTxnSize(): number {
+    if (!this.txnTotal) return 0;
+    return (this.txnTotals.total_debit + this.txnTotals.total_credit) / this.txnTotal;
+  }
+
   emptyManualTxn(): Partial<BankTransaction> {
     return {
       account_id: undefined,
@@ -162,7 +191,8 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
       deposit: 0,
       category: '',
       tags: '',
-      notes: ''
+      notes: '',
+      payee: ''
     };
   }
 
@@ -243,9 +273,11 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
           net_cashflow: Number(res.net_cashflow) || 0
         };
         this.selectedIds.clear();
+        this.lastClickedIndex = -1;
         this.refreshSelectedSummary();
         this.categoryEditTxnId = null;
         this.expandedTxnId = null;
+        this.jumpPage = this.currentPage;
         this.txnLoading = false;
       },
       error: (err) => {
@@ -257,6 +289,25 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
 
   trackTxn(_: number, t: BankTransaction): number {
     return t.id;
+  }
+
+  onSearchInput() {
+    if (this.searchTimer) clearTimeout(this.searchTimer);
+    this.searchTimer = setTimeout(() => {
+      const q = (this.searchDraft || '').trim();
+      if (q === (this.filters.filterQ || '')) return;
+      this.filters.filterQ = q;
+      this.filters.filterOffset = 0;
+      this.filters.notifyChanged();
+    }, 350);
+  }
+
+  submitSearch() {
+    if (this.searchTimer) clearTimeout(this.searchTimer);
+    const q = (this.searchDraft || '').trim();
+    this.filters.filterQ = q;
+    this.filters.filterOffset = 0;
+    this.filters.notifyChanged();
   }
 
   requestExportPanel() {
@@ -297,60 +348,10 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
     });
   }
 
-  quickFilter(kind: 'uncategorized' | 'interest' | 'debit' | 'credit' | 'clear') {
-    if (kind === 'clear') {
-      this.filters.filterCategories = [];
-      this.filters.filterCategory = '';
-      this.filters.filterFlow = '';
-      this.filters.filterQ = '';
-    } else if (kind === 'uncategorized') {
-      this.filters.filterCategories = [
-        'Uncategorized',
-        'Expense_Other_Debit',
-        'Income_Other_Credit',
-        'Expense_Peer_UPI',
-        'Income_Peer_UPI'
-      ];
-      this.filters.filterCategory = '';
-      this.filters.filterFlow = '';
-    } else if (kind === 'interest') {
-      this.filters.filterCategories = this.ctx.categories.filter(
-        (c) => c === 'Interest Income' || c.startsWith('Income_Interest')
-      );
-      if (!this.filters.filterCategories.length) {
-        this.filters.filterCategories = ['Income_Interest_Bank', 'Income_Interest_Bond', 'Interest Income'];
-      }
-      this.filters.filterCategory = '';
-      this.filters.filterFlow = '';
-    } else if (kind === 'debit') {
-      this.filters.filterFlow = 'debit';
-      this.filters.filterCategories = [];
-      this.filters.filterCategory = '';
-    } else if (kind === 'credit') {
-      this.filters.filterFlow = 'credit';
-      this.filters.filterCategories = [];
-      this.filters.filterCategory = '';
-    }
-    this.filters.filterOffset = 0;
-    this.filters.notifyChanged();
-  }
-
-  isInterestFilterActive(): boolean {
-    return (
-      this.filters.filterCategories.length > 0 &&
-      this.filters.filterCategories.every((c) => c === 'Interest Income' || c.startsWith('Income_Interest'))
-    );
-  }
-
-  isUncategorizedFilterActive(): boolean {
-    const set = new Set([
-      'Uncategorized',
-      'Expense_Other_Debit',
-      'Income_Other_Credit',
-      'Expense_Peer_UPI',
-      'Income_Peer_UPI'
-    ]);
-    return this.filters.filterCategories.length > 0 && this.filters.filterCategories.every((c) => set.has(c));
+  quickFilter(
+    kind: 'uncategorized' | 'interest' | 'debit' | 'credit' | 'clear' | 'transfers' | 'manual' | 'auto'
+  ) {
+    this.filters.applyQuickFilter(kind, this.ctx.categories);
   }
 
   goToPage(page: number) {
@@ -406,15 +407,30 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
     this.goToPage(Number(this.jumpPage));
   }
 
-  toggleSelect(id: number) {
-    if (this.selectedIds.has(id)) this.selectedIds.delete(id);
-    else this.selectedIds.add(id);
+  toggleSelect(id: number, event?: Event) {
+    const idx = this.transactions.findIndex((t) => t.id === id);
+    const ev = event as MouseEvent | undefined;
+    if (ev?.shiftKey && this.lastClickedIndex >= 0 && idx >= 0) {
+      const from = Math.min(this.lastClickedIndex, idx);
+      const to = Math.max(this.lastClickedIndex, idx);
+      for (let i = from; i <= to; i++) this.selectedIds.add(this.transactions[i].id);
+    } else if (this.selectedIds.has(id)) {
+      this.selectedIds.delete(id);
+    } else {
+      this.selectedIds.add(id);
+    }
+    this.lastClickedIndex = idx;
     this.refreshSelectedSummary();
   }
 
   toggleSelectAll() {
-    if (this.selectedIds.size === this.transactions.length) this.selectedIds.clear();
+    if (this.pageAllSelected) this.selectedIds.clear();
     else this.transactions.forEach((t) => this.selectedIds.add(t.id));
+    this.refreshSelectedSummary();
+  }
+
+  clearSelection() {
+    this.selectedIds.clear();
     this.refreshSelectedSummary();
   }
 
@@ -430,31 +446,49 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
   }
 
   bulkDelete() {
-    if (!this.selectedIds.size) return;
+    if (!this.selectedIds.size || this.bulkWorking) return;
     if (!confirm(`Delete ${this.selectedIds.size} selected transactions?`)) return;
+    this.bulkWorking = true;
     this.txnService.bulkDelete([...this.selectedIds]).subscribe({
       next: (n) => {
+        this.bulkWorking = false;
         this.ctx.flash('success', `Deleted ${n} transactions`);
         this.loadTransactions();
         this.analyticsState.loadAnalytics();
       },
-      error: (err) => this.ctx.flash('error', err.message || 'Bulk delete failed')
+      error: (err) => {
+        this.bulkWorking = false;
+        this.ctx.flash('error', err.message || 'Bulk delete failed');
+      }
     });
   }
 
   applyBulkCategory() {
-    if (!this.bulkCategory || !this.selectedIds.size) return;
+    if (!this.bulkCategory || !this.selectedIds.size || this.bulkWorking) return;
+    this.bulkWorking = true;
     this.txnService.bulkCategorize([...this.selectedIds], this.bulkCategory).subscribe({
       next: (n) => {
+        this.bulkWorking = false;
         this.ctx.flash('success', `Updated category on ${n} transactions`);
         this.loadTransactions();
         this.analyticsState.loadAnalytics();
       },
-      error: (err) => this.ctx.flash('error', err.message || 'Bulk update failed')
+      error: (err) => {
+        this.bulkWorking = false;
+        this.ctx.flash('error', err.message || 'Bulk update failed');
+      }
     });
   }
 
   recategorize() {
+    if (this.recategorizing) return;
+    if (
+      this.recategorizeMode === 'all' &&
+      !confirm('Overwrite all categories on matching transactions, including manual ones?')
+    ) {
+      return;
+    }
+    this.recategorizing = true;
     this.txnService
       .recategorize(
         this.filters.filterAccountId ? Number(this.filters.filterAccountId) : undefined,
@@ -462,6 +496,7 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
       )
       .subscribe({
         next: (n) => {
+          this.recategorizing = false;
           this.ctx.flash(
             'success',
             `Auto-categorized ${n} transactions (${this.recategorizeMode.replace('_', ' ')})`
@@ -469,7 +504,10 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
           this.loadTransactions();
           this.analyticsState.loadAnalytics();
         },
-        error: (err) => this.ctx.flash('error', err.message || 'Recategorize failed')
+        error: (err) => {
+          this.recategorizing = false;
+          this.ctx.flash('error', err.message || 'Recategorize failed');
+        }
       });
   }
 
@@ -498,7 +536,64 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
   }
 
   toggleExpand(id: number) {
-    this.expandedTxnId = this.expandedTxnId === id ? null : id;
+    if (this.expandedTxnId === id) {
+      this.expandedTxnId = null;
+      return;
+    }
+    this.expandedTxnId = id;
+    const txn = this.transactions.find((t) => t.id === id);
+    if (txn) this.prepareRuleDraft(txn);
+  }
+
+  prepareRuleDraft(txn: BankTransaction) {
+    this.ruleDraft = {
+      pattern: this.suggestRulePattern(txn),
+      match_field: txn.payee ? 'payee' : 'narration',
+      category: txn.category || ''
+    };
+  }
+
+  suggestRulePattern(txn: BankTransaction): string {
+    const payee = String(txn.payee || '').trim();
+    if (payee.length >= 3) return payee;
+    const n = String(txn.narration || '');
+    const upi = n.match(/[a-zA-Z0-9._-]{3,}@[a-zA-Z]{2,}/);
+    if (upi) return upi[0];
+    const cleaned = n
+      .replace(/\b(UPI|NEFT|IMPS|RTGS|ACH|NACH|INF|MMT|FT|CR|DR)\b/gi, ' ')
+      .replace(/\d{6,}/g, ' ')
+      .replace(/[^a-zA-Z0-9 @._-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const token = cleaned.split(' ').find((t) => t.length >= 4);
+    return token || cleaned.slice(0, 28) || n.slice(0, 28);
+  }
+
+  saveRuleFromTxn(_txn: BankTransaction) {
+    if (!this.ruleDraft.pattern || !this.ruleDraft.category) {
+      this.ctx.flash('error', 'Pattern and category are required to create a rule');
+      return;
+    }
+    this.ruleSaving = true;
+    this.rulesService
+      .createRule({
+        pattern: this.ruleDraft.pattern.trim(),
+        match_field: this.ruleDraft.match_field || 'narration',
+        category: this.ruleDraft.category,
+        priority: 100,
+        account_id: null,
+        is_active: 1
+      })
+      .subscribe({
+        next: () => {
+          this.ruleSaving = false;
+          this.ctx.flash('success', 'Rule saved. Run Auto-categorize to apply it to similar rows.');
+        },
+        error: (err) => {
+          this.ruleSaving = false;
+          this.ctx.flash('error', err.message || 'Failed to save rule');
+        }
+      });
   }
 
   saveTxnDetails(txn: BankTransaction) {
@@ -523,6 +618,36 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
     if (this.filters.filterAccountId) this.manualTxn.account_id = Number(this.filters.filterAccountId);
     else if (this.ctx.activeAccounts[0]) this.manualTxn.account_id = this.ctx.activeAccounts[0].id;
     this.showManualTxn = true;
+    this.showAccountDetails = false;
+  }
+
+  cloneTxn(txn: BankTransaction) {
+    this.manualTxn = {
+      account_id: txn.account_id,
+      txn_date: toIsoDate(new Date()),
+      narration: txn.narration || '',
+      withdrawal: txn.withdrawal || 0,
+      deposit: txn.deposit || 0,
+      category: txn.category || '',
+      tags: txn.tags || '',
+      notes: txn.notes || '',
+      payee: txn.payee || ''
+    };
+    this.showManualTxn = true;
+    this.expandedTxnId = null;
+    this.ctx.flash('info', 'Cloned into the manual form — change date/amount then save');
+  }
+
+  onManualWithdrawalChange() {
+    if (Number(this.manualTxn.withdrawal) > 0) this.manualTxn.deposit = 0;
+  }
+
+  onManualDepositChange() {
+    if (Number(this.manualTxn.deposit) > 0) this.manualTxn.withdrawal = 0;
+  }
+
+  setManualToday() {
+    this.manualTxn.txn_date = toIsoDate(new Date());
   }
 
   saveManualTxn() {
@@ -530,14 +655,29 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
       this.ctx.flash('error', 'Account and date are required');
       return;
     }
+    const w = Number(this.manualTxn.withdrawal) || 0;
+    const d = Number(this.manualTxn.deposit) || 0;
+    if (w <= 0 && d <= 0) {
+      this.ctx.flash('error', 'Enter a withdrawal or a deposit');
+      return;
+    }
+    if (w > 0 && d > 0) {
+      this.ctx.flash('error', 'Use either withdrawal or deposit, not both');
+      return;
+    }
+    this.savingManual = true;
     this.txnService.createTransaction(this.manualTxn).subscribe({
       next: () => {
+        this.savingManual = false;
         this.showManualTxn = false;
         this.ctx.flash('success', 'Manual transaction added');
         this.loadTransactions();
         this.analyticsState.loadAnalytics();
       },
-      error: (err) => this.ctx.flash('error', err.error?.error || err.message || 'Create failed')
+      error: (err) => {
+        this.savingManual = false;
+        this.ctx.flash('error', err.error?.error || err.message || 'Create failed');
+      }
     });
   }
 
@@ -550,6 +690,82 @@ export class BankingTransactionsComponent implements OnInit, OnDestroy {
       },
       error: (err) => this.ctx.flash('error', err.message || 'Delete failed')
     });
+  }
+
+  filterByPayee(payee: string | null | undefined, event?: Event) {
+    event?.stopPropagation();
+    const value = String(payee || '').trim();
+    if (!value) return;
+    this.filters.applyPayeeFilter(value);
+  }
+
+  copyText(text: string | null | undefined, event?: Event) {
+    event?.stopPropagation();
+    const value = String(text || '').trim();
+    if (!value) return;
+    navigator.clipboard.writeText(value).then(
+      () => this.ctx.flash('success', 'Copied narration'),
+      () => this.ctx.flash('error', 'Copy failed')
+    );
+  }
+
+  accountLabel(t: BankTransaction): string {
+    if (t.account_name) return `${t.bank_name} · ${t.account_name}`;
+    return t.bank_name || '—';
+  }
+
+  sourceLabel(source: string | null | undefined): string {
+    if (source === 'manual') return 'Manual';
+    if (source === 'rule') return 'Rule';
+    return 'Auto';
+  }
+
+  isTransfer(t: BankTransaction): boolean {
+    const c = t.category || '';
+    return !!t.linked_transfer_id || c === 'Transfer In' || c === 'Transfer Out' || c.startsWith('Transfer_');
+  }
+
+  monthKey(date: string | null | undefined): string {
+    return String(date || '').slice(0, 7);
+  }
+
+  showMonthHeader(index: number): boolean {
+    if (this.sortColumn !== 'date' || !this.transactions.length) return false;
+    if (index === 0) return true;
+    return this.monthKey(this.transactions[index].txn_date) !== this.monthKey(this.transactions[index - 1].txn_date);
+  }
+
+  monthLabel(date: string | null | undefined): string {
+    const key = this.monthKey(date);
+    if (!/^\d{4}-\d{2}$/.test(key)) return date || '';
+    const [y, m] = key.split('-').map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  onKeydown(ev: KeyboardEvent) {
+    const el = ev.target as HTMLElement | null;
+    const typing = !!el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
+    if (ev.key === 'Escape') {
+      if (this.categoryEditTxnId) {
+        this.closeCategoryEditor();
+        return;
+      }
+      if (this.expandedTxnId) {
+        this.expandedTxnId = null;
+        return;
+      }
+      if (this.showManualTxn) {
+        this.showManualTxn = false;
+        return;
+      }
+      if (this.selectedIds.size) this.clearSelection();
+      return;
+    }
+    if (ev.key === '/' && !typing && !ev.ctrlKey && !ev.metaKey && !ev.altKey) {
+      ev.preventDefault();
+      this.txnSearch?.nativeElement.focus();
+    }
   }
 
   formatMoney = formatMoney;

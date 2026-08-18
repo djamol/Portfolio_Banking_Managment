@@ -58,9 +58,25 @@
         <button class="btn btn-primary" (click)="filters.applyFilters()">Apply</button>
         <button class="btn btn-secondary" (click)="filters.clearFilters()">Clear</button>
       </div>
-      <div class="active-filter-chips" *ngIf="filters.filterPayee">
-        <button type="button" class="filter-chip" (click)="clearPayeeFilter()" title="Clear payee filter">
+      <div class="active-filter-chips" *ngIf="filters.filterPayee || filters.filterQ || filters.filterNeedsReview || filters.filterTransfersOnly || filters.filterCategorySource">
+        <button type="button" class="filter-chip" *ngIf="filters.filterQ" (click)="clearSearchFilter()" title="Clear search">
+          Search: {{ filters.filterQ }}
+          <span aria-hidden="true">×</span>
+        </button>
+        <button type="button" class="filter-chip" *ngIf="filters.filterPayee" (click)="clearPayeeFilter()" title="Clear payee filter">
           Payee: {{ filters.filterPayee }}
+          <span aria-hidden="true">×</span>
+        </button>
+        <button type="button" class="filter-chip" *ngIf="filters.filterNeedsReview" (click)="shellQuickFilter('clear')" title="Clear needs-review filter">
+          Needs review
+          <span aria-hidden="true">×</span>
+        </button>
+        <button type="button" class="filter-chip" *ngIf="filters.filterTransfersOnly" (click)="shellQuickFilter('clear')" title="Clear transfers filter">
+          Transfers only
+          <span aria-hidden="true">×</span>
+        </button>
+        <button type="button" class="filter-chip" *ngIf="filters.filterCategorySource" (click)="clearSourceFilter()" title="Clear source filter">
+          Source: {{ filters.filterCategorySource }}
           <span aria-hidden="true">×</span>
         </button>
       </div>
@@ -81,6 +97,15 @@
             <option value="">All flows</option>
             <option value="credit">Credits only</option>
             <option value="debit">Debits only</option>
+          </select>
+        </label>
+        <label class="adv-field" *ngIf="filters.activeRoute === 'transactions'">
+          <span>Category source</span>
+          <select [(ngModel)]="filters.filterCategorySource">
+            <option value="">Any source</option>
+            <option value="manual">Manual</option>
+            <option value="auto">Auto</option>
+            <option value="rule">Rule</option>
           </select>
         </label>
         <label class="adv-field">
@@ -109,11 +134,13 @@
       </div>
       <div class="advanced-quick" *ngIf="filters.activeRoute === 'transactions'">
         <span class="adv-quick-label">Quick</span>
-        <button type="button" class="chip" [class.active]="filters.filterFlow==='' && !filters.filterCategories.length" (click)="shellQuickFilter('clear')">All</button>
+        <button type="button" class="chip" [class.active]="filters.filterFlow==='' && !filters.filterCategories.length && !filters.filterNeedsReview && !filters.filterTransfersOnly && !filters.filterCategorySource" (click)="shellQuickFilter('clear')">All</button>
         <button type="button" class="chip" [class.active]="filters.filterFlow==='debit'" (click)="shellQuickFilter('debit')">Debits</button>
         <button type="button" class="chip" [class.active]="filters.filterFlow==='credit'" (click)="shellQuickFilter('credit')">Credits</button>
-        <button type="button" class="chip" [class.active]="isInterestFilterActive()" (click)="shellQuickFilter('interest')">Interest</button>
-        <button type="button" class="chip" [class.active]="isUncategorizedFilterActive()" (click)="shellQuickFilter('uncategorized')">Uncategorized</button>
+        <button type="button" class="chip" [class.active]="filters.isInterestFilterActive()" (click)="shellQuickFilter('interest')">Interest</button>
+        <button type="button" class="chip" [class.active]="filters.isUncategorizedFilterActive()" (click)="shellQuickFilter('uncategorized')">Needs review</button>
+        <button type="button" class="chip" [class.active]="filters.isTransfersFilterActive()" (click)="shellQuickFilter('transfers')">Transfers</button>
+        <button type="button" class="chip" [class.active]="filters.filterCategorySource==='manual'" (click)="shellQuickFilter('manual')">Manual</button>
       </div>
       <div class="advanced-filters-actions">
         <button class="btn btn-primary" (click)="filters.applyFilters()">Apply filters</button>

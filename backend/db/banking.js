@@ -10,8 +10,29 @@ const {
   isFdBookCategory
 } = require('../utils/bank-parsers/common');
 
+const NEEDS_REVIEW_CATEGORIES = [
+  'Uncategorized',
+  'Expense / Debit',
+  'Income / Credit',
+  'Expense_Other_Debit',
+  'Income_Other_Credit',
+  'Expense_Peer_UPI',
+  'Income_Peer_UPI',
+  'UPI'
+];
+
 function sqlTransferExclude(colName = 'category') {
   return `(${colName} IN ('Transfer In','Transfer Out') OR ${colName} LIKE 'Transfer\\_%' OR linked_transfer_id IS NOT NULL)`;
+}
+
+function wantsNeedsReview(filters = {}) {
+  const v = filters.needs_review;
+  return v === true || v === 1 || v === '1' || v === 'true';
+}
+
+function wantsTransfersOnly(filters = {}) {
+  const v = filters.transfers_only;
+  return v === true || v === 1 || v === '1' || v === 'true';
 }
 
 function sqlInterestCase(depositCol = 'deposit') {
@@ -300,7 +321,24 @@ function buildTxnWhere(filters = {}, table = 'bank_transactions') {
   }
   if (filters.flow === 'debit') where.push(`${col('withdrawal')} > 0`);
   if (filters.flow === 'credit') where.push(`${col('deposit')} > 0`);
-  if (wantsExcludeTransfers(filters)) {
+  if (filters.category_source) {
+    const src = String(filters.category_source).toLowerCase();
+    if (src === 'manual' || src === 'rule') {
+      where.push(`${col('category_source')} = ?`);
+      params.push(src);
+    } else if (src === 'auto') {
+      where.push(`(${col('category_source')} = 'auto' OR ${col('category_source')} IS NULL OR ${col('category_source')} = '')`);
+    }
+  }
+  if (wantsNeedsReview(filters)) {
+    where.push(
+      `(${col('category')} IS NULL OR TRIM(${col('category')}) = '' OR ${col('category')} IN (${NEEDS_REVIEW_CATEGORIES.map(() => '?').join(',')}))`
+    );
+    params.push(...NEEDS_REVIEW_CATEGORIES);
+  }
+  if (wantsTransfersOnly(filters)) {
+    where.push(sqlTransferExclude(col('category')));
+  } else if (wantsExcludeTransfers(filters)) {
     where.push(
       `NOT ${sqlTransferExclude(col('category'))}`
     );
@@ -957,9 +995,49 @@ function mongoTxnQuery(filters = {}) {
   }
   if (filters.q) {
     const re = new RegExp(String(filters.q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    q.$or = [{ narration: re }, { ref_no: re }, { notes: re }, { payee: re }];
+    q.$or = [{ narration: re }, { ref_no: re }, { notes: re }, { payee: re }, { tags: re }];
   }
-  if (wantsExcludeTransfers(filters)) {
+  if (filters.category_source) {
+    const src = String(filters.category_source).toLowerCase();
+    if (src === 'manual' || src === 'rule') {
+      q.category_source = src;
+    } else if (src === 'auto') {
+      q.$and = [
+        ...(q.$and || []),
+        {
+          $or: [
+            { category_source: 'auto' },
+            { category_source: null },
+            { category_source: '' },
+            { category_source: { $exists: false } }
+          ]
+        }
+      ];
+    }
+  }
+  if (wantsNeedsReview(filters)) {
+    q.$and = [
+      ...(q.$and || []),
+      {
+        $or: [
+          { category: { $in: NEEDS_REVIEW_CATEGORIES } },
+          { category: null },
+          { category: '' },
+          { category: { $exists: false } }
+        ]
+      }
+    ];
+  }
+  const transferMatch = {
+    $or: [
+      { category: { $in: ['Transfer In', 'Transfer Out'] } },
+      { category: /^Transfer_/ },
+      { linked_transfer_id: { $ne: null, $exists: true } }
+    ]
+  };
+  if (wantsTransfersOnly(filters)) {
+    q.$and = [...(q.$and || []), transferMatch];
+  } else if (wantsExcludeTransfers(filters)) {
     q.$and = [
       ...(q.$and || []),
       { category: { $not: /^(Transfer In|Transfer Out|Transfer_)/ } },

@@ -1,1 +1,151 @@
-/* page-specific */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.txn-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.txn-search {
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+
+.txn-search input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.txn-page-meta {
+  white-space: nowrap;
+}
+
+.txn-actions {
+  margin-bottom: 12px;
+}
+
+.txn-bulk-bar {
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: #eff6ff;
+  border: 1px solid #93c5fd;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.08);
+}
+
+.txn-bulk-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+}
+
+.txn-bulk-cat {
+  min-width: 220px;
+  flex: 1 1 220px;
+}
+
+.account-cell {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.src-badge,
+.xfer-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  background: #e2e8f0;
+  color: #475569;
+  vertical-align: middle;
+}
+
+.src-badge.src-manual {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.src-badge.src-rule {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.xfer-badge {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.transfer-row {
+  background: #fffbeb;
+}
+
+.month-group td {
+  background: #f1f5f9;
+  color: #334155;
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 6px 8px;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.txn-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.rule-from-txn {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed #cbd5e1;
+}
+
+.rule-from-txn h4 {
+  margin: 0 0 4px;
+  font-size: 0.92rem;
+}
+
+.input-with-today {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.input-with-today input {
+  flex: 1;
+}
+
+.empty-txn {
+  padding-bottom: 8px;
+}

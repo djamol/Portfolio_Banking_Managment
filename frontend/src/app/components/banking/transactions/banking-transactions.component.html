@@ -17,6 +17,10 @@
           ₹{{ formatMoney(txnTotals.net_cashflow) }}
         </strong>
       </div>
+      <div class="txn-sum" *ngIf="txnTotal">
+        <span class="txn-sum-label">Avg size</span>
+        <strong>₹{{ formatMoney(avgTxnSize) }}</strong>
+      </div>
       <div class="txn-sum" *ngIf="selectedSummary.count">
         <span class="txn-sum-label">Selected ({{ selectedSummary.count }})</span>
         <strong>
@@ -27,40 +31,48 @@
       </div>
     </div>
 
-    <div class="quick-chips" *ngIf="!filters.showAdvancedFilters">
-      <button type="button" class="chip" [class.active]="filters.filterFlow==='' && !filters.filterCategories.length" (click)="quickFilter('clear')">All</button>
-      <button type="button" class="chip" [class.active]="filters.filterFlow==='debit'" (click)="quickFilter('debit')">Debits</button>
-      <button type="button" class="chip" [class.active]="filters.filterFlow==='credit'" (click)="quickFilter('credit')">Credits</button>
-      <button type="button" class="chip" [class.active]="isInterestFilterActive()" (click)="quickFilter('interest')">Interest</button>
-      <button type="button" class="chip" [class.active]="isUncategorizedFilterActive()" (click)="quickFilter('uncategorized')">Uncategorized</button>
-    </div>
-
-    <div class="section-actions wrap">
-      <span class="muted">{{ pageFrom }}–{{ pageTo }} of {{ txnTotal | number }} · page {{ currentPage }}/{{ totalPages }}</span>
+    <div class="txn-toolbar">
+      <label class="txn-search">
+        <span class="sr-only">Search transactions</span>
+        <input
+          #txnSearch
+          type="search"
+          placeholder="Search narration, ref, payee, tags…  (press /)"
+          [(ngModel)]="searchDraft"
+          (ngModelChange)="onSearchInput()"
+          (keyup.enter)="submitSearch()"
+        />
+      </label>
+      <span class="muted txn-page-meta">{{ pageFrom }}–{{ pageTo }} of {{ txnTotal | number }} · page {{ currentPage }}/{{ totalPages }}</span>
       <select [(ngModel)]="filters.filterLimit" (ngModelChange)="changePageSize()">
         <option *ngFor="let s of pageSizeOptions" [ngValue]="s">{{ s }} / page</option>
       </select>
       <select [(ngModel)]="filters.filterSort" (ngModelChange)="changeSort()">
         <option *ngFor="let s of sortOptions" [value]="s.value">{{ s.label }}</option>
       </select>
-      <button class="btn btn-secondary" (click)="toggleSelectAll()">Select page</button>
-              <select [(ngModel)]="bulkCategory">
-                <option value="">Bulk category…</option>
-                <option *ngFor="let c of ctx.categories" [value]="c">{{ formatCat(c) }}</option>
-              </select>
-      <button class="btn btn-primary" (click)="applyBulkCategory()" [disabled]="!selectedIds.size || !bulkCategory">
-        Apply to {{ selectedIds.size }}
-      </button>
-      <button class="btn btn-danger-outline" (click)="bulkDelete()" [disabled]="!selectedIds.size">
-        Delete selected
-      </button>
+    </div>
+
+    <div class="quick-chips" *ngIf="!filters.showAdvancedFilters">
+      <button type="button" class="chip" [class.active]="filters.filterFlow==='' && !filters.filterCategories.length && !filters.filterNeedsReview && !filters.filterTransfersOnly && !filters.filterCategorySource" (click)="quickFilter('clear')">All</button>
+      <button type="button" class="chip" [class.active]="filters.filterFlow==='debit'" (click)="quickFilter('debit')">Debits</button>
+      <button type="button" class="chip" [class.active]="filters.filterFlow==='credit'" (click)="quickFilter('credit')">Credits</button>
+      <button type="button" class="chip" [class.active]="filters.isInterestFilterActive()" (click)="quickFilter('interest')">Interest</button>
+      <button type="button" class="chip" [class.active]="filters.isUncategorizedFilterActive()" (click)="quickFilter('uncategorized')">Needs review</button>
+      <button type="button" class="chip" [class.active]="filters.isTransfersFilterActive()" (click)="quickFilter('transfers')">Transfers</button>
+      <button type="button" class="chip" [class.active]="filters.filterCategorySource==='manual'" (click)="quickFilter('manual')">Manual</button>
+      <button type="button" class="chip" [class.active]="filters.filterCategorySource==='auto'" (click)="quickFilter('auto')">Auto</button>
+    </div>
+
+    <div class="section-actions wrap txn-actions">
+      <button class="btn btn-primary" (click)="openManualTxn()">Add manual</button>
       <select [(ngModel)]="recategorizeMode" title="Recategorize mode">
         <option value="auto_only">Auto only (keep manual)</option>
         <option value="uncategorized">Uncategorized only</option>
         <option value="all">All (overwrite)</option>
       </select>
-      <button class="btn btn-secondary" (click)="recategorize()">Auto-categorize</button>
-      <button class="btn btn-secondary" (click)="openManualTxn()">Add manual</button>
+      <button class="btn btn-secondary" (click)="recategorize()" [disabled]="recategorizing">
+        {{ recategorizing ? 'Categorizing…' : 'Auto-categorize' }}
+      </button>
       <button
         class="btn btn-secondary"
         type="button"
@@ -74,11 +86,35 @@
         Export statement…
       </button>
       <button class="btn btn-secondary" (click)="exportStatement('xlsx', true)" [disabled]="exporting || !txnTotal">
-        {{ exporting ? 'Exporting…' : 'Statement XLS (filters)' }}
+        {{ exporting ? 'Exporting…' : 'Statement XLS' }}
       </button>
       <button class="btn btn-secondary" (click)="exportStatement('pdf', true)" [disabled]="exporting || !txnTotal">
-        {{ exporting ? 'Exporting…' : 'Statement PDF (filters)' }}
+        {{ exporting ? 'Exporting…' : 'Statement PDF' }}
       </button>
+    </div>
+
+    <div class="txn-bulk-bar" *ngIf="selectedSummary.count">
+      <div class="txn-bulk-meta">
+        <strong>{{ selectedSummary.count }} selected</strong>
+        <span class="debit">₹{{ formatMoney(selectedSummary.debit) }}</span>
+        <span class="muted">/</span>
+        <span class="credit">₹{{ formatMoney(selectedSummary.credit) }}</span>
+      </div>
+      <app-hierarchical-category-picker
+        class="txn-bulk-cat"
+        [options]="ctx.categories"
+        [value]="bulkCategory"
+        placeholder="Set category…"
+        (valueChange)="bulkCategory = $event"
+        (categoryCreated)="ctx.mergeCategories([$event])">
+      </app-hierarchical-category-picker>
+      <button class="btn btn-primary" (click)="applyBulkCategory()" [disabled]="!bulkCategory || bulkWorking">
+        {{ bulkWorking ? 'Updating…' : 'Apply category' }}
+      </button>
+      <button class="btn btn-danger-outline" (click)="bulkDelete()" [disabled]="bulkWorking">
+        Delete
+      </button>
+      <button class="btn btn-secondary" type="button" (click)="clearSelection()">Clear</button>
     </div>
 
     <div class="card" *ngIf="showAccountDetails && filteredAccount">
@@ -141,19 +177,26 @@
         </div>
         <div class="form-group">
           <label>Date</label>
-          <input type="date" [(ngModel)]="manualTxn.txn_date" />
+          <div class="input-with-today">
+            <input type="date" [(ngModel)]="manualTxn.txn_date" />
+            <button type="button" class="btn btn-secondary btn-sm" (click)="setManualToday()">Today</button>
+          </div>
         </div>
         <div class="form-group">
           <label>Withdrawal</label>
-          <input type="number" [(ngModel)]="manualTxn.withdrawal" min="0" />
+          <input type="number" [(ngModel)]="manualTxn.withdrawal" min="0" (ngModelChange)="onManualWithdrawalChange()" />
         </div>
         <div class="form-group">
           <label>Deposit</label>
-          <input type="number" [(ngModel)]="manualTxn.deposit" min="0" />
+          <input type="number" [(ngModel)]="manualTxn.deposit" min="0" (ngModelChange)="onManualDepositChange()" />
         </div>
         <div class="form-group full">
           <label>Narration</label>
           <input [(ngModel)]="manualTxn.narration" />
+        </div>
+        <div class="form-group">
+          <label>Payee</label>
+          <input [(ngModel)]="manualTxn.payee" placeholder="Optional payee" />
         </div>
         <div class="form-group">
           <label>Category</label>
@@ -175,8 +218,10 @@
         </div>
       </div>
       <div class="section-actions">
-        <button class="btn btn-primary" (click)="saveManualTxn()">Save</button>
-        <button class="btn btn-secondary" (click)="showManualTxn=false">Cancel</button>
+        <button class="btn btn-primary" (click)="saveManualTxn()" [disabled]="savingManual">
+          {{ savingManual ? 'Saving…' : 'Save' }}
+        </button>
+        <button class="btn btn-secondary" (click)="showManualTxn=false" [disabled]="savingManual">Cancel</button>
       </div>
     </div>
 
@@ -184,7 +229,14 @@
       <table class="data-table compact sticky-head" *ngIf="transactions.length; else noTxns">
         <thead>
           <tr>
-            <th></th>
+            <th>
+              <input
+                type="checkbox"
+                [checked]="pageAllSelected"
+                (click)="toggleSelectAll(); $event.preventDefault()"
+                title="Select this page"
+              />
+            </th>
             <th
               *ngFor="let col of sortableColumns"
               class="sortable"
@@ -201,12 +253,28 @@
           </tr>
         </thead>
         <tbody>
-          <ng-container *ngFor="let t of transactions; trackBy: trackTxn">
-            <tr [class.selected-row]="selectedIds.has(t.id)" [class.expanded-row]="expandedTxnId === t.id">
-              <td><input type="checkbox" [checked]="selectedIds.has(t.id)" (change)="toggleSelect(t.id)" /></td>
+          <ng-container *ngFor="let t of transactions; let i = index; trackBy: trackTxn">
+            <tr class="month-group" *ngIf="showMonthHeader(i)">
+              <td colspan="9">{{ monthLabel(t.txn_date) }}</td>
+            </tr>
+            <tr
+              [class.selected-row]="selectedIds.has(t.id)"
+              [class.expanded-row]="expandedTxnId === t.id"
+              [class.transfer-row]="isTransfer(t)"
+            >
+              <td>
+                <input
+                  type="checkbox"
+                  [checked]="selectedIds.has(t.id)"
+                  (click)="toggleSelect(t.id, $event); $event.preventDefault()"
+                />
+              </td>
               <td class="nowrap">{{ t.txn_date }}</td>
-              <td class="nowrap">{{ t.bank_name }}</td>
-              <td class="narration clickable" [title]="t.narration" (click)="toggleExpand(t.id)">{{ t.narration }}</td>
+              <td class="nowrap account-cell" [title]="accountLabel(t)">{{ accountLabel(t) }}</td>
+              <td class="narration clickable" [title]="t.narration" (click)="toggleExpand(t.id)">
+                {{ t.narration }}
+                <span class="xfer-badge" *ngIf="isTransfer(t)" title="Transfer">xfer</span>
+              </td>
               <td class="debit num">{{ t.withdrawal ? formatMoney(t.withdrawal) : '' }}</td>
               <td class="credit num">{{ t.deposit ? formatMoney(t.deposit) : '' }}</td>
               <td class="num">{{ t.balance != null ? formatMoney(t.balance) : '—' }}</td>
@@ -227,6 +295,9 @@
                     </span>
                   </ng-container>
                   <ng-template #noCat>—</ng-template>
+                  <span class="src-badge" [class.src-manual]="t.category_source==='manual'" [class.src-rule]="t.category_source==='rule'">
+                    {{ sourceLabel(t.category_source) }}
+                  </span>
                 </button>
                 <app-hierarchical-category-picker
                   *ngIf="categoryEditTxnId === t.id"
@@ -239,17 +310,30 @@
                   (dismissed)="closeCategoryEditor()">
                 </app-hierarchical-category-picker>
               </td>
-              <td><button class="link-btn danger" (click)="deleteTxn(t)" title="Delete">×</button></td>
+              <td class="row-actions">
+                <button class="link-btn" type="button" (click)="toggleExpand(t.id)" title="Details">i</button>
+                <button class="link-btn danger" type="button" (click)="deleteTxn(t)" title="Delete">×</button>
+              </td>
             </tr>
             <tr class="detail-row" *ngIf="expandedTxnId === t.id">
               <td colspan="9">
                 <div class="txn-detail">
-                  <div><strong>Full narration:</strong> {{ t.narration }}</div>
+                  <div class="txn-detail-head">
+                    <strong>Full narration:</strong>
+                    <span>{{ t.narration }}</span>
+                    <button class="link-btn" type="button" (click)="copyText(t.narration, $event)">Copy</button>
+                  </div>
                   <div *ngIf="t.ref_no"><strong>Ref:</strong> {{ t.ref_no }}</div>
                   <div *ngIf="t.value_date"><strong>Value date:</strong> {{ t.value_date }}</div>
                   <div *ngIf="t.txn_type"><strong>Type:</strong> {{ t.txn_type }}</div>
-                  <div *ngIf="t.category_source"><strong>Category source:</strong> {{ t.category_source }}</div>
-                  <div *ngIf="t.account_name"><strong>Account:</strong> {{ t.bank_name }} – {{ t.account_name }} ({{ ctx.maskAccount(t.account_number) }})</div>
+                  <div>
+                    <strong>Category source:</strong>
+                    {{ sourceLabel(t.category_source) }}
+                    <span *ngIf="isTransfer(t)"> · transfer{{ t.linked_transfer_id ? ' #' + t.linked_transfer_id : '' }}</span>
+                  </div>
+                  <div *ngIf="t.account_name">
+                    <strong>Account:</strong> {{ t.bank_name }} – {{ t.account_name }} ({{ ctx.maskAccount(t.account_number) }})
+                  </div>
                   <div class="form-grid" style="margin-top: 0.75rem;">
                     <div class="form-group">
                       <label>Payee</label>
@@ -264,7 +348,48 @@
                       <input [(ngModel)]="t.notes" />
                     </div>
                   </div>
-                  <button class="btn btn-primary" type="button" (click)="saveTxnDetails(t)">Save details</button>
+                  <div class="section-actions wrap">
+                    <button class="btn btn-primary" type="button" (click)="saveTxnDetails(t)">Save details</button>
+                    <button
+                      class="btn btn-secondary"
+                      type="button"
+                      *ngIf="t.payee"
+                      (click)="filterByPayee(t.payee, $event)"
+                    >
+                      Filter this payee
+                    </button>
+                    <button class="btn btn-secondary" type="button" (click)="cloneTxn(t)">Clone</button>
+                  </div>
+                  <div class="rule-from-txn">
+                    <h4>Create rule from this row</h4>
+                    <p class="hint">Saves a matching rule so similar narrations can be auto-categorized later.</p>
+                    <div class="form-grid">
+                      <div class="form-group">
+                        <label>Pattern</label>
+                        <input [(ngModel)]="ruleDraft.pattern" placeholder="e.g. SWIGGY or name@upi" />
+                      </div>
+                      <div class="form-group">
+                        <label>Match field</label>
+                        <select [(ngModel)]="ruleDraft.match_field">
+                          <option value="narration">Narration</option>
+                          <option value="payee">Payee</option>
+                        </select>
+                      </div>
+                      <div class="form-group">
+                        <label>Category</label>
+                        <app-hierarchical-category-picker
+                          [options]="ctx.categories"
+                          [value]="ruleDraft.category"
+                          placeholder="Rule category"
+                          (valueChange)="ruleDraft.category = $event"
+                          (categoryCreated)="ctx.mergeCategories([$event])">
+                        </app-hierarchical-category-picker>
+                      </div>
+                    </div>
+                    <button class="btn btn-secondary" type="button" (click)="saveRuleFromTxn(t)" [disabled]="ruleSaving">
+                      {{ ruleSaving ? 'Saving rule…' : 'Save rule' }}
+                    </button>
+                  </div>
                 </div>
               </td>
             </tr>
@@ -272,7 +397,13 @@
         </tbody>
       </table>
       <ng-template #noTxns>
-        <p class="empty">No transactions match these filters. Import a statement to get started.</p>
+        <div class="empty-txn">
+          <p class="empty">No transactions match these filters.</p>
+          <div class="section-actions wrap" style="justify-content: center;">
+            <a routerLink="/banking/import" class="btn btn-primary">Import a statement</a>
+            <button type="button" class="btn btn-secondary" (click)="filters.clearFilters()">Clear filters</button>
+          </div>
+        </div>
       </ng-template>
     </div>
 
