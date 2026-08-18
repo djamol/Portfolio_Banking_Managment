@@ -431,8 +431,8 @@ function drawStatementPage(doc, account, rows, meta, pageNo, isFirst) {
     doc.text(line, left + 6, ly, { width: mid - left - 24 });
     ly += 11;
   }
-  doc.text('Joint Holders :', left + 6, y + 70, { width: mid - left - 24 });
-  doc.text('Nomination :', left + 6, y + 82, { width: mid - left - 24 });
+ // doc.text('Joint Holders :', left + 6, y + 70, { width: mid - left - 24 });
+ // doc.text('Nomination :', left + 6, y + 82, { width: mid - left - 24 });
 
   const rightLines = [
     ['Account Branch', branch],
