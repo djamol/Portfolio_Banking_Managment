@@ -5,6 +5,9 @@
       <p class="subtitle">Portfolio analytics by snapshot date — only dates with history entries</p>
     </div>
     <div class="header-actions">
+      <button type="button" class="sort-btn" (click)="copySummary()" [disabled]="loading || !stats">
+        {{ copyMessage || 'Copy summary' }}
+      </button>
       <button type="button" class="refresh-btn" (click)="refresh()" [disabled]="loading">
         {{ loading ? 'Loading…' : 'Refresh' }}
       </button>
@@ -27,13 +30,30 @@
     </div>
   </div>
 
+  <nav class="section-nav" *ngIf="stats">
+    <button type="button" (click)="scrollToSection('at-kpis')">Summary</button>
+    <button type="button" (click)="scrollToSection('at-compare')">Compare</button>
+    <button type="button" (click)="scrollToSection('at-charts')">Charts</button>
+    <button type="button" (click)="scrollToSection('at-monthly')">Monthly</button>
+    <button type="button" (click)="scrollToSection('at-snapshots')">Snapshots</button>
+  </nav>
+
   <div class="range-presets">
     <span class="preset-label">Quick range</span>
+    <button type="button" class="preset-btn" [class.active]="activeRangePreset === '1m'" (click)="applyRangePreset('1m')" [disabled]="loading">1M</button>
     <button type="button" class="preset-btn" [class.active]="activeRangePreset === '3m'" (click)="applyRangePreset('3m')" [disabled]="loading">3M</button>
     <button type="button" class="preset-btn" [class.active]="activeRangePreset === '6m'" (click)="applyRangePreset('6m')" [disabled]="loading">6M</button>
     <button type="button" class="preset-btn" [class.active]="activeRangePreset === '1y'" (click)="applyRangePreset('1y')" [disabled]="loading">1Y</button>
     <button type="button" class="preset-btn" [class.active]="activeRangePreset === 'ytd'" (click)="applyRangePreset('ytd')" [disabled]="loading">YTD</button>
     <button type="button" class="preset-btn" [class.active]="activeRangePreset === 'all'" (click)="applyRangePreset('all')" [disabled]="loading">All</button>
+  </div>
+
+  <div class="filter-chips" *ngIf="activeFilterChips.length">
+    <span class="preset-label">Active</span>
+    <button type="button" class="filter-chip" *ngFor="let chip of activeFilterChips" (click)="removeFilterChip(chip.id)" [title]="'Remove ' + chip.label">
+      {{ chip.label }} ×
+    </button>
+    <button type="button" class="clear-btn chip-clear" (click)="clearFilters()" [disabled]="loading || applyingFilters">Clear all</button>
   </div>
 
   <div class="filters-bar" *ngIf="showAdvancedFilters">
@@ -143,8 +163,16 @@
   </div>
 
   <ng-container *ngIf="stats">
+    <div class="stale-banner" *ngIf="isStale()">
+      Last snapshot was {{ stats.daysSinceLastSnapshot }} days ago ({{ stats.latestSnapshotLabel }}).
+      Import a statement or update holdings so the tracker stays current.
+      <a routerLink="/import-data">Import statements</a>
+      ·
+      <a routerLink="/investments">Investments</a>
+    </div>
+
     <!-- KPI Summary -->
-    <div class="stats-grid">
+    <div class="stats-grid" id="at-kpis">
       <div class="stat-card highlight">
         <span class="stat-label">Current Total</span>
         <span class="stat-value" *ngIf="currentTotalBreakdown">{{ currentTotalBreakdown.primaryDisplay }}</span>
@@ -190,7 +218,7 @@
         </ng-container>
         <ng-template #changedSinceSnapshot>
           <span class="stat-value" [class.positive]="isPositive(stats.sinceLastSnapshot)" [class.negative]="isNegative(stats.sinceLastSnapshot)">
-            {{ isPositive(stats.sinceLastSnapshot) ? '+' : '' }}{{ stats.sinceLastSnapshot | number:'1.2-2' }}
+            {{ formatSignedAmount(stats.sinceLastSnapshot) }}
           </span>
           <span class="stat-meta">{{ stats.sinceLastSnapshotPercent | number:'1.2-2' }}% vs snapshot</span>
         </ng-template>
@@ -209,6 +237,16 @@
           {{ stats.drawdownFromPeakPercent | number:'1.2-2' }}% below peak now
         </span>
         <span class="stat-meta positive" *ngIf="stats.drawdownFromPeak === 0">At peak level</span>
+      </div>
+
+      <div class="stat-card">
+        <span class="stat-label">Low Water Mark</span>
+        <span class="stat-value" *ngIf="troughBreakdown">{{ troughBreakdown.primaryDisplay }}</span>
+        <span class="stat-meta full-amount" *ngIf="troughBreakdown">{{ troughBreakdown.full }}</span>
+        <span class="stat-meta">On {{ stats.lowestDateLabel }}</span>
+        <span class="stat-meta positive" *ngIf="stats.riseFromLow !== 0">
+          {{ formatSignedAmount(stats.riseFromLow) }} · {{ stats.riseFromLowPercent | number:'1.1-1' }}% off the low
+        </span>
       </div>
 
       <div class="stat-card">
@@ -302,10 +340,74 @@
             <span *ngIf="goalRemaining > 0">{{ getIndianBreakdown(goalRemaining).primaryDisplay }} remaining</span>
             <span class="positive" *ngIf="goalRemaining <= 0">Goal reached</span>
           </div>
+          <p class="goal-eta" *ngIf="goalEtaLabel">{{ goalEtaLabel }}</p>
         </ng-container>
         <ng-template #noGoal>
           <p class="goal-empty">Set a milestone (e.g. next lakh/crore target) to see progress on every refresh.</p>
+          <div class="goal-suggestions" *ngIf="suggestedGoals().length">
+            <span class="preset-label">Quick set</span>
+            <button type="button" class="preset-btn" *ngFor="let amount of suggestedGoals()" (click)="applySuggestedGoal(amount)">
+              {{ getIndianBreakdown(amount).primaryDisplay }}
+            </button>
+          </div>
         </ng-template>
+      </div>
+    </div>
+
+    <!-- Snapshot compare -->
+    <div class="card compare-card" id="at-compare" *ngIf="rows.length > 1">
+      <div class="table-header">
+        <div>
+          <h3>Compare snapshots</h3>
+          <p class="chart-hint">Pick two dates to see growth, days, and annualized return</p>
+        </div>
+      </div>
+      <div class="compare-controls">
+        <label>
+          From
+          <select [(ngModel)]="compareFrom" class="date-input">
+            <option *ngFor="let row of rows" [value]="row.date">{{ row.dateLabel }}</option>
+          </select>
+        </label>
+        <label>
+          To
+          <select [(ngModel)]="compareTo" class="date-input">
+            <option *ngFor="let row of rows" [value]="row.date">{{ row.dateLabel }}</option>
+          </select>
+        </label>
+      </div>
+      <div class="compare-grid" *ngIf="snapshotCompare as cmp">
+        <div>
+          <span class="pm-label">{{ cmp.fromLabel }}</span>
+          <span class="pm-value" [title]="formatFullInr(cmp.fromAmount)">{{ getIndianBreakdown(cmp.fromAmount).primaryDisplay }}</span>
+        </div>
+        <div>
+          <span class="pm-label">{{ cmp.toLabel }}</span>
+          <span class="pm-value" [title]="formatFullInr(cmp.toAmount)">{{ getIndianBreakdown(cmp.toAmount).primaryDisplay }}</span>
+        </div>
+        <div>
+          <span class="pm-label">Change</span>
+          <span class="pm-value" [class.positive]="isPositive(cmp.change)" [class.negative]="isNegative(cmp.change)">
+            {{ formatSignedAmount(cmp.change) }}
+          </span>
+        </div>
+        <div>
+          <span class="pm-label">Change %</span>
+          <span class="pm-value" [class.positive]="isPositive(cmp.changePercent)" [class.negative]="isNegative(cmp.changePercent)">
+            {{ isPositive(cmp.changePercent) ? '+' : '' }}{{ cmp.changePercent | number:'1.2-2' }}%
+          </span>
+        </div>
+        <div>
+          <span class="pm-label">Days</span>
+          <span class="pm-value">{{ cmp.days }}</span>
+        </div>
+        <div>
+          <span class="pm-label">Annualized</span>
+          <span class="pm-value" *ngIf="cmp.annualizedPercent !== null" [class.positive]="isPositive(cmp.annualizedPercent)" [class.negative]="isNegative(cmp.annualizedPercent)">
+            {{ isPositive(cmp.annualizedPercent) ? '+' : '' }}{{ cmp.annualizedPercent | number:'1.2-2' }}%
+          </span>
+          <span class="pm-value muted" *ngIf="cmp.annualizedPercent === null">Need 30+ days</span>
+        </div>
       </div>
     </div>
 
@@ -318,7 +420,7 @@
     </div>
 
     <!-- Charts -->
-    <div class="charts-grid" *ngIf="rows.length > 0">
+    <div class="charts-grid" id="at-charts" *ngIf="rows.length > 0">
       <div class="card chart-card wide">
         <h3>Portfolio Value &amp; Period Change</h3>
         <p class="chart-hint">Left axis: total value · Right axis: change vs previous snapshot</p>
@@ -355,6 +457,13 @@
         </div>
         <div class="chart-empty" *ngIf="allocationLoading">Loading allocation…</div>
         <div class="chart-empty" *ngIf="!allocationLoading && allocationEmpty">No allocation data for current filters</div>
+        <ul class="allocation-list" *ngIf="!allocationLoading && allocationBreakdown.length">
+          <li *ngFor="let slice of allocationBreakdown">
+            <span>{{ slice.label }}</span>
+            <span class="muted">{{ slice.percent | number:'1.1-1' }}%</span>
+            <span class="num">{{ getIndianBreakdown(slice.value).primaryDisplay }}</span>
+          </li>
+        </ul>
       </div>
 
       <div class="card chart-card">
@@ -391,12 +500,13 @@
     </div>
 
     <!-- Monthly performance report -->
-    <div class="card table-section" *ngIf="monthlyReport.length > 0">
+    <div class="card table-section" id="at-monthly" *ngIf="monthlyReport.length > 0">
       <div class="table-header">
         <div>
           <h3>Monthly Performance Report</h3>
           <p class="chart-hint">Month-start vs month-end snapshot values</p>
         </div>
+        <button type="button" class="sort-btn" (click)="exportMonthlyCsv()">Export monthly CSV</button>
       </div>
       <div class="table-wrapper monthly-wrapper">
         <table class="tracker-table">
@@ -413,13 +523,17 @@
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let m of monthlyReport">
-              <td>{{ m.monthLabel }}</td>
+            <tr *ngFor="let m of monthlyReport" [class.best-row]="m.monthKey === bestMonthKey" [class.worst-row]="m.monthKey === worstMonthKey">
+              <td>
+                {{ m.monthLabel }}
+                <span class="badge peak-badge" *ngIf="m.monthKey === bestMonthKey">Best</span>
+                <span class="badge trough-badge" *ngIf="m.monthKey === worstMonthKey && worstMonthKey !== bestMonthKey">Worst</span>
+              </td>
               <td class="num muted">{{ m.snapshotCount }}</td>
-              <td class="num">{{ getIndianBreakdown(m.startAmount).primaryDisplay }}</td>
-              <td class="num amount-cell">{{ getIndianBreakdown(m.endAmount).primaryDisplay }}</td>
+              <td class="num" [title]="formatFullInr(m.startAmount)">{{ getIndianBreakdown(m.startAmount).primaryDisplay }}</td>
+              <td class="num amount-cell" [title]="formatFullInr(m.endAmount)">{{ getIndianBreakdown(m.endAmount).primaryDisplay }}</td>
               <td class="num" [class.positive]="isPositive(m.change)" [class.negative]="isNegative(m.change)">
-                {{ isPositive(m.change) ? '+' : '' }}{{ m.change | number:'1.2-2' }}
+                {{ formatSignedAmount(m.change) }}
               </td>
               <td class="num" [class.positive]="isPositive(m.changePercent)" [class.negative]="isNegative(m.changePercent)">
                 {{ isPositive(m.changePercent) ? '+' : '' }}{{ m.changePercent | number:'1.2-2' }}%
@@ -432,16 +546,74 @@
       </div>
     </div>
 
-    <!-- Data Table -->
-    <div class="card table-section">
+    <!-- Yearly performance report -->
+    <div class="card table-section" *ngIf="yearlyReport.length > 1">
       <div class="table-header">
-        <h3>Snapshot History</h3>
+        <div>
+          <h3>Yearly Performance Report</h3>
+          <p class="chart-hint">First vs last snapshot in each calendar year</p>
+        </div>
+        <button type="button" class="sort-btn" (click)="exportYearlyCsv()">Export yearly CSV</button>
+      </div>
+      <div class="table-wrapper">
+        <table class="tracker-table">
+          <thead>
+            <tr>
+              <th>Year</th>
+              <th class="num">Snapshots</th>
+              <th class="num">Start</th>
+              <th class="num">End</th>
+              <th class="num">Change</th>
+              <th class="num">Change %</th>
+              <th class="num">Best %</th>
+              <th class="num">Worst %</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let y of yearlyReport">
+              <td>{{ y.year }}</td>
+              <td class="num muted">{{ y.snapshotCount }}</td>
+              <td class="num" [title]="formatFullInr(y.startAmount)">{{ getIndianBreakdown(y.startAmount).primaryDisplay }}</td>
+              <td class="num" [title]="formatFullInr(y.endAmount)">{{ getIndianBreakdown(y.endAmount).primaryDisplay }}</td>
+              <td class="num" [class.positive]="isPositive(y.change)" [class.negative]="isNegative(y.change)">
+                {{ formatSignedAmount(y.change) }}
+              </td>
+              <td class="num" [class.positive]="isPositive(y.changePercent)" [class.negative]="isNegative(y.changePercent)">
+                {{ isPositive(y.changePercent) ? '+' : '' }}{{ y.changePercent | number:'1.2-2' }}%
+              </td>
+              <td class="num positive">{{ y.bestPercent | number:'1.2-2' }}%</td>
+              <td class="num negative">{{ y.worstPercent | number:'1.2-2' }}%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Data Table -->
+    <div class="card table-section" id="at-snapshots">
+      <div class="table-header">
+        <div>
+          <h3>Snapshot History</h3>
+          <p class="chart-hint">{{ snapshotRangeLabel }}</p>
+        </div>
         <div class="table-actions">
+          <input
+            type="search"
+            class="snapshot-search"
+            [(ngModel)]="snapshotSearch"
+            (ngModelChange)="onSnapshotSearch()"
+            placeholder="Search date or amount">
+          <select [(ngModel)]="snapshotPageSize" (ngModelChange)="onSnapshotPageSizeChange()" class="page-size">
+            <option [ngValue]="25">25 / page</option>
+            <option [ngValue]="50">50 / page</option>
+            <option [ngValue]="100">100 / page</option>
+            <option [ngValue]="1000">All</option>
+          </select>
           <button type="button" class="sort-btn" (click)="exportCsv()" [disabled]="!displayRows.length">
             Export CSV
           </button>
           <button type="button" class="sort-btn" (click)="toggleSort()">
-            Sort: {{ sortDirection === 'asc' ? 'Oldest first' : 'Newest first' }}
+            {{ sortDirection === 'asc' ? 'Oldest first' : 'Newest first' }}
           </button>
         </div>
       </div>
@@ -450,27 +622,33 @@
         <table class="tracker-table">
           <thead>
             <tr>
-              <th>Date</th>
-              <th class="num">Amount</th>
-              <th class="num">Diff Previous</th>
-              <th class="num">Period %</th>
-              <th class="num">Days Gap</th>
+              <th class="sortable" (click)="onTableSort('date')">Date {{ tableSortIcon('date') }}</th>
+              <th class="num sortable" (click)="onTableSort('amount')">Amount {{ tableSortIcon('amount') }}</th>
+              <th class="num sortable" (click)="onTableSort('diffPreviousDate')">Diff Previous {{ tableSortIcon('diffPreviousDate') }}</th>
+              <th class="num sortable" (click)="onTableSort('diffPreviousPercent')">Period % {{ tableSortIcon('diffPreviousPercent') }}</th>
+              <th class="num sortable" (click)="onTableSort('daysSincePrevious')">Days Gap {{ tableSortIcon('daysSincePrevious') }}</th>
               <th class="num">Diff in L</th>
               <th class="num">Months to Latest</th>
-              <th class="num">Diff vs Current</th>
-              <th class="num">% vs Current</th>
+              <th class="num sortable" (click)="onTableSort('diffWithCurrent')">Diff vs Current {{ tableSortIcon('diffWithCurrent') }}</th>
+              <th class="num sortable" (click)="onTableSort('percent')">% vs Current {{ tableSortIcon('percent') }}</th>
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let row of displayRows" [class.latest-row]="row.isLatest">
+            <tr
+              *ngFor="let row of pagedDisplayRows"
+              [class.latest-row]="row.isLatest"
+              [class.peak-row]="isPeakRow(row)"
+              [class.trough-row]="isTroughRow(row) && !isPeakRow(row)">
               <td>
                 {{ row.dateLabel }}
                 <span *ngIf="row.isLatest" class="badge">Latest</span>
+                <span *ngIf="isPeakRow(row)" class="badge peak-badge">Peak</span>
+                <span *ngIf="isTroughRow(row) && !isPeakRow(row)" class="badge trough-badge">Low</span>
               </td>
-              <td class="num amount-cell">{{ getIndianBreakdown(row.amount).primaryDisplay }}</td>
+              <td class="num amount-cell" [title]="formatFullInr(row.amount)">{{ getIndianBreakdown(row.amount).primaryDisplay }}</td>
               <td class="num" [class.positive]="isPositive(row.diffPreviousDate)" [class.negative]="isNegative(row.diffPreviousDate)">
                 <ng-container *ngIf="row.diffPreviousDate !== 0">
-                  {{ isPositive(row.diffPreviousDate) ? '+' : '' }}{{ row.diffPreviousDate | number:'1.2-2' }}
+                  {{ formatSignedAmount(row.diffPreviousDate) }}
                 </ng-container>
                 <ng-container *ngIf="row.diffPreviousDate === 0">—</ng-container>
               </td>
@@ -486,14 +664,22 @@
               </td>
               <td class="num muted">{{ row.monthsDiff }}</td>
               <td class="num" [class.positive]="isPositive(row.diffWithCurrent)" [class.negative]="isNegative(row.diffWithCurrent)">
-                {{ isPositive(row.diffWithCurrent) ? '+' : '' }}{{ row.diffWithCurrent | number:'1.2-2' }}
+                {{ formatSignedAmount(row.diffWithCurrent) }}
               </td>
               <td class="num" [class.positive]="isPositive(row.percent)" [class.negative]="isNegative(row.percent)">
                 {{ isPositive(row.percent) ? '+' : '' }}{{ row.percent | number:'1.2-2' }}%
               </td>
             </tr>
+            <tr *ngIf="!pagedDisplayRows.length">
+              <td colspan="9" class="empty-preview">No snapshots match the search.</td>
+            </tr>
           </tbody>
         </table>
+      </div>
+      <div class="snapshot-pager" *ngIf="snapshotTotalPages > 1">
+        <button type="button" class="sort-btn" (click)="onSnapshotPageChange(snapshotPage - 1)" [disabled]="snapshotPage === 1">Previous</button>
+        <span class="muted">Page {{ snapshotPage }} of {{ snapshotTotalPages }}</span>
+        <button type="button" class="sort-btn" (click)="onSnapshotPageChange(snapshotPage + 1)" [disabled]="snapshotPage === snapshotTotalPages">Next</button>
       </div>
     </div>
   </ng-container>

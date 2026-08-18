@@ -3,7 +3,7 @@ import { AnalyticsFilters, AnalyticsService } from '../../services/analytics.ser
 import { ChartConfiguration, ChartOptions } from 'chart.js';
 import { INVESTMENT_TYPES } from '../../constants/investment-types.constants';
 import { hasMultiSelectFilter, pruneSelections } from '../../utils/advanced-filter.util';
-import { getIndianAmountBreakdown, IndianAmountBreakdown } from '../../utils/indian-number.util';
+import { getIndianAmountBreakdown, IndianAmountBreakdown, formatIndianFull } from '../../utils/indian-number.util';
 
 export interface AssetTrackerRow {
   date: string;
@@ -75,8 +75,44 @@ export interface MonthlyReportRow {
   worstPercent: number;
 }
 
+export interface YearlyReportRow {
+  year: string;
+  startAmount: number;
+  endAmount: number;
+  change: number;
+  changePercent: number;
+  snapshotCount: number;
+  bestPercent: number;
+  worstPercent: number;
+}
+
+export interface AllocationSlice {
+  label: string;
+  value: number;
+  percent: number;
+}
+
+export interface SnapshotCompare {
+  fromDate: string;
+  toDate: string;
+  fromLabel: string;
+  toLabel: string;
+  fromAmount: number;
+  toAmount: number;
+  change: number;
+  changePercent: number;
+  days: number;
+  annualizedPercent: number | null;
+}
+
+export interface FilterChip {
+  id: string;
+  label: string;
+}
+
 type SortDirection = 'asc' | 'desc';
-type RangePreset = '3m' | '6m' | '1y' | 'ytd' | 'all';
+type RangePreset = '1m' | '3m' | '6m' | '1y' | 'ytd' | 'all';
+type SnapshotSortColumn = 'date' | 'amount' | 'diffPreviousDate' | 'diffPreviousPercent' | 'daysSincePrevious' | 'diffWithCurrent' | 'percent';
 
 const GOAL_STORAGE_KEY = 'asset-tracker-goal-amount';
 
@@ -148,14 +184,28 @@ export class AssetTrackerComponent implements OnInit {
   };
 
   monthlyReport: MonthlyReportRow[] = [];
+  yearlyReport: YearlyReportRow[] = [];
+  allocationBreakdown: AllocationSlice[] = [];
   activeRangePreset: RangePreset | null = null;
   goalAmount: number | null = null;
   goalInput: number | null = null;
   goalProgressPercent = 0;
   goalRemaining = 0;
+  goalEtaLabel = '';
   showGoalEditor = false;
   allocationLoading = false;
   allocationEmpty = false;
+  copyMessage = '';
+  troughBreakdown: IndianAmountBreakdown | null = null;
+
+  compareFrom = '';
+  compareTo = '';
+  snapshotSearch = '';
+  tableSortBy: SnapshotSortColumn = 'date';
+  snapshotPage = 1;
+  snapshotPageSize = 25;
+  snapshotTotalPages = 0;
+  pagedDisplayRows: AssetTrackerRow[] = [];
 
   private readonly inrTooltip = (value: number) =>
     '₹' + value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -293,13 +343,12 @@ export class AssetTrackerComponent implements OnInit {
       this.filterFrom = `${today.getFullYear()}-01-01`;
       this.filterTo = toKey;
     } else {
-      const months = preset === '3m' ? 3 : preset === '6m' ? 6 : 12;
+      const months = preset === '1m' ? 1 : preset === '3m' ? 3 : preset === '6m' ? 6 : 12;
       const from = new Date(today.getFullYear(), today.getMonth() - months, today.getDate());
       this.filterFrom = this.toDateKey(from);
       this.filterTo = toKey;
     }
 
-    this.showAdvancedFilters = true;
     this.applyingFilters = true;
     this.loadData();
   }
@@ -330,6 +379,7 @@ export class AssetTrackerComponent implements OnInit {
     this.goalInput = null;
     this.goalProgressPercent = 0;
     this.goalRemaining = 0;
+    this.goalEtaLabel = '';
     this.showGoalEditor = false;
     try {
       localStorage.removeItem(GOAL_STORAGE_KEY);
@@ -337,6 +387,10 @@ export class AssetTrackerComponent implements OnInit {
   }
 
   exportCsv() {
+    this.exportSnapshotCsv();
+  }
+
+  exportSnapshotCsv() {
     if (!this.displayRows.length) return;
 
     const headers = [
@@ -362,13 +416,47 @@ export class AssetTrackerComponent implements OnInit {
       row.percent.toFixed(4)
     ].join(','));
 
-    const csv = [headers.join(','), ...lines].join('\n');
+    this.downloadCsv(`asset-tracker-snapshots-${this.toDateKey(new Date())}.csv`, [headers.join(','), ...lines].join('\n'));
+  }
+
+  exportMonthlyCsv() {
+    if (!this.monthlyReport.length) return;
+    const headers = ['Month', 'Snapshots', 'Start', 'End', 'Change', 'Change %', 'Best %', 'Worst %'];
+    const lines = this.monthlyReport.map((m) => [
+      m.monthLabel,
+      m.snapshotCount,
+      m.startAmount.toFixed(2),
+      m.endAmount.toFixed(2),
+      m.change.toFixed(2),
+      m.changePercent.toFixed(4),
+      m.bestPercent.toFixed(4),
+      m.worstPercent.toFixed(4)
+    ].join(','));
+    this.downloadCsv(`asset-tracker-monthly-${this.toDateKey(new Date())}.csv`, [headers.join(','), ...lines].join('\n'));
+  }
+
+  exportYearlyCsv() {
+    if (!this.yearlyReport.length) return;
+    const headers = ['Year', 'Snapshots', 'Start', 'End', 'Change', 'Change %', 'Best %', 'Worst %'];
+    const lines = this.yearlyReport.map((y) => [
+      y.year,
+      y.snapshotCount,
+      y.startAmount.toFixed(2),
+      y.endAmount.toFixed(2),
+      y.change.toFixed(2),
+      y.changePercent.toFixed(4),
+      y.bestPercent.toFixed(4),
+      y.worstPercent.toFixed(4)
+    ].join(','));
+    this.downloadCsv(`asset-tracker-yearly-${this.toDateKey(new Date())}.csv`, [headers.join(','), ...lines].join('\n'));
+  }
+
+  private downloadCsv(filename: string, csv: string) {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
-    const stamp = this.toDateKey(new Date());
     anchor.href = url;
-    anchor.download = `asset-tracker-snapshots-${stamp}.csv`;
+    anchor.download = filename;
     anchor.click();
     URL.revokeObjectURL(url);
   }
@@ -396,10 +484,12 @@ export class AssetTrackerComponent implements OnInit {
     if (!this.goalAmount || this.goalAmount <= 0) {
       this.goalProgressPercent = 0;
       this.goalRemaining = 0;
+      this.goalEtaLabel = '';
       return;
     }
     this.goalProgressPercent = Math.min(100, (this.currentAmount / this.goalAmount) * 100);
     this.goalRemaining = Math.max(0, this.goalAmount - this.currentAmount);
+    this.goalEtaLabel = this.computeGoalEta();
   }
 
   refresh() {
@@ -407,8 +497,42 @@ export class AssetTrackerComponent implements OnInit {
   }
 
   toggleSort() {
+    this.tableSortBy = 'date';
     this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
     this.applySort();
+  }
+
+  onSnapshotSearch() {
+    this.snapshotPage = 1;
+    this.applySort();
+  }
+
+  onSnapshotPageSizeChange() {
+    this.snapshotPage = 1;
+    this.applySort();
+  }
+
+  onSnapshotPageChange(page: number) {
+    if (page >= 1 && page <= this.snapshotTotalPages) {
+      this.snapshotPage = page;
+      this.applySort();
+    }
+  }
+
+  onTableSort(column: SnapshotSortColumn) {
+    if (this.tableSortBy === column) {
+      this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+      this.tableSortBy = column;
+      this.sortDirection = column === 'date' ? 'desc' : 'desc';
+    }
+    this.snapshotPage = 1;
+    this.applySort();
+  }
+
+  tableSortIcon(column: SnapshotSortColumn): string {
+    if (this.tableSortBy !== column) return '↕';
+    return this.sortDirection === 'asc' ? '↑' : '↓';
   }
 
   toggleAdvancedFilters() {
@@ -622,13 +746,17 @@ export class AssetTrackerComponent implements OnInit {
     this.displayRows = [];
     this.stats = null;
     this.monthlyReport = [];
+    this.yearlyReport = [];
+    this.allocationBreakdown = [];
     this.currentTotalBreakdown = null;
     this.growthBreakdown = null;
     this.peakBreakdown = null;
+    this.troughBreakdown = null;
     this.firstAmountBreakdown = null;
     this.lastSnapshotBreakdown = null;
     this.goalProgressPercent = 0;
     this.goalRemaining = 0;
+    this.goalEtaLabel = '';
     this.allocationEmpty = true;
     this.allocationChartData = {
       labels: [],
@@ -648,6 +776,7 @@ export class AssetTrackerComponent implements OnInit {
         const rows = response.data || [];
         if (!rows.length) {
           this.allocationEmpty = true;
+          this.allocationBreakdown = [];
           this.allocationChartData = {
             labels: [],
             datasets: [{
@@ -659,7 +788,16 @@ export class AssetTrackerComponent implements OnInit {
           const sorted = [...rows].sort(
             (a, b) => this.toNumber(b.value) - this.toNumber(a.value)
           );
+          const total = sorted.reduce((sum, r) => sum + this.toNumber(r.value), 0);
           this.allocationEmpty = false;
+          this.allocationBreakdown = sorted.map((r) => {
+            const value = this.toNumber(r.value);
+            return {
+              label: r.investment_type,
+              value,
+              percent: total > 0 ? (value / total) * 100 : 0
+            };
+          });
           this.allocationChartData = {
             labels: sorted.map((r) => r.investment_type),
             datasets: [{
@@ -672,6 +810,7 @@ export class AssetTrackerComponent implements OnInit {
       },
       error: () => {
         this.allocationEmpty = true;
+        this.allocationBreakdown = [];
         this.allocationLoading = false;
       }
     });
@@ -711,11 +850,15 @@ export class AssetTrackerComponent implements OnInit {
 
     this.computeStats(latestDate);
     this.buildMonthlyReport();
+    this.buildYearlyReport();
+    this.syncCompareDates();
     this.currentTotalBreakdown = getIndianAmountBreakdown(this.currentAmount);
     this.growthBreakdown = getIndianAmountBreakdown(this.stats?.totalGrowth ?? 0);
     this.peakBreakdown = getIndianAmountBreakdown(this.stats?.highestAmount ?? 0);
+    this.troughBreakdown = getIndianAmountBreakdown(this.stats?.lowestAmount ?? 0);
     this.firstAmountBreakdown = getIndianAmountBreakdown(this.stats?.firstAmount ?? 0);
     this.lastSnapshotBreakdown = getIndianAmountBreakdown(this.stats?.latestSnapshotAmount ?? 0);
+    this.snapshotPage = 1;
     this.applySort();
     this.buildCharts();
   }
@@ -1058,11 +1201,77 @@ export class AssetTrackerComponent implements OnInit {
     }).reverse();
   }
 
+  private buildYearlyReport() {
+    if (this.rows.length === 0) {
+      this.yearlyReport = [];
+      return;
+    }
+
+    const byYear = new Map<string, AssetTrackerRow[]>();
+    for (const row of this.rows) {
+      const key = row.date.slice(0, 4);
+      const list = byYear.get(key) ?? [];
+      list.push(row);
+      byYear.set(key, list);
+    }
+
+    const keys = [...byYear.keys()].sort();
+    this.yearlyReport = keys.map((year) => {
+      const yearRows = byYear.get(year)!;
+      const startAmount = yearRows[0].amount;
+      const endAmount = yearRows[yearRows.length - 1].amount;
+      const change = endAmount - startAmount;
+      const changePercent = startAmount !== 0 ? (change / startAmount) * 100 : 0;
+      const periodPercents = yearRows
+        .filter((r) => r.diffPreviousPercent !== 0 || r.daysSincePrevious !== null)
+        .map((r) => r.diffPreviousPercent);
+      return {
+        year,
+        startAmount,
+        endAmount,
+        change,
+        changePercent,
+        snapshotCount: yearRows.length,
+        bestPercent: periodPercents.length ? Math.max(...periodPercents) : 0,
+        worstPercent: periodPercents.length ? Math.min(...periodPercents) : 0
+      };
+    }).reverse();
+  }
+
   private applySort() {
-    this.displayRows = [...this.rows].sort((a, b) => {
-      const diff = this.parseDateKey(a.date).getTime() - this.parseDateKey(b.date).getTime();
-      return this.sortDirection === 'asc' ? diff : -diff;
+    const query = this.snapshotSearch.trim().toLowerCase();
+    let rows = [...this.rows];
+    if (query) {
+      rows = rows.filter((row) =>
+        row.dateLabel.toLowerCase().includes(query) ||
+        row.date.includes(query) ||
+        String(Math.round(row.amount)).includes(query)
+      );
+    }
+
+    const column = this.tableSortBy;
+    const direction = this.sortDirection === 'asc' ? 1 : -1;
+    rows.sort((a, b) => {
+      if (column === 'date') {
+        return (this.parseDateKey(a.date).getTime() - this.parseDateKey(b.date).getTime()) * direction;
+      }
+      const av = Number(a[column]) || 0;
+      const bv = Number(b[column]) || 0;
+      return (av - bv) * direction;
     });
+
+    this.displayRows = rows;
+    this.snapshotTotalPages = Math.max(1, Math.ceil(rows.length / this.snapshotPageSize));
+    if (this.snapshotPage > this.snapshotTotalPages) {
+      this.snapshotPage = this.snapshotTotalPages;
+    }
+    if (!rows.length) {
+      this.snapshotTotalPages = 0;
+      this.pagedDisplayRows = [];
+      return;
+    }
+    const start = (this.snapshotPage - 1) * this.snapshotPageSize;
+    this.pagedDisplayRows = rows.slice(start, start + this.snapshotPageSize);
   }
 
   private buildCharts() {
@@ -1253,5 +1462,207 @@ export class AssetTrackerComponent implements OnInit {
 
   getIndianBreakdown(value: number): IndianAmountBreakdown {
     return getIndianAmountBreakdown(value);
+  }
+
+  formatSignedAmount(value: number): string {
+    const amount = Number(value) || 0;
+    if (Math.abs(amount) < 0.005) return getIndianAmountBreakdown(0).primaryDisplay;
+    const sign = amount > 0 ? '+' : '';
+    return `${sign}${getIndianAmountBreakdown(amount).primaryDisplay}`;
+  }
+
+  formatFullInr(value: number): string {
+    const amount = Number(value) || 0;
+    const sign = amount < 0 ? '-' : '';
+    return `${sign}₹${formatIndianFull(amount)}`;
+  }
+
+  private computeGoalEta(): string {
+    if (!this.goalAmount || this.currentAmount <= 0) return '';
+    if (this.currentAmount >= this.goalAmount) return 'Goal reached';
+    const cagr = this.stats?.cagr;
+    if (cagr !== null && cagr !== undefined && cagr > 0.1) {
+      const years = Math.log(this.goalAmount / this.currentAmount) / Math.log(1 + cagr / 100);
+      if (Number.isFinite(years) && years > 0 && years < 80) {
+        const eta = new Date();
+        eta.setMonth(eta.getMonth() + Math.round(years * 12));
+        return `At current CAGR, around ${eta.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}`;
+      }
+    }
+    const avgChange = this.stats?.avgPeriodChange ?? 0;
+    const avgGap = this.stats?.avgGapDays ?? 0;
+    if (avgChange > 0 && avgGap > 0) {
+      const periods = (this.goalAmount - this.currentAmount) / avgChange;
+      const days = Math.round(periods * avgGap);
+      if (days > 0 && days < 365 * 40) {
+        const eta = new Date();
+        eta.setDate(eta.getDate() + days);
+        return `At recent pace, around ${eta.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}`;
+      }
+    }
+    return 'Need sustained positive growth to estimate a date';
+  }
+
+  suggestedGoals(): number[] {
+    if (this.currentAmount <= 0) return [1_00_000, 10_00_000, 1_00_00_000];
+    const nextLakh = Math.ceil((this.currentAmount + 1) / 1_00_000) * 1_00_000;
+    const next5L = Math.ceil((this.currentAmount + 1) / 5_00_000) * 5_00_000;
+    const nextCr = Math.ceil((this.currentAmount + 1) / 1_00_00_000) * 1_00_00_000;
+    return [...new Set([nextLakh, next5L, nextCr].filter((v) => v > this.currentAmount))].slice(0, 3);
+  }
+
+  applySuggestedGoal(amount: number) {
+    this.goalInput = amount;
+    this.saveGoal();
+  }
+
+  get activeFilterChips(): FilterChip[] {
+    const chips: FilterChip[] = [];
+    if (this.filterFrom) chips.push({ id: 'from', label: `From ${this.filterFrom}` });
+    if (this.filterTo) chips.push({ id: 'to', label: `To ${this.filterTo}` });
+    if (this.filterTypes.length) chips.push({ id: 'types', label: `Types: ${this.filterTypes.join(', ')}` });
+    if (this.filterSubTypes.length) chips.push({ id: 'subTypes', label: `Sub types: ${this.filterSubTypes.join(', ')}` });
+    if (this.filterCategories.length) chips.push({ id: 'categories', label: `Categories: ${this.filterCategories.join(', ')}` });
+    if (this.filterPlatforms.length) chips.push({ id: 'platforms', label: `Platforms: ${this.filterPlatforms.join(', ')}` });
+    if (this.filterMinAmount != null && !Number.isNaN(this.filterMinAmount)) {
+      chips.push({ id: 'min', label: `Min ₹${this.filterMinAmount}` });
+    }
+    if (this.filterMaxAmount != null && !Number.isNaN(this.filterMaxAmount)) {
+      chips.push({ id: 'max', label: `Max ₹${this.filterMaxAmount}` });
+    }
+    if (this.filterIgnoreZero) chips.push({ id: 'zero', label: 'Ignore 0 value' });
+    return chips;
+  }
+
+  removeFilterChip(id: string) {
+    if (id === 'from') this.filterFrom = '';
+    if (id === 'to') this.filterTo = '';
+    if (id === 'types') this.filterTypes = [];
+    if (id === 'subTypes') this.filterSubTypes = [];
+    if (id === 'categories') this.filterCategories = [];
+    if (id === 'platforms') this.filterPlatforms = [];
+    if (id === 'min') this.filterMinAmount = null;
+    if (id === 'max') this.filterMaxAmount = null;
+    if (id === 'zero') this.filterIgnoreZero = false;
+    this.activeRangePreset = null;
+    this.applyingFilters = true;
+    this.loadData();
+  }
+
+  private syncCompareDates() {
+    if (!this.rows.length) {
+      this.compareFrom = '';
+      this.compareTo = '';
+      return;
+    }
+    const keys = this.rows.map((r) => r.date);
+    if (!keys.includes(this.compareFrom)) this.compareFrom = keys[0];
+    if (!keys.includes(this.compareTo)) this.compareTo = keys[keys.length - 1];
+  }
+
+  get snapshotCompare(): SnapshotCompare | null {
+    if (!this.compareFrom || !this.compareTo) return null;
+    const fromRow = this.rows.find((r) => r.date === this.compareFrom);
+    const toRow = this.rows.find((r) => r.date === this.compareTo);
+    if (!fromRow || !toRow) return null;
+    const [start, end] = fromRow.date <= toRow.date ? [fromRow, toRow] : [toRow, fromRow];
+    const change = end.amount - start.amount;
+    const changePercent = start.amount !== 0 ? (change / start.amount) * 100 : 0;
+    const days = this.daysBetween(this.parseDateKey(start.date), this.parseDateKey(end.date));
+    let annualizedPercent: number | null = null;
+    if (start.amount > 0 && days >= 30) {
+      const years = days / 365;
+      annualizedPercent = (Math.pow(end.amount / start.amount, 1 / years) - 1) * 100;
+    }
+    return {
+      fromDate: start.date,
+      toDate: end.date,
+      fromLabel: start.dateLabel,
+      toLabel: end.dateLabel,
+      fromAmount: start.amount,
+      toAmount: end.amount,
+      change,
+      changePercent,
+      days,
+      annualizedPercent
+    };
+  }
+
+  isPeakRow(row: AssetTrackerRow): boolean {
+    return !!this.stats && row.amount === this.stats.highestAmount;
+  }
+
+  isTroughRow(row: AssetTrackerRow): boolean {
+    return !!this.stats && row.amount === this.stats.lowestAmount;
+  }
+
+  get bestMonthKey(): string {
+    if (!this.monthlyReport.length) return '';
+    return this.monthlyReport.reduce((best, row) =>
+      row.changePercent > best.changePercent ? row : best
+    ).monthKey;
+  }
+
+  get worstMonthKey(): string {
+    if (!this.monthlyReport.length) return '';
+    return this.monthlyReport.reduce((worst, row) =>
+      row.changePercent < worst.changePercent ? row : worst
+    ).monthKey;
+  }
+
+  get snapshotRangeLabel(): string {
+    if (!this.displayRows.length) return 'No snapshots';
+    const start = (this.snapshotPage - 1) * this.snapshotPageSize + 1;
+    const end = Math.min(this.snapshotPage * this.snapshotPageSize, this.displayRows.length);
+    return `${start}–${end} of ${this.displayRows.length}`;
+  }
+
+  isStale(): boolean {
+    return (this.stats?.daysSinceLastSnapshot ?? 0) > 14;
+  }
+
+  scrollToSection(id: string) {
+    const el = document.getElementById(id);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  copySummary() {
+    if (!this.stats) return;
+    const lines = [
+      `Asset Tracker summary (${this.toDateKey(new Date())})`,
+      `Current: ${this.formatFullInr(this.currentAmount)}`,
+      `Growth: ${this.formatSignedAmount(this.stats.totalGrowth)} (${this.stats.totalGrowthPercent.toFixed(2)}%)`,
+      this.stats.cagr !== null ? `CAGR: ${this.stats.cagr.toFixed(2)}%` : '',
+      `Peak: ${this.formatFullInr(this.stats.highestAmount)} on ${this.stats.highestDateLabel}`,
+      `Low: ${this.formatFullInr(this.stats.lowestAmount)} on ${this.stats.lowestDateLabel}`,
+      `Snapshots: ${this.stats.snapshotCount} · win ${this.stats.winRate.toFixed(0)}%`,
+      this.goalAmount ? `Goal: ${this.formatFullInr(this.goalAmount)} (${this.goalProgressPercent.toFixed(1)}%)` : '',
+      '',
+      ...this.stats.insights
+    ].filter(Boolean);
+    const text = lines.join('\n');
+    const done = () => {
+      this.copyMessage = 'Summary copied';
+      setTimeout(() => {
+        if (this.copyMessage === 'Summary copied') this.copyMessage = '';
+      }, 2500);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => this.fallbackCopy(text, done));
+    } else {
+      this.fallbackCopy(text, done);
+    }
+  }
+
+  private fallbackCopy(text: string, done: () => void) {
+    const area = document.createElement('textarea');
+    area.value = text;
+    document.body.appendChild(area);
+    area.select();
+    try {
+      document.execCommand('copy');
+      done();
+    } catch { /* ignore */ }
+    document.body.removeChild(area);
   }
 }
