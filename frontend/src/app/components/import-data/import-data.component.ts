@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { InvestmentService } from '../../services/investment.service';
 import { CategoryService, SubTypeName, Category } from '../../services/category.service';
+import { formatIndianFull } from '../../utils/indian-number.util';
 
 @Component({
   selector: 'app-import-data',
@@ -26,6 +27,10 @@ export class ImportDataComponent implements OnInit {
   existingSchemeCategories: Set<string> = new Set();
   hasNewAMC = false; // Flag to indicate if there are new AMCs
   hasNewScheme = false; // Flag to indicate if there are new schemes
+  previewSearch = '';
+  previewFilter: 'all' | 'new' | 'update' | 'unchanged' | 'newLookup' = 'all';
+  previewSortColumn = '';
+  previewSortDir: 'asc' | 'desc' = 'asc';
   
   // Optional date selection
   useCustomDate = false;
@@ -147,8 +152,7 @@ export class ImportDataComponent implements OnInit {
       this.selectedFile = file;
       this.message = `Selected file: ${file.name}`;
       this.messageType = 'info';
-      this.showPreview = false; // Reset preview when new file is selected
-      this.previewData = []; // Clear preview data
+      this.resetPreviewState();
     }
   }
 
@@ -206,23 +210,38 @@ export class ImportDataComponent implements OnInit {
         // Aggregate duplicate records (same platform, AMC, and scheme name)
         this.parsedData = this.aggregateDuplicateRecords(this.parsedData);
 
+        const previousLookup = this.buildPreviousValueLookup(existingInvestments);
+
         // Prepare preview data
-        this.previewData = this.parsedData.map(record => ({
-          folioNo: record.folioNo,
-          originalSchemeName: record.originalSchemeName || record.schemeName,
-          extractedAMC: record.subTypeName,
-          extractedScheme: record.subTypeCategory,
-          presentValue: record.presentValue,
-          isNewAMC: !typeAmcs.has(record.subTypeName),
-          isNewScheme: !this.categoryExistsInSet(typeSchemes, record.subTypeCategory)
-        }));
-        
+        this.previewData = this.parsedData.map(record => {
+          const previousValue = this.lookupPreviousValue(record, previousLookup);
+          const newValue = Number(record.presentValue) || 0;
+          const change = newValue - previousValue;
+          return {
+            key: this.getRecordKey(record.subTypeName, record.subTypeCategory),
+            folioNo: record.folioNo,
+            originalSchemeName: record.originalSchemeName || record.schemeName,
+            extractedAMC: record.subTypeName,
+            extractedScheme: record.subTypeCategory,
+            presentValue: newValue,
+            newValue,
+            previousValue,
+            change,
+            status: this.getRowStatus(previousValue, newValue),
+            selected: true,
+            isNewAMC: !typeAmcs.has(record.subTypeName),
+            isNewScheme: !this.categoryExistsInSet(typeSchemes, record.subTypeCategory)
+          };
+        });
+
+        this.resetPreviewControls();
+
         // Set flags for new indicators in headers
         this.hasNewAMC = this.previewData.some(record => record.isNewAMC);
         this.hasNewScheme = this.previewData.some(record => record.isNewScheme);
         
         this.showPreview = true;
-        this.message = `Preview ready. ${this.parsedData.length} unique records found (${this.originalRecordCount} total entries in file).`;
+        this.message = `Preview ready. ${this.parsedData.length} unique records found (${this.originalRecordCount} total entries in file). Uncheck rows to skip them on import.`;
         this.messageType = 'info';
       } else {
         this.showMessage('No valid investment records found in the file.', 'error');
@@ -282,14 +301,22 @@ export class ImportDataComponent implements OnInit {
       return;
     }
 
+    const recordsToImport = this.getSelectedParsedRecords();
+    if (recordsToImport.length === 0) {
+      this.showMessage('No rows selected. Check at least one preview row to import.', 'error');
+      return;
+    }
+
     this.isUploading = true;
     this.uploadProgress = 0;
 
     try {
-      await this.processParsedData();
+      await this.processParsedData(recordsToImport);
       // Refresh existing data after import
       await this.loadExistingData();
-      this.showMessage(`${this.parsedData.length} unique records processed successfully (${this.originalRecordCount} total entries in file).`, 'success');
+      const skipped = this.parsedData.length - recordsToImport.length;
+      const skipNote = skipped > 0 ? ` ${skipped} unselected row${skipped === 1 ? '' : 's'} skipped.` : '';
+      this.showMessage(`${recordsToImport.length} unique record${recordsToImport.length === 1 ? '' : 's'} processed successfully (${this.originalRecordCount} total entries in file).${skipNote}`, 'success');
       // Reset after successful import
       this.resetForm();
     } catch (error) {
@@ -307,6 +334,7 @@ export class ImportDataComponent implements OnInit {
     this.originalRecordCount = 0;
     this.previewData = [];
     this.showPreview = false;
+    this.resetPreviewControls();
     this.uploadProgress = 0;
     this.isUploading = false;
     this.message = '';
@@ -966,7 +994,7 @@ export class ImportDataComponent implements OnInit {
     return schemeName.charAt(0).toUpperCase() + schemeName.slice(1);
   }
 
-  private async processParsedData() {
+  private async processParsedData(records: any[] = this.parsedData) {
     // First, collect all unique sub-type names and categories
     const uniqueSubTypeNames = new Map<string, string>(); // name -> investment_type
     const uniqueCategories = new Map<string, {category: string, investment_type: string}>(); // category -> {category, investment_type}
@@ -978,7 +1006,7 @@ export class ImportDataComponent implements OnInit {
     });
 
     // Prefer existing category without trailing "Fund" before creating lookup rows
-    for (const record of this.parsedData) {
+    for (const record of records) {
       record.subTypeCategory = this.resolveCategoryForImport(
         record.subTypeCategory,
         existingCategoryNames
@@ -986,7 +1014,7 @@ export class ImportDataComponent implements OnInit {
     }
     
     // Collect unique values from parsed data
-    for (const record of this.parsedData) {
+    for (const record of records) {
       if (record.subTypeName && !uniqueSubTypeNames.has(record.subTypeName)) {
         uniqueSubTypeNames.set(record.subTypeName, this.investmentType);
       }
@@ -1039,9 +1067,9 @@ export class ImportDataComponent implements OnInit {
     }
     
     // Process investments
-    for (let i = 0; i < this.parsedData.length; i++) {
-      const record = this.parsedData[i];
-      this.uploadProgress = Math.floor(((i + 1) / this.parsedData.length) * 100);
+    for (let i = 0; i < records.length; i++) {
+      const record = records[i];
+      this.uploadProgress = Math.floor(((i + 1) / records.length) * 100);
 
       try {
         const matchingInvestments = await this.findExistingInvestmentsForRecord(record);
@@ -1148,5 +1176,218 @@ export class ImportDataComponent implements OnInit {
         this.message = '';
       }
     }, 5000);
+  }
+
+  private getRecordKey(amc: string, scheme: string): string {
+    return `${this.platform}_${amc}_${scheme}`;
+  }
+
+  private getRowStatus(previousValue: number, newValue: number): 'new' | 'update' | 'unchanged' {
+    if (!previousValue) return 'new';
+    if (Math.abs(newValue - previousValue) < 0.005) return 'unchanged';
+    return 'update';
+  }
+
+  private buildPreviousValueLookup(existingInvestments: any[] | undefined): Map<string, number> {
+    const lookup = new Map<string, number>();
+    const platform = this.platform.trim().toLowerCase();
+    for (const inv of existingInvestments || []) {
+      if (inv.investment_type !== this.investmentType) continue;
+      if ((inv.website_app_name || '').trim().toLowerCase() !== platform) continue;
+      const key = `${(inv.sub_type_name || '').toLowerCase()}|${(inv.sub_type_category || '').toLowerCase()}`;
+      lookup.set(key, (lookup.get(key) || 0) + (Number(inv.amount) || 0));
+    }
+    return lookup;
+  }
+
+  private lookupPreviousValue(record: any, lookup: Map<string, number>): number {
+    const amc = (record.subTypeName || '').toLowerCase();
+    let total = 0;
+    const seen = new Set<string>();
+    for (const variant of this.getCategoryNameVariants(record.subTypeCategory)) {
+      const key = `${amc}|${variant.toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      total += lookup.get(key) || 0;
+    }
+    return total;
+  }
+
+  private getSelectedParsedRecords(): any[] {
+    const selectedKeys = new Set(
+      this.previewData.filter(row => row.selected).map(row => row.key)
+    );
+    return this.parsedData.filter(record =>
+      selectedKeys.has(this.getRecordKey(record.subTypeName, record.subTypeCategory))
+    );
+  }
+
+  private resetPreviewControls() {
+    this.previewSearch = '';
+    this.previewFilter = 'all';
+    this.previewSortColumn = '';
+    this.previewSortDir = 'asc';
+  }
+
+  resetPreviewState() {
+    this.showPreview = false;
+    this.previewData = [];
+    this.hasNewAMC = false;
+    this.hasNewScheme = false;
+    this.resetPreviewControls();
+  }
+
+  get displayedPreviewData(): any[] {
+    let rows = this.previewData;
+    const query = this.previewSearch.trim().toLowerCase();
+    if (query) {
+      rows = rows.filter(row =>
+        (row.originalSchemeName || '').toLowerCase().includes(query) ||
+        (row.extractedAMC || '').toLowerCase().includes(query) ||
+        (row.extractedScheme || '').toLowerCase().includes(query) ||
+        String(row.folioNo || '').toLowerCase().includes(query)
+      );
+    }
+    if (this.previewFilter === 'new') {
+      rows = rows.filter(row => row.status === 'new');
+    } else if (this.previewFilter === 'update') {
+      rows = rows.filter(row => row.status === 'update');
+    } else if (this.previewFilter === 'unchanged') {
+      rows = rows.filter(row => row.status === 'unchanged');
+    } else if (this.previewFilter === 'newLookup') {
+      rows = rows.filter(row => row.isNewAMC || row.isNewScheme);
+    }
+
+    if (this.previewSortColumn) {
+      const column = this.previewSortColumn;
+      const direction = this.previewSortDir === 'asc' ? 1 : -1;
+      rows = [...rows].sort((a, b) => {
+        const av = a[column];
+        const bv = b[column];
+        if (typeof av === 'number' && typeof bv === 'number') {
+          return (av - bv) * direction;
+        }
+        return String(av ?? '').localeCompare(String(bv ?? ''), undefined, { numeric: true, sensitivity: 'base' }) * direction;
+      });
+    }
+    return rows;
+  }
+
+  get selectedPreviewCount(): number {
+    return this.previewData.filter(row => row.selected).length;
+  }
+
+  get selectedPreviousTotal(): number {
+    return this.previewData
+      .filter(row => row.selected)
+      .reduce((sum, row) => sum + (Number(row.previousValue) || 0), 0);
+  }
+
+  get selectedNewTotal(): number {
+    return this.previewData
+      .filter(row => row.selected)
+      .reduce((sum, row) => sum + (Number(row.newValue) || 0), 0);
+  }
+
+  get selectedChangeTotal(): number {
+    return this.selectedNewTotal - this.selectedPreviousTotal;
+  }
+
+  get allVisibleSelected(): boolean {
+    const rows = this.displayedPreviewData;
+    return rows.length > 0 && rows.every(row => row.selected);
+  }
+
+  set allVisibleSelected(value: boolean) {
+    this.displayedPreviewData.forEach(row => {
+      row.selected = value;
+    });
+  }
+
+  get someVisibleSelected(): boolean {
+    const rows = this.displayedPreviewData;
+    return rows.some(row => row.selected) && !this.allVisibleSelected;
+  }
+
+  previewStatusCount(status: 'new' | 'update' | 'unchanged'): number {
+    return this.previewData.filter(row => row.status === status).length;
+  }
+
+  previewNewLookupCount(): number {
+    return this.previewData.filter(row => row.isNewAMC || row.isNewScheme).length;
+  }
+
+  setPreviewFilter(filter: 'all' | 'new' | 'update' | 'unchanged' | 'newLookup') {
+    this.previewFilter = filter;
+  }
+
+  sortPreview(column: string) {
+    if (this.previewSortColumn === column) {
+      this.previewSortDir = this.previewSortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      this.previewSortColumn = column;
+      this.previewSortDir = column === 'newValue' || column === 'previousValue' || column === 'change' ? 'desc' : 'asc';
+    }
+  }
+
+  sortIndicator(column: string): string {
+    if (this.previewSortColumn !== column) return '';
+    return this.previewSortDir === 'asc' ? ' ▲' : ' ▼';
+  }
+
+  deselectUnchanged() {
+    this.previewData.forEach(row => {
+      if (row.status === 'unchanged') {
+        row.selected = false;
+      }
+    });
+  }
+
+  selectAllPreview() {
+    this.previewData.forEach(row => {
+      row.selected = true;
+    });
+  }
+
+  deselectAllPreview() {
+    this.previewData.forEach(row => {
+      row.selected = false;
+    });
+  }
+
+  formatInr(value: number): string {
+    return `₹${formatIndianFull(Number(value) || 0)}`;
+  }
+
+  formatSignedInr(value: number): string {
+    const amount = Number(value) || 0;
+    if (Math.abs(amount) < 0.005) return `₹${formatIndianFull(0)}`;
+    const sign = amount > 0 ? '+' : '-';
+    return `${sign}₹${formatIndianFull(Math.abs(amount))}`;
+  }
+
+  changeClass(value: number): string {
+    const amount = Number(value) || 0;
+    if (amount > 0.004) return 'change-up';
+    if (amount < -0.004) return 'change-down';
+    return 'change-flat';
+  }
+
+  changePercent(row: any): string {
+    const previous = Number(row.previousValue) || 0;
+    if (!previous) return '—';
+    const pct = ((Number(row.newValue) || 0) - previous) / previous * 100;
+    const sign = pct > 0 ? '+' : '';
+    return `${sign}${pct.toFixed(1)}%`;
+  }
+
+  statusLabel(status: string): string {
+    if (status === 'new') return 'New';
+    if (status === 'unchanged') return 'Unchanged';
+    return 'Update';
+  }
+
+  trackPreviewRow(_index: number, row: any): string {
+    return row.key || row.originalSchemeName;
   }
 }

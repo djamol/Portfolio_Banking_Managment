@@ -113,9 +113,10 @@
       <button 
         type="button" 
         (click)="importData()" 
-        [disabled]="!platform || !investmentType || !selectedFile || isUploading || !showPreview"
+        [disabled]="!platform || !investmentType || !selectedFile || isUploading || !showPreview || selectedPreviewCount === 0"
         class="btn btn-primary">
-        <span *ngIf="!isUploading">Import Data</span>
+        <span *ngIf="!isUploading && !showPreview">Import Data</span>
+        <span *ngIf="!isUploading && showPreview">Import {{ selectedPreviewCount }} selected</span>
         <span *ngIf="isUploading">Importing... {{ uploadProgress }}%</span>
       </button>
     </div>
@@ -141,27 +142,100 @@
   <!-- Preview Table -->
   <div class="preview-section" *ngIf="showPreview && previewData.length > 0">
     <h3>Data Preview ({{ previewData.length }} records)</h3>
+    <p class="preview-hint">Uncheck rows to skip them on import. Totals below follow the selected rows.</p>
+
+    <div class="preview-summary">
+      <div class="summary-card">
+        <span class="summary-label">Previous total</span>
+        <span class="summary-value">{{ formatInr(selectedPreviousTotal) }}</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">New total</span>
+        <span class="summary-value">{{ formatInr(selectedNewTotal) }}</span>
+      </div>
+      <div class="summary-card" [ngClass]="changeClass(selectedChangeTotal)">
+        <span class="summary-label">Change</span>
+        <span class="summary-value">{{ formatSignedInr(selectedChangeTotal) }}</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">Selected</span>
+        <span class="summary-value">{{ selectedPreviewCount }} / {{ previewData.length }}</span>
+      </div>
+    </div>
+
+    <div class="preview-toolbar">
+      <input
+        type="search"
+        class="form-control preview-search"
+        [(ngModel)]="previewSearch"
+        placeholder="Search scheme, AMC, folio...">
+      <div class="preview-filters">
+        <button type="button" class="filter-chip" [class.active]="previewFilter === 'all'" (click)="setPreviewFilter('all')">
+          All {{ previewData.length }}
+        </button>
+        <button type="button" class="filter-chip" [class.active]="previewFilter === 'new'" (click)="setPreviewFilter('new')">
+          New {{ previewStatusCount('new') }}
+        </button>
+        <button type="button" class="filter-chip" [class.active]="previewFilter === 'update'" (click)="setPreviewFilter('update')">
+          Updates {{ previewStatusCount('update') }}
+        </button>
+        <button type="button" class="filter-chip" [class.active]="previewFilter === 'unchanged'" (click)="setPreviewFilter('unchanged')">
+          Unchanged {{ previewStatusCount('unchanged') }}
+        </button>
+        <button type="button" class="filter-chip" [class.active]="previewFilter === 'newLookup'" (click)="setPreviewFilter('newLookup')">
+          New AMC/scheme {{ previewNewLookupCount() }}
+        </button>
+      </div>
+      <div class="preview-bulk">
+        <button type="button" class="btn btn-outline btn-sm" (click)="selectAllPreview()">Select all</button>
+        <button type="button" class="btn btn-outline btn-sm" (click)="deselectAllPreview()">Clear</button>
+        <button type="button" class="btn btn-outline btn-sm" (click)="deselectUnchanged()" [disabled]="previewStatusCount('unchanged') === 0">
+          Skip unchanged
+        </button>
+      </div>
+    </div>
+
     <div class="table-container">
       <table class="preview-table">
         <thead>
           <tr>
-            <th>Folio No</th>
-            <th>Original Scheme Name</th>
-            <th>
+            <th class="col-check">
+              <input
+                type="checkbox"
+                [ngModel]="allVisibleSelected"
+                (ngModelChange)="allVisibleSelected = $event"
+                [indeterminate]="someVisibleSelected"
+                title="Select or skip visible rows">
+            </th>
+            <th class="sortable" (click)="sortPreview('folioNo')">Folio No{{ sortIndicator('folioNo') }}</th>
+            <th class="sortable" (click)="sortPreview('originalSchemeName')">Original Scheme Name{{ sortIndicator('originalSchemeName') }}</th>
+            <th class="sortable" (click)="sortPreview('extractedAMC')">
               <ng-container *ngIf="investmentType === 'ETF'">Extracted Issuer (Sub Type)</ng-container>
               <ng-container *ngIf="investmentType !== 'ETF'">Extracted AMC (Sub Type)</ng-container>
               <span *ngIf="hasNewAMC" class="new-indicator" title="New issuer not in existing data">*</span>
+              {{ sortIndicator('extractedAMC') }}
             </th>
-            <th>
+            <th class="sortable" (click)="sortPreview('extractedScheme')">
               <ng-container *ngIf="investmentType === 'ETF'">Extracted ETF (Category)</ng-container>
               <ng-container *ngIf="investmentType !== 'ETF'">Extracted Scheme (Category)</ng-container>
               <span *ngIf="hasNewScheme" class="new-indicator" title="New category not in existing data">*</span>
+              {{ sortIndicator('extractedScheme') }}
             </th>
-            <th>Present Value</th>
+            <th class="sortable num" (click)="sortPreview('previousValue')">Previous Value{{ sortIndicator('previousValue') }}</th>
+            <th class="sortable num" (click)="sortPreview('newValue')">New Values{{ sortIndicator('newValue') }}</th>
+            <th class="sortable num" (click)="sortPreview('change')">Change{{ sortIndicator('change') }}</th>
+            <th class="sortable" (click)="sortPreview('status')">Status{{ sortIndicator('status') }}</th>
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let record of previewData; let i = index">
+          <tr
+            *ngFor="let record of displayedPreviewData; trackBy: trackPreviewRow"
+            [class.row-skipped]="!record.selected"
+            [class.row-new]="record.status === 'new'"
+            [class.row-unchanged]="record.status === 'unchanged'">
+            <td class="col-check">
+              <input type="checkbox" [(ngModel)]="record.selected" [attr.title]="'Include ' + record.originalSchemeName + ' in import'">
+            </td>
             <td>{{ record.folioNo || 'N/A' }}</td>
             <td>{{ record.originalSchemeName }}</td>
             <td>
@@ -172,24 +246,44 @@
               {{ record.extractedScheme }}
               <span *ngIf="record.isNewScheme" class="new-indicator-cell" title="New scheme category not in existing data">🆕</span>
             </td>
-            <td>₹{{ record.presentValue | number:'1.2-2' }}</td>
+            <td class="num">{{ record.status === 'new' ? '—' : formatInr(record.previousValue) }}</td>
+            <td class="num">{{ formatInr(record.newValue) }}</td>
+            <td class="num" [ngClass]="changeClass(record.change)">
+              {{ formatSignedInr(record.change) }}
+              <small class="change-pct">{{ changePercent(record) }}</small>
+            </td>
+            <td>
+              <span class="status-badge" [ngClass]="'status-' + record.status">{{ statusLabel(record.status) }}</span>
+            </td>
+          </tr>
+          <tr *ngIf="displayedPreviewData.length === 0">
+            <td colspan="9" class="empty-preview">No rows match the current search or filter.</td>
           </tr>
         </tbody>
+        <tfoot *ngIf="displayedPreviewData.length > 0">
+          <tr>
+            <td colspan="5" class="totals-label">Selected totals</td>
+            <td class="num">{{ formatInr(selectedPreviousTotal) }}</td>
+            <td class="num">{{ formatInr(selectedNewTotal) }}</td>
+            <td class="num" [ngClass]="changeClass(selectedChangeTotal)">{{ formatSignedInr(selectedChangeTotal) }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
       </table>
     </div>
     <div class="preview-actions">
       <button 
         type="button" 
-        (click)="showPreview = false; previewData = [];" 
+        (click)="resetPreviewState()" 
         class="btn btn-outline">
         Cancel & Edit
       </button>
       <button 
         type="button" 
         (click)="importData()" 
-        [disabled]="isUploading"
+        [disabled]="isUploading || selectedPreviewCount === 0"
         class="btn btn-primary">
-        Confirm & Import All
+        Confirm & Import {{ selectedPreviewCount }} selected
       </button>
     </div>
   </div>
@@ -203,6 +297,7 @@
       <li>The ETF issuer (e.g. HDFC, Kotak, ICICI Pru) is extracted as "Sub Type Name"</li>
       <li>The ETF name without the issuer is set as "Sub Type Category"</li>
       <li>If an investment with the same Platform, Sub Type Name, and Sub Type Category already exists, its value will be updated</li>
+      <li>Preview shows previous vs new values; uncheck rows to skip them on import</li>
       <li>New issuers or ETF categories not in existing data will be marked with 🆕</li>
     </ul>
   </div>
@@ -223,6 +318,7 @@
       <li>The system will automatically extract the AMC name as "Sub Type Name"</li>
       <li>The scheme name (without AMC) will be set as "Sub Type Category"</li>
       <li>If an investment with the same Platform, Sub Type Name, and Sub Type Category already exists, its value will be updated</li>
+      <li>Preview shows previous vs new values; uncheck rows to skip them on import</li>
       <li>Comprehensive AMC recognition including: Aditya Birla, Axis, HDFC, ICICI Prudential, SBI, Kotak, Nippon India, UTI, and many more</li>
       <li>Properly handles complex scheme names like "HSBC Multi Cap Fund" (extracts HSBC as AMC and Multi Cap Fund as scheme)</li>
       <li>Similar fund types are normalized (e.g., "Mid Cap Fund", "Midcap Fund", "Mid Cap Fund - Regular Plan" → "Mid Cap Fund")</li>
