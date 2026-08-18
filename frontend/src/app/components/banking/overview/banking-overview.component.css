@@ -34,3 +34,15 @@
 tr.budget-over {
   background: #fef2f2;
 }
+
+.forecast-strip {
+  margin: 16px 0;
+}
+
+.forecast-strip .section-head {
+  margin-bottom: 12px;
+}
+
+.forecast-strip .data-table {
+  margin-top: 8px;
+}

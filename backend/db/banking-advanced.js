@@ -13,6 +13,30 @@ function num(v, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+const TRANSFER_DEBIT_CATEGORIES = [
+  'Transfer Out',
+  'Transfer_Other_Out',
+  'Expense / Debit',
+  'Expense_Other_Debit',
+  'Uncategorized',
+  'UPI',
+  'Expense_Peer_UPI'
+];
+
+function isTransferDebitCategory(category) {
+  const c = String(category || '');
+  return TRANSFER_DEBIT_CATEGORIES.includes(c) || c.startsWith('Transfer_');
+}
+
+function isInterestTxn(row) {
+  const cat = String(row.category || '');
+  return (
+    cat === 'Interest Income' ||
+    cat.startsWith('Income_Interest_') ||
+    row.txn_type === 'interest'
+  );
+}
+
 async function nextMongoId(collectionName) {
   const db = getMongoDb();
   const result = await db.collection('counters').findOneAndUpdate(
@@ -725,15 +749,15 @@ async function mysqlMatchTransfers({ windowDays = 2 } = {}) {
 
 async function mongoMatchTransfers({ windowDays = 2 } = {}) {
   const db = getMongoDb();
-  const debits = await db
+  const debits = (await db
     .collection('bank_transactions')
     .find({
       withdrawal: { $gt: 0 },
       $or: [{ linked_transfer_id: null }, { linked_transfer_id: { $exists: false } }]
     })
     .sort({ txn_date: -1 })
-    .limit(2000)
-    .toArray();
+    .limit(4000)
+    .toArray()).filter((d) => isTransferDebitCategory(d.category)).slice(0, 2000);
   const credits = await db
     .collection('bank_transactions')
     .find({
@@ -947,6 +971,25 @@ async function mongoGetForecast(accountId) {
     }));
   const nextMonth = new Date();
   nextMonth.setMonth(nextMonth.getMonth() + 1);
+
+  const interestSince = new Date();
+  interestSince.setMonth(interestSince.getMonth() - 12);
+  const interestQ = { txn_date: { $gte: interestSince.toISOString().slice(0, 10) } };
+  if (accountId) interestQ.account_id = Number(accountId);
+  const interestTxns = (await db.collection('bank_transactions').find(interestQ).toArray()).filter(isInterestTxn);
+  const interestMonthMap = {};
+  for (const r of interestTxns) {
+    const m = String(r.txn_date).slice(0, 7);
+    interestMonthMap[m] = (interestMonthMap[m] || 0) + num(r.deposit);
+  }
+  const interestHistory = Object.entries(interestMonthMap)
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .slice(0, 6);
+  const avgInterest =
+    interestHistory.length > 0
+      ? interestHistory.reduce((s, [, v]) => s + num(v), 0) / interestHistory.length
+      : 0;
+
   return {
     history,
     projected_next_month: {
@@ -954,7 +997,7 @@ async function mongoGetForecast(accountId) {
       avg_debit: Math.round(avgDebit * 100) / 100,
       avg_credit: Math.round(avgCredit * 100) / 100,
       net: Math.round((avgCredit - avgDebit) * 100) / 100,
-      projected_interest: 0
+      projected_interest: Math.round(avgInterest * 100) / 100
     },
     upcoming_outflows: upcomingOutflows
   };

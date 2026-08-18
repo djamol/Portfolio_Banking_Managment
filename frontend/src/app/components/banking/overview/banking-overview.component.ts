@@ -1,6 +1,7 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { Subject, merge, takeUntil } from 'rxjs';
 import { BankBudget } from '../../../services/banking/banking.models';
+import { BankAnalyticsService } from '../../../services/banking/bank-analytics.service';
 import { BankRulesService } from '../../../services/banking/bank-rules.service';
 import {
   barOptions,
@@ -23,6 +24,7 @@ import { BankingFilterState } from '../shared/banking-filter-state.service';
 export class BankingOverviewComponent implements OnInit, OnDestroy {
   budgets: BankBudget[] = [];
   budgetMonth = new Date().toISOString().slice(0, 7);
+  forecast: any = null;
   budgetForm: BankBudget = {
     category: '',
     amount: 0,
@@ -40,7 +42,8 @@ export class BankingOverviewComponent implements OnInit, OnDestroy {
     public ctx: BankingContextService,
     public analyticsState: BankingAnalyticsState,
     private filters: BankingFilterState,
-    private rulesService: BankRulesService
+    private rulesService: BankRulesService,
+    private analyticsService: BankAnalyticsService
   ) {}
 
   ngOnInit() {
@@ -59,6 +62,15 @@ export class BankingOverviewComponent implements OnInit, OnDestroy {
     this.analyticsState.loadAnalytics();
     this.analyticsState.loadCashSummary();
     this.loadBudgets();
+    this.loadForecast();
+  }
+
+  loadForecast() {
+    const accountId = this.filters.filterAccountId ? Number(this.filters.filterAccountId) : undefined;
+    this.analyticsService.getForecast(accountId).subscribe({
+      next: (data) => (this.forecast = data),
+      error: () => (this.forecast = null)
+    });
   }
 
   loadBudgets() {

@@ -3,6 +3,7 @@
     <div>
       <h2>Investment Portfolio</h2>
       <p class="page-subtitle" *ngIf="!loading">{{ investments.length }} holdings · {{ formatInrCompact(portfolioTotalAmount) }}</p>
+      <p class="shortcut-hint">Shortcuts: / search · n add · e edit selected</p>
     </div>
     <div class="header-actions">
       <button type="button" class="btn btn-outline-secondary" (click)="loadInvestments()" [disabled]="loading">Refresh</button>
@@ -11,6 +12,10 @@
       <button (click)="openAddModal()" class="btn btn-primary">Add Investment</button>
     </div>
   </div>
+
+  <datalist id="platform-options">
+    <option *ngFor="let platform of platforms" [value]="platform"></option>
+  </datalist>
 
   <div *ngIf="errorMessage" class="banner banner-error">
     <strong>Error:</strong> {{ errorMessage }}<br>
@@ -74,6 +79,7 @@
         placeholder="Search platform, type, scheme, notes..." 
         [(ngModel)]="searchTerm" 
         (input)="onSearchChange()"
+        #searchInput
         class="search-input">
     </div>
 
@@ -206,8 +212,43 @@
     <div class="bulk-bar" *ngIf="filteredInvestments.length">
       <button type="button" class="btn btn-sm btn-outline-secondary" (click)="selectFiltered()">Select filtered</button>
       <button type="button" class="btn btn-sm btn-outline-secondary" (click)="clearSelection()" [disabled]="!selectedIds.size">Clear selection</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="toggleBulkReclassify()" [disabled]="!selectedIds.size">
+        {{ showBulkReclassify ? 'Hide reclassify' : 'Reclassify selected' }}
+      </button>
       <button type="button" class="btn btn-sm btn-outline-danger" (click)="bulkDeleteSelected()" [disabled]="!selectedIds.size || bulkWorking">
         {{ bulkWorking ? 'Deleting…' : 'Delete selected (' + selectedIds.size + ')' }}
+      </button>
+    </div>
+  </div>
+
+  <div class="bulk-reclassify card-lite" *ngIf="showBulkReclassify && selectedIds.size">
+    <p class="bulk-reclassify-title">Reclassify {{ selectedIds.size }} selected — fill only the fields to change. Amount and date are kept.</p>
+    <div class="bulk-reclassify-grid">
+      <input
+        type="text"
+        [(ngModel)]="bulkForm.website_app_name"
+        list="platform-options"
+        placeholder="Platform (optional)"
+        class="form-control">
+      <select [(ngModel)]="bulkForm.investment_type" (ngModelChange)="onBulkTypeChange()" class="form-control">
+        <option value="">Type (optional)</option>
+        <option *ngFor="let type of investmentTypes" [value]="type">{{ type }}</option>
+      </select>
+      <select [(ngModel)]="bulkForm.sub_type_name" class="form-control" [disabled]="!bulkForm.investment_type && !bulkSubTypes.length">
+        <option value="">Sub type (optional)</option>
+        <option *ngFor="let sub of bulkSubTypes" [value]="sub">{{ sub }}</option>
+      </select>
+      <select [(ngModel)]="bulkForm.sub_type_category" class="form-control" [disabled]="!bulkForm.investment_type && !bulkCategories.length">
+        <option value="">Category (optional)</option>
+        <option *ngFor="let cat of bulkCategories" [value]="cat">{{ cat }}</option>
+      </select>
+      <input
+        type="text"
+        [(ngModel)]="bulkForm.notes_append"
+        placeholder="Append to notes (optional)"
+        class="form-control">
+      <button type="button" class="btn btn-primary" (click)="applyBulkReclassify()" [disabled]="!bulkHasChanges || bulkWorkingReclassify">
+        {{ bulkWorkingReclassify ? 'Updating…' : 'Apply' }}
       </button>
     </div>
   </div>
@@ -276,6 +317,7 @@
               {{ getHistoryButtonText(investment) }}
             </button>
             <a [routerLink]="['/investments/edit', investment.id]" class="btn btn-sm btn-outline-secondary">Form</a>
+            <a [routerLink]="['/cashflows']" [queryParams]="{investmentId: investment.id}" class="btn btn-sm btn-outline-secondary">Cashflows</a>
             <button (click)="deleteInvestment(investment)" class="btn btn-sm btn-outline-danger">Delete</button>
           </td>
         </tr>
@@ -366,9 +408,6 @@
               required
               list="platform-options"
               placeholder="e.g., HDFC Bank, Groww, Zerodha">
-            <datalist id="platform-options">
-              <option *ngFor="let platform of platforms" [value]="platform"></option>
-            </datalist>
           </div>
 
           <div class="form-group">
@@ -510,6 +549,18 @@
             <small class="field-hint" *ngIf="isEditing && originalEditDate && originalEditDate !== currentInvestment.investment_date">
               Stored date was {{ originalEditDate }}. History uses this date when the amount changes.
             </small>
+          </div>
+
+          <div class="form-group" *ngIf="showMaturityHelper">
+            <label for="maturity_date">Maturity date</label>
+            <input
+              type="date"
+              id="maturity_date"
+              name="maturity_date"
+              [(ngModel)]="maturityDate"
+              (ngModelChange)="onMaturityDateChange()"
+              class="form-control">
+            <small class="field-hint">Saved as <code>maturity:YYYY-MM-DD</code> in notes for Dashboard maturity watch.</small>
           </div>
 
           <div class="form-group">

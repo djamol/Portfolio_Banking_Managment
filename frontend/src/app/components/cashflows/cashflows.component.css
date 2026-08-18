@@ -13,6 +13,12 @@
   margin-bottom: 20px;
 }
 
+.header-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .page-header h2 {
   margin: 0 0 6px;
 }

@@ -163,7 +163,7 @@
       <div class="tax-head">
         <div>
           <h3>Tax-oriented holdings (filtered)</h3>
-          <p class="report-hint">ELSS / Tax Saving / PPF — informational only, not tax advice</p>
+          <p class="report-hint">ELSS / Tax Saving / PPF / EPF — informational only, not tax advice</p>
         </div>
         <div class="tax-total">
           ₹{{ taxReportTotal | number:'1.2-2' }}
@@ -227,7 +227,9 @@
       </thead>
       <tbody>
         <tr *ngFor="let item of paginatedData; let i = index" [class.even-row]="i % 2 === 0" [class.odd-row]="i % 2 !== 0">
-          <td>{{ item.website_app_name }}</td>
+          <td>
+            <a [routerLink]="['/investments/edit', item.id]" class="holding-link">{{ item.website_app_name }}</a>
+          </td>
           <td>{{ item.investment_type }}</td>
           <td>{{ item.sub_type_name || '-' }}</td>
           <td>{{ item.sub_type_category || '-' }}</td>
@@ -238,6 +240,7 @@
             <button class="history-btn" (click)="showInvestmentHistory(item)" title="View History">
               📜
             </button>
+            <a [routerLink]="['/investments/edit', item.id]" class="btn btn-sm">Edit</a>
           </td>
         </tr>
       </tbody>
@@ -265,7 +268,13 @@
 
   <!-- Empty State -->
   <div class="empty-state" *ngIf="!loading && paginatedData.length === 0">
-    <p>No investments found matching your criteria.</p>
+    <p *ngIf="!summaryData.length">No investments yet.</p>
+    <p *ngIf="summaryData.length">No investments found matching your criteria.</p>
+    <p *ngIf="!summaryData.length">
+      <a routerLink="/investments">Add your first investment</a>
+      · <a routerLink="/import-data">Import statements</a>
+    </p>
+    <button *ngIf="summaryData.length" type="button" class="clear-btn" (click)="clearFilters()">Clear filters</button>
   </div>
 
   <!-- History Modal -->

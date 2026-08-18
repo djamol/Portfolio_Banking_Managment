@@ -1,4 +1,5 @@
 import { Component, OnInit } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { CashflowService, InvestmentTransaction, CashflowListMeta } from '../../services/cashflow.service';
 import { InvestmentService } from '../../services/investment.service';
 import { formatIndianFull } from '../../utils/indian-number.util';
@@ -59,12 +60,23 @@ export class CashflowsComponent implements OnInit {
 
   constructor(
     private cashflowService: CashflowService,
-    private investmentService: InvestmentService
+    private investmentService: InvestmentService,
+    private route: ActivatedRoute
   ) {}
 
   ngOnInit(): void {
     this.loadInvestments();
-    this.loadTransactions();
+    this.route.queryParamMap.subscribe(params => {
+      const id = params.get('investmentId');
+      if (id && Number(id)) {
+        this.filterInvestmentId = Number(id);
+      }
+      this.loadTransactions();
+    });
+  }
+
+  get hasActiveFilters(): boolean {
+    return !!(this.filterInvestmentId || this.filterFrom || this.filterTo || this.filterTxnType);
   }
 
   emptyForm() {
@@ -255,5 +267,51 @@ export class CashflowsComponent implements OnInit {
 
   amountClass(amount: number): string {
     return Number(amount) >= 0 ? 'inflow' : 'outflow';
+  }
+
+  exportCsv(): void {
+    this.cashflowService
+      .list({
+        investment_id: this.filterInvestmentId || undefined,
+        from: this.filterFrom || undefined,
+        to: this.filterTo || undefined,
+        txn_type: this.filterTxnType || undefined,
+        limit: 10000,
+        offset: 0
+      })
+      .subscribe({
+        next: (result) => {
+          const rows = result.data || [];
+          if (!rows.length) return;
+          const headers = ['Date', 'Investment', 'Type', 'Units', 'Price', 'Cashflow', 'Notes'];
+          const lines = rows.map(item => [
+            this.csvEscape(String(item.txn_date || '').slice(0, 10)),
+            this.csvEscape([item.website_app_name, item.investment_type, item.sub_type_name].filter(Boolean).join(' · ')),
+            this.csvEscape(item.txn_type || ''),
+            item.units != null ? String(item.units) : '',
+            item.price != null ? Number(item.price).toFixed(2) : '',
+            Number(item.cashflow_amount || 0).toFixed(2),
+            this.csvEscape(item.notes || '')
+          ].join(','));
+          const csv = [headers.join(','), ...lines].join('\n');
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `cashflows-${new Date().toISOString().slice(0, 10)}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+        },
+        error: (err) => {
+          this.errorMessage = err?.error?.error || 'Failed to export cashflows';
+        }
+      });
+  }
+
+  private csvEscape(value: string): string {
+    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+      return `"${value.replace(/"/g, '""')}"`;
+    }
+    return value;
   }
 }

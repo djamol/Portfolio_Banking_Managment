@@ -441,6 +441,28 @@
   transition: background-color 0.3s;
 }
 
+.holding-link {
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.holding-link:hover {
+  text-decoration: underline;
+}
+
+.btn.btn-sm {
+  display: inline-block;
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #fff;
+  color: #334155;
+  text-decoration: none;
+  margin-left: 4px;
+}
+
 .history-btn:hover {
   background-color: #138496;
 }

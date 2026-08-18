@@ -25,6 +25,12 @@
   font-size: 0.95em;
 }
 
+.shortcut-hint {
+  margin: 4px 0 0;
+  color: #9aa0a6;
+  font-size: 0.75em;
+}
+
 .header-actions {
   display: flex;
   gap: 8px;
@@ -294,6 +300,27 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.bulk-reclassify {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 14px;
+}
+
+.bulk-reclassify-title {
+  margin: 0 0 10px;
+  font-size: 0.9em;
+  color: #495057;
+}
+
+.bulk-reclassify-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+  align-items: center;
 }
 
 .table-container {

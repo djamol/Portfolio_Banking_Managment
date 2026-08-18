@@ -1,10 +1,13 @@
 import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { InvestmentService } from '../../services/investment.service';
 import { CategoryService, SubTypeName, Category } from '../../services/category.service';
 import { INVESTMENT_TYPES, INVESTMENT_SUB_TYPES } from '../../constants/investment-types.constants';
+import {
+  parseMaturityDateFromNotes,
+  setMaturityDateInNotes,
+  showsMaturityHelper
+} from '../../utils/maturity-notes.util';
 
 @Component({
   selector: 'app-investment-form',
@@ -19,24 +22,26 @@ export class InvestmentFormComponent implements OnInit {
     sub_type_name: '',
     sub_type_category: '',
     amount: 0,
-    investment_date: new Date().toISOString().split('T')[0]
+    investment_date: new Date().toISOString().split('T')[0],
+    notes: ''
   };
-  
+
   isEditing = false;
   id: number | null = null;
   loading = false;
   errorMessage = '';
-  
-  // Use imported constants
+  maturityDate = '';
+  platforms: string[] = [];
+  existingInvestments: any[] = [];
+  duplicateMatches: any[] = [];
+
   investmentTypes = INVESTMENT_TYPES;
   investmentSubTypes: string[] = [];
   investmentCategories: string[] = [];
-  
-  // Database stored options
+
   dbSubTypeNames: SubTypeName[] = [];
   dbCategories: Category[] = [];
-  
-  // Track if user wants to add new sub-type or category
+
   showNewSubTypeInput = false;
   showNewCategoryInput = false;
   newSubType = '';
@@ -51,6 +56,7 @@ export class InvestmentFormComponent implements OnInit {
 
   ngOnInit() {
     this.loadDatabaseOptions();
+    this.loadPlatformOptions();
     this.route.paramMap.subscribe(params => {
       const id = params.get('id');
       if (id) {
@@ -61,8 +67,11 @@ export class InvestmentFormComponent implements OnInit {
     });
   }
 
+  get showMaturityHelper(): boolean {
+    return showsMaturityHelper(this.investment.investment_type);
+  }
+
   loadDatabaseOptions() {
-    // Load all sub-type names from database
     this.categoryService.getSubTypeNames().subscribe({
       next: (response) => {
         if (response.success) {
@@ -74,7 +83,6 @@ export class InvestmentFormComponent implements OnInit {
       }
     });
 
-    // Load all categories from database
     this.categoryService.getAllCategories().subscribe({
       next: (response) => {
         if (response.success) {
@@ -87,18 +95,42 @@ export class InvestmentFormComponent implements OnInit {
     });
   }
 
+  loadPlatformOptions() {
+    this.investmentService.getAll().subscribe({
+      next: (rows) => {
+        this.existingInvestments = rows || [];
+        this.platforms = [...new Set(this.existingInvestments.map(item => item.website_app_name))]
+          .filter(Boolean)
+          .sort();
+        this.refreshDuplicateWarning();
+      },
+      error: (error) => {
+        console.error('Error loading platforms:', error);
+      }
+    });
+  }
+
   loadInvestment(id: number) {
     this.loading = true;
     this.investmentService.getById(id).subscribe({
       next: (response) => {
         if (response) {
           this.investment = {
-            ...response,
-            investment_date: new Date(response.investment_date).toISOString().split('T')[0]
+            website_app_name: response.website_app_name || '',
+            investment_type: response.investment_type || '',
+            sub_type_name: response.sub_type_name || '',
+            sub_type_category: response.sub_type_category || '',
+            amount: Number(response.amount) || 0,
+            investment_date: new Date(response.investment_date).toISOString().split('T')[0],
+            notes: response.notes || ''
           };
-          // Load sub-types and categories for the selected investment type
+          this.maturityDate = parseMaturityDateFromNotes(this.investment.notes) || '';
           if (response.investment_type) {
-            this.onInvestmentTypeChange();
+            this.loadTypeOptions().then(() => {
+              this.investment.sub_type_name = response.sub_type_name || '';
+              this.investment.sub_type_category = response.sub_type_category || '';
+              this.refreshDuplicateWarning();
+            });
           }
         }
         this.loading = false;
@@ -112,9 +144,38 @@ export class InvestmentFormComponent implements OnInit {
   }
 
   onInvestmentTypeChange() {
+    this.investment.sub_type_name = '';
+    this.investment.sub_type_category = '';
+    this.showNewSubTypeInput = false;
+    this.showNewCategoryInput = false;
+    if (!this.showMaturityHelper) {
+      this.maturityDate = '';
+      this.investment.notes = setMaturityDateInNotes(this.investment.notes, null);
+    }
+    this.loadTypeOptions();
+    this.refreshDuplicateWarning();
+  }
+
+  loadTypeOptions(): Promise<void> {
     const selectedType = this.investment.investment_type;
-    if (selectedType) {
-      // Load sub-type names for this investment type from DB
+    if (!selectedType) {
+      this.investmentSubTypes = [];
+      this.investmentCategories = [];
+      return Promise.resolve();
+    }
+
+    if (INVESTMENT_SUB_TYPES[selectedType]) {
+      this.investmentSubTypes = [...INVESTMENT_SUB_TYPES[selectedType].subTypes];
+      this.investmentCategories = [...INVESTMENT_SUB_TYPES[selectedType].categories];
+    }
+
+    return new Promise<void>((resolve) => {
+      let pending = 2;
+      const done = () => {
+        pending -= 1;
+        if (pending <= 0) resolve();
+      };
+
       this.categoryService.getSubTypeNamesByInvestmentType(selectedType).subscribe({
         next: (response) => {
           if (response.success) {
@@ -124,13 +185,14 @@ export class InvestmentFormComponent implements OnInit {
             ];
             this.updateSubTypeOptions();
           }
+          done();
         },
         error: (error) => {
           console.error('Error loading sub-type names:', error);
+          done();
         }
       });
 
-      // Load categories for this investment type from DB
       this.categoryService.getCategories(selectedType).subscribe({
         next: (response) => {
           if (response.success) {
@@ -140,27 +202,14 @@ export class InvestmentFormComponent implements OnInit {
             ];
             this.updateCategoryOptions();
           }
+          done();
         },
         error: (error) => {
           console.error('Error loading categories:', error);
+          done();
         }
       });
-
-      // Also include predefined options
-      if (INVESTMENT_SUB_TYPES[selectedType]) {
-        this.investmentSubTypes = [...INVESTMENT_SUB_TYPES[selectedType].subTypes];
-        this.investmentCategories = [...INVESTMENT_SUB_TYPES[selectedType].categories];
-      }
-    } else {
-      this.investmentSubTypes = [];
-      this.investmentCategories = [];
-    }
-    
-    // Reset sub-type and category when investment type changes
-    this.investment.sub_type_name = '';
-    this.investment.sub_type_category = '';
-    this.showNewSubTypeInput = false;
-    this.showNewCategoryInput = false;
+    });
   }
 
   updateSubTypeOptions() {
@@ -169,8 +218,6 @@ export class InvestmentFormComponent implements OnInit {
       const dbOptions = this.dbSubTypeNames
         .filter(stn => stn.investment_type === selectedType)
         .map(stn => stn.name);
-      
-      // Combine with predefined options and remove duplicates
       const predefined = INVESTMENT_SUB_TYPES[selectedType]?.subTypes || [];
       this.investmentSubTypes = [...new Set([...predefined, ...dbOptions])].sort();
     }
@@ -182,11 +229,13 @@ export class InvestmentFormComponent implements OnInit {
       const dbOptions = this.dbCategories
         .filter(cat => cat.investment_type === selectedType)
         .map(cat => cat.category);
-      
-      // Combine with predefined options and remove duplicates
       const predefined = INVESTMENT_SUB_TYPES[selectedType]?.categories || [];
       this.investmentCategories = [...new Set([...predefined, ...dbOptions])].sort();
     }
+  }
+
+  onMaturityDateChange() {
+    this.investment.notes = setMaturityDateInNotes(this.investment.notes, this.maturityDate || null);
   }
 
   toggleNewSubType() {
@@ -210,15 +259,11 @@ export class InvestmentFormComponent implements OnInit {
         investment_type: this.investment.investment_type
       };
 
-      // Save to database
       this.categoryService.createSubTypeName(newSubTypeName).subscribe({
         next: (response) => {
           if (response.success) {
-            // Add to local cache
             this.dbSubTypeNames.push(response.data);
             this.updateSubTypeOptions();
-            
-            // Select the newly added sub-type
             this.investment.sub_type_name = this.newSubType.trim();
             this.newSubType = '';
             this.showNewSubTypeInput = false;
@@ -226,7 +271,6 @@ export class InvestmentFormComponent implements OnInit {
         },
         error: (error) => {
           console.error('Error saving sub-type name:', error);
-          // Even if DB save fails, still add to UI
           this.updateSubTypeOptions();
           this.investment.sub_type_name = this.newSubType.trim();
           this.newSubType = '';
@@ -244,15 +288,11 @@ export class InvestmentFormComponent implements OnInit {
         sub_type_name_id: null
       };
 
-      // Save to database
       this.categoryService.createCategory(newCategory).subscribe({
         next: (response) => {
           if (response.success) {
-            // Add to local cache
             this.dbCategories.push(response.data);
             this.updateCategoryOptions();
-            
-            // Select the newly added category
             this.investment.sub_type_category = this.newCategory.trim();
             this.newCategory = '';
             this.showNewCategoryInput = false;
@@ -260,7 +300,6 @@ export class InvestmentFormComponent implements OnInit {
         },
         error: (error) => {
           console.error('Error saving category:', error);
-          // Even if DB save fails, still add to UI
           this.updateCategoryOptions();
           this.investment.sub_type_category = this.newCategory.trim();
           this.newCategory = '';
@@ -270,12 +309,35 @@ export class InvestmentFormComponent implements OnInit {
     }
   }
 
+  refreshDuplicateWarning() {
+    const platform = (this.investment.website_app_name || '').trim().toLowerCase();
+    const type = this.investment.investment_type;
+    const subType = (this.investment.sub_type_name || '').trim().toLowerCase();
+    const category = (this.investment.sub_type_category || '').trim().toLowerCase();
+    if (!platform || !type) {
+      this.duplicateMatches = [];
+      return;
+    }
+    this.duplicateMatches = this.existingInvestments.filter(item => {
+      if (this.isEditing && item.id === this.id) return false;
+      return (item.website_app_name || '').trim().toLowerCase() === platform
+        && item.investment_type === type
+        && (item.sub_type_name || '').trim().toLowerCase() === subType
+        && (item.sub_type_category || '').trim().toLowerCase() === category;
+    });
+  }
+
   onSubmit() {
     this.loading = true;
     this.errorMessage = '';
+    this.investment.notes = setMaturityDateInNotes(this.investment.notes, this.maturityDate || null);
+    const payload = {
+      ...this.investment,
+      notes: this.investment.notes || null
+    };
 
     if (this.isEditing && this.id) {
-      this.investmentService.update(this.id, this.investment).subscribe({
+      this.investmentService.update(this.id, payload).subscribe({
         next: () => {
           this.router.navigate(['/investments']);
         },
@@ -286,7 +348,7 @@ export class InvestmentFormComponent implements OnInit {
         }
       });
     } else {
-      this.investmentService.create(this.investment).subscribe({
+      this.investmentService.create(payload).subscribe({
         next: () => {
           this.router.navigate(['/investments']);
         },

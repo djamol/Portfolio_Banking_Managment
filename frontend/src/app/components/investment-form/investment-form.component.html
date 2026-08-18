@@ -18,9 +18,14 @@
         id="website_app_name"
         name="website_app_name"
         [(ngModel)]="investment.website_app_name"
+        (ngModelChange)="refreshDuplicateWarning()"
         class="form-control"
         required
+        list="platform-options"
         placeholder="e.g., HDFC Bank, Groww, Zerodha">
+      <datalist id="platform-options">
+        <option *ngFor="let platform of platforms" [value]="platform"></option>
+      </datalist>
     </div>
 
     <div class="form-group">
@@ -44,6 +49,7 @@
           id="sub_type_name"
           name="sub_type_name"
           [(ngModel)]="investment.sub_type_name"
+          (ngModelChange)="refreshDuplicateWarning()"
           class="form-control"
           required>
           <option value="">Select Sub Type</option>
@@ -77,6 +83,7 @@
           id="sub_type_name"
           name="sub_type_name"
           [(ngModel)]="investment.sub_type_name"
+          (ngModelChange)="refreshDuplicateWarning()"
           class="form-control"
           required
           placeholder="e.g., SBI Bluechip Fund, Reliance ETF">
@@ -90,6 +97,7 @@
           id="sub_type_category"
           name="sub_type_category"
           [(ngModel)]="investment.sub_type_category"
+          (ngModelChange)="refreshDuplicateWarning()"
           class="form-control"
           required>
           <option value="">Select Category</option>
@@ -123,6 +131,7 @@
           id="sub_type_category"
           name="sub_type_category"
           [(ngModel)]="investment.sub_type_category"
+          (ngModelChange)="refreshDuplicateWarning()"
           class="form-control"
           required
           placeholder="e.g., Large Cap, Nifty 50, Banking Sector">
@@ -152,6 +161,34 @@
         [(ngModel)]="investment.investment_date"
         class="form-control"
         required>
+    </div>
+
+    <div class="form-group" *ngIf="showMaturityHelper">
+      <label for="maturity_date">Maturity date</label>
+      <input
+        type="date"
+        id="maturity_date"
+        name="maturity_date"
+        [(ngModel)]="maturityDate"
+        (ngModelChange)="onMaturityDateChange()"
+        class="form-control">
+      <small class="field-hint">Saved as <code>maturity:YYYY-MM-DD</code> in notes for Dashboard maturity watch.</small>
+    </div>
+
+    <div class="form-group">
+      <label for="notes">Notes</label>
+      <textarea
+        id="notes"
+        name="notes"
+        [(ngModel)]="investment.notes"
+        class="form-control"
+        rows="3"
+        placeholder="Optional notes about this investment"></textarea>
+    </div>
+
+    <div class="duplicate-warning" *ngIf="duplicateMatches.length">
+      {{ duplicateMatches.length }} existing holding{{ duplicateMatches.length === 1 ? '' : 's' }} already match this platform, type, sub type, and category.
+      Saving will create another row unless you edit the existing one.
     </div>
 
     <div class="form-actions">

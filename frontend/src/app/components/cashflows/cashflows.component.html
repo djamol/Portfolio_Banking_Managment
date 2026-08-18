@@ -4,7 +4,10 @@
       <h2>Investment Cashflows</h2>
       <p class="subtitle">Record buys, sells, dividends, interest, and fees. These feed the Analytics cashflow chart.</p>
     </div>
-    <button type="button" class="btn btn-primary" (click)="openAddModal()">Add Cashflow</button>
+    <div class="header-actions">
+      <button type="button" class="btn btn-secondary" (click)="exportCsv()" [disabled]="!meta.total">Export CSV</button>
+      <button type="button" class="btn btn-primary" (click)="openAddModal()">Add Cashflow</button>
+    </div>
   </div>
 
   <div *ngIf="errorMessage" class="banner error">{{ errorMessage }}</div>
@@ -58,9 +61,15 @@
   <div *ngIf="loading" class="loading">Loading cashflows…</div>
 
   <div *ngIf="!loading && transactions.length === 0" class="empty-state">
-    <p>No cashflows yet. Add buys, sells, dividends, or interest to populate Analytics.</p>
-    <button type="button" class="btn btn-primary" (click)="openAddModal()">Add Your First Cashflow</button>
-    <p class="empty-hint"><a routerLink="/analytics">View Analytics cashflow chart</a></p>
+    <ng-container *ngIf="hasActiveFilters; else noCashflowsYet">
+      <p>No cashflows match these filters.</p>
+      <button type="button" class="btn btn-secondary" (click)="clearFilters()">Clear filters</button>
+    </ng-container>
+    <ng-template #noCashflowsYet>
+      <p>No cashflows yet. Add buys, sells, dividends, or interest to populate Analytics.</p>
+      <button type="button" class="btn btn-primary" (click)="openAddModal()">Add Your First Cashflow</button>
+      <p class="empty-hint"><a routerLink="/analytics">View Analytics cashflow chart</a></p>
+    </ng-template>
   </div>
 
   <div class="table-wrap" *ngIf="!loading && transactions.length > 0">

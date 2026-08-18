@@ -370,7 +370,8 @@ export class InvestmentSummaryComponent implements OnInit {
         item.sub_type_name || '',
         item.sub_type_category || ''
       ].join(' ').toLowerCase();
-      return blob.includes('tax') || blob.includes('elss') || blob.includes('ppf') || item.investment_type === 'PPF';
+      return blob.includes('tax') || blob.includes('elss') || blob.includes('ppf') || blob.includes('epf')
+        || item.investment_type === 'PPF' || item.investment_type === 'EPF';
     });
     this.taxReportTotal = taxLike.reduce((s, i) => s + (Number(i.amount) || 0), 0);
     const map = new Map<string, { amount: number; count: number }>();

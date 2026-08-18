@@ -19,6 +19,47 @@
       </a>
     </div>
 
+    <div class="card forecast-strip" *ngIf="forecast?.projected_next_month">
+      <div class="section-head">
+        <div>
+          <h3>Next-month forecast</h3>
+          <p class="section-hint">Average of recent months. Upcoming outflows come from detected recurring payees.</p>
+        </div>
+        <a routerLink="/banking/insights" class="link-btn">See all insights</a>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-card credit">
+          <div class="stat-label">Projected credits ({{ forecast.projected_next_month.month }})</div>
+          <div class="stat-value">₹{{ formatMoney(forecast.projected_next_month.avg_credit) }}</div>
+        </div>
+        <div class="stat-card debit">
+          <div class="stat-label">Projected debits</div>
+          <div class="stat-value">₹{{ formatMoney(forecast.projected_next_month.avg_debit) }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Projected net</div>
+          <div class="stat-value">₹{{ formatMoney(forecast.projected_next_month.net) }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Projected interest</div>
+          <div class="stat-value">₹{{ formatMoney(forecast.projected_next_month.projected_interest) }}</div>
+        </div>
+      </div>
+      <table class="data-table compact" *ngIf="forecast.upcoming_outflows?.length">
+        <thead>
+          <tr><th>Upcoming outflow</th><th>Amount</th><th>Expected</th><th>Category</th></tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let u of forecast.upcoming_outflows | slice:0:5">
+            <td>{{ u.payee }}</td>
+            <td class="debit">₹{{ formatMoney(u.amount) }}</td>
+            <td>{{ u.next_expected }}</td>
+            <td>{{ u.category || '—' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <div class="stat-grid" *ngIf="analyticsState.cashSummary?.totals_by_currency?.length">
       <div class="stat-card" *ngFor="let t of analyticsState.cashSummary!.totals_by_currency">
         <div class="stat-label">Cash position ({{ t.currency }})</div>

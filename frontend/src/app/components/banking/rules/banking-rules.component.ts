@@ -1,4 +1,5 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { Subject, merge, takeUntil } from 'rxjs';
 import { CategoryRule } from '../../../services/banking/banking.models';
 import { BankRulesService } from '../../../services/banking/bank-rules.service';
@@ -34,12 +35,28 @@ export class BankingRulesComponent implements OnInit, OnDestroy {
     private filters: BankingFilterState,
     private rulesService: BankRulesService,
     private txnService: BankTransactionsService,
-    private analyticsState: BankingAnalyticsState
+    private analyticsState: BankingAnalyticsState,
+    private route: ActivatedRoute
   ) {}
 
   ngOnInit() {
     this.loadRules();
     this.filters.refreshRequested$.pipe(takeUntil(this.destroy$)).subscribe(() => this.loadRules());
+    this.route.queryParamMap.pipe(takeUntil(this.destroy$)).subscribe((params) => {
+      const payee = (params.get('payee') || '').trim();
+      const category = (params.get('category') || '').trim();
+      if (!payee && !category) return;
+      this.editingRuleId = null;
+      this.ruleForm = {
+        pattern: payee,
+        match_field: payee ? 'payee' : 'narration',
+        category,
+        priority: 100,
+        account_id: null,
+        is_active: 1
+      };
+      this.showRuleForm = true;
+    });
   }
 
   ngOnDestroy() {

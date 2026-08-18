@@ -6,6 +6,7 @@ export const INVESTMENT_TYPES = [
   'Mutual Fund',
   'Crypto',
   'PPF',
+  'EPF',
   'Saving Bank Balance'
 ];
 
@@ -38,6 +39,10 @@ export const INVESTMENT_SUB_TYPES: { [key: string]: { subTypes: string[]; catego
   'PPF': {
     subTypes: ['Regular PPF', 'PPF Transfer'],
     categories: ['Long Term Savings', 'Tax Saving']
+  },
+  'EPF': {
+    subTypes: ['Employer EPF', 'Voluntary PF', 'EPF Transfer'],
+    categories: ['Retirement', 'Tax Saving']
   },
   'Saving Bank Balance': {
     subTypes: ['Savings Account', 'Current Account', 'Recurring Deposit'],

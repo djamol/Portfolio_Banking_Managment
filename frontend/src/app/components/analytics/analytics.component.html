@@ -53,7 +53,11 @@
       </canvas>
     </div>
     <div *ngIf="!byTypeChartData.labels || byTypeChartData.labels.length === 0" style="text-align: center; padding: 40px; color: #6b7280;">
-      <p>No data available</p>
+      <p>No allocation data yet.</p>
+      <p style="margin-top: 8px; font-size: 14px;">
+        <a routerLink="/investments">Add investments</a>
+        · <a routerLink="/import-data">Import statements</a>
+      </p>
     </div>
   </div>
 
@@ -73,7 +77,11 @@
       </canvas>
     </div>
     <div *ngIf="!timeChartData.labels || timeChartData.labels.length === 0" style="text-align: center; padding: 40px; color: #6b7280;">
-      <p>No data available</p>
+      <p>No trend data yet.</p>
+      <p style="margin-top: 8px; font-size: 14px;">
+        <a routerLink="/investments">Add investments</a>
+        · <a routerLink="/import-data">Import</a>
+      </p>
     </div>
   </div>
 
@@ -95,7 +103,11 @@
       </canvas>
     </div>
     <div *ngIf="!pieChartData.labels || pieChartData.labels.length === 0" style="text-align: center; padding: 40px; color: #6b7280;">
-      <p>No data available</p>
+      <p>No distribution data yet.</p>
+      <p style="margin-top: 8px; font-size: 14px;">
+        <a routerLink="/investments">Add investments</a>
+        · <a routerLink="/import-data">Import</a>
+      </p>
     </div>
   </div>
 
@@ -109,7 +121,10 @@
       </canvas>
     </div>
     <div *ngIf="!monthlyChangesChartData.labels || monthlyChangesChartData.labels.length === 0" style="text-align: center; padding: 40px; color: #6b7280;">
-      <p>No data available</p>
+      <p>No monthly change history yet.</p>
+      <p style="margin-top: 8px; font-size: 14px;">
+        <a routerLink="/investments">Add investments</a>
+      </p>
     </div>
   </div>
   </ng-container>

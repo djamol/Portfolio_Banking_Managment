@@ -1,4 +1,4 @@
-import { Component, HostListener, OnInit } from '@angular/core';
+import { Component, ElementRef, HostListener, OnInit, ViewChild } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
 import { AnalyticsService } from '../../services/analytics.service';
@@ -9,6 +9,11 @@ import { hasMultiSelectFilter, matchesMultiSelect, pruneSelections } from '../..
 import { matchesPlatformFilter } from '../../utils/ignore-platform.util';
 import { getApiDomain } from '../../utils/api-url.util';
 import { formatIndianFull, getIndianAmountBreakdown } from '../../utils/indian-number.util';
+import {
+  parseMaturityDateFromNotes,
+  setMaturityDateInNotes,
+  showsMaturityHelper
+} from '../../utils/maturity-notes.util';
 
 @Component({
   selector: 'app-investment-list',
@@ -44,6 +49,13 @@ export class InvestmentListComponent implements OnInit {
   bulkWorking = false;
   originalEditDate = '';
   duplicateMatches: any[] = [];
+  maturityDate = '';
+  @ViewChild('searchInput') searchInput?: ElementRef<HTMLInputElement>;
+  showBulkReclassify = false;
+  bulkWorkingReclassify = false;
+  bulkForm = this.emptyBulkForm();
+  bulkSubTypes: string[] = [];
+  bulkCategories: string[] = [];
 
   // Pagination properties
   currentPage: number = 1;
@@ -405,6 +417,19 @@ export class InvestmentListComponent implements OnInit {
     this.showNewCategoryInput = false;
     this.newSubType = '';
     this.newCategory = '';
+    this.maturityDate = '';
+  }
+
+  get showMaturityHelper(): boolean {
+    return showsMaturityHelper(this.currentInvestment.investment_type);
+  }
+
+  onMaturityDateChange() {
+    this.currentInvestment.notes = setMaturityDateInNotes(this.currentInvestment.notes, this.maturityDate || null);
+  }
+
+  private syncMaturityFromNotes() {
+    this.maturityDate = parseMaturityDateFromNotes(this.currentInvestment.notes) || '';
   }
 
   openEditModal(investment: any) {
@@ -416,11 +441,10 @@ export class InvestmentListComponent implements OnInit {
     this.isEditing = true;
     this.showModal = true;
     this.duplicateMatches = [];
-    
-    // Load sub-types and categories for the selected investment type
+    this.syncMaturityFromNotes();
+
     if (investment.investment_type) {
-      this.onInvestmentTypeChange().then(() => {
-        // After options are loaded, set the selected values
+      this.loadTypeOptions().then(() => {
         this.currentInvestment.sub_type_name = investment.sub_type_name;
         this.currentInvestment.sub_type_category = investment.sub_type_category;
       });
@@ -428,62 +452,72 @@ export class InvestmentListComponent implements OnInit {
   }
 
   onInvestmentTypeChange() {
-    const selectedType = this.currentInvestment.investment_type;
-    if (selectedType) {
-      // Load sub-type names for this investment type from DB
-      return new Promise<void>((resolve) => {
-        this.categoryService.getSubTypeNamesByInvestmentType(selectedType).subscribe({
-          next: (response) => {
-            if (response.success) {
-              this.dbSubTypeNames = [
-                ...this.dbSubTypeNames.filter(stn => stn.investment_type !== selectedType),
-                ...response.data
-              ];
-              this.updateSubTypeOptions();
-            }
-            resolve();
-          },
-          error: (error) => {
-            console.error('Error loading sub-type names:', error);
-            resolve();
-          }
-        });
-
-        // Load categories for this investment type from DB
-        this.categoryService.getCategories(selectedType).subscribe({
-          next: (response) => {
-            if (response.success) {
-              this.dbCategories = [
-                ...this.dbCategories.filter(cat => cat.investment_type !== selectedType),
-                ...response.data
-              ];
-              this.updateCategoryOptions();
-            }
-          },
-          error: (error) => {
-            console.error('Error loading categories:', error);
-          }
-        });
-
-        // Also include predefined options
-        if (INVESTMENT_SUB_TYPES[selectedType]) {
-          this.investmentSubTypes = [...INVESTMENT_SUB_TYPES[selectedType].subTypes];
-          this.investmentCategories = [...INVESTMENT_SUB_TYPES[selectedType].categories];
-        }
-      });
-    } else {
-      this.investmentSubTypes = [];
-      this.investmentCategories = [];
-      return Promise.resolve();
-    }
-    
-    // Reset sub-type and category when investment type changes
     this.currentInvestment.sub_type_name = '';
     this.currentInvestment.sub_type_category = '';
     this.showNewSubTypeInput = false;
     this.showNewCategoryInput = false;
-    
-    return Promise.resolve();
+    if (!this.showMaturityHelper) {
+      this.maturityDate = '';
+      this.currentInvestment.notes = setMaturityDateInNotes(this.currentInvestment.notes, null);
+    }
+    this.refreshDuplicateWarning();
+    return this.loadTypeOptions();
+  }
+
+  loadTypeOptions(): Promise<void> {
+    const selectedType = this.currentInvestment.investment_type;
+    if (!selectedType) {
+      this.investmentSubTypes = [];
+      this.investmentCategories = [];
+      return Promise.resolve();
+    }
+
+    if (INVESTMENT_SUB_TYPES[selectedType]) {
+      this.investmentSubTypes = [...INVESTMENT_SUB_TYPES[selectedType].subTypes];
+      this.investmentCategories = [...INVESTMENT_SUB_TYPES[selectedType].categories];
+    }
+
+    return new Promise<void>((resolve) => {
+      let pending = 2;
+      const done = () => {
+        pending -= 1;
+        if (pending <= 0) resolve();
+      };
+
+      this.categoryService.getSubTypeNamesByInvestmentType(selectedType).subscribe({
+        next: (response) => {
+          if (response.success) {
+            this.dbSubTypeNames = [
+              ...this.dbSubTypeNames.filter(stn => stn.investment_type !== selectedType),
+              ...response.data
+            ];
+            this.updateSubTypeOptions();
+          }
+          done();
+        },
+        error: (error) => {
+          console.error('Error loading sub-type names:', error);
+          done();
+        }
+      });
+
+      this.categoryService.getCategories(selectedType).subscribe({
+        next: (response) => {
+          if (response.success) {
+            this.dbCategories = [
+              ...this.dbCategories.filter(cat => cat.investment_type !== selectedType),
+              ...response.data
+            ];
+            this.updateCategoryOptions();
+          }
+          done();
+        },
+        error: (error) => {
+          console.error('Error loading categories:', error);
+          done();
+        }
+      });
+    });
   }
 
   updateSubTypeOptions() {
@@ -598,12 +632,14 @@ export class InvestmentListComponent implements OnInit {
     this.saving = false;
     this.duplicateMatches = [];
     this.originalEditDate = '';
+    this.maturityDate = '';
   }
 
   onSubmit() {
     if (this.saving) return;
     this.refreshDuplicateWarning();
     this.saving = true;
+    this.currentInvestment.notes = setMaturityDateInNotes(this.currentInvestment.notes, this.maturityDate || null);
     const payload = {
       ...this.currentInvestment,
       notes: this.currentInvestment.notes || null
@@ -944,6 +980,131 @@ export class InvestmentListComponent implements OnInit {
     }
   }
 
+  emptyBulkForm() {
+    return {
+      website_app_name: '',
+      investment_type: '',
+      sub_type_name: '',
+      sub_type_category: '',
+      notes_append: ''
+    };
+  }
+
+  toggleBulkReclassify() {
+    this.showBulkReclassify = !this.showBulkReclassify;
+    if (!this.showBulkReclassify) {
+      this.bulkForm = this.emptyBulkForm();
+      this.bulkSubTypes = [];
+      this.bulkCategories = [];
+    }
+  }
+
+  onBulkTypeChange() {
+    this.bulkForm.sub_type_name = '';
+    this.bulkForm.sub_type_category = '';
+    const type = this.bulkForm.investment_type;
+    if (!type) {
+      this.bulkSubTypes = [];
+      this.bulkCategories = [];
+      return;
+    }
+    const predefined = INVESTMENT_SUB_TYPES[type];
+    this.bulkSubTypes = [...(predefined?.subTypes || [])];
+    this.bulkCategories = [...(predefined?.categories || [])];
+    const dbSubs = this.dbSubTypeNames.filter(stn => stn.investment_type === type).map(stn => stn.name);
+    const dbCats = this.dbCategories.filter(cat => cat.investment_type === type).map(cat => cat.category);
+    this.bulkSubTypes = [...new Set([...this.bulkSubTypes, ...dbSubs])].sort();
+    this.bulkCategories = [...new Set([...this.bulkCategories, ...dbCats])].sort();
+  }
+
+  get bulkHasChanges(): boolean {
+    const f = this.bulkForm;
+    return !!(
+      f.website_app_name.trim() ||
+      f.investment_type ||
+      f.sub_type_name.trim() ||
+      f.sub_type_category.trim() ||
+      f.notes_append.trim()
+    );
+  }
+
+  async applyBulkReclassify() {
+    const count = this.selectedIds.size;
+    if (!count || this.bulkWorkingReclassify || !this.bulkHasChanges) return;
+    if (!confirm(`Update ${count} selected investment${count === 1 ? '' : 's'} with these fields? Amount and date stay the same.`)) {
+      return;
+    }
+    this.bulkWorkingReclassify = true;
+    const ids = [...this.selectedIds];
+    const typeChanged = !!this.bulkForm.investment_type;
+    let updated = 0;
+    try {
+      for (const id of ids) {
+        const row = this.investments.find(item => item.id === id);
+        if (!row) continue;
+        const notesBase = row.notes || '';
+        const notes = this.bulkForm.notes_append.trim()
+          ? (notesBase ? `${notesBase}\n${this.bulkForm.notes_append.trim()}` : this.bulkForm.notes_append.trim())
+          : notesBase;
+        const payload = {
+          website_app_name: this.bulkForm.website_app_name.trim() || row.website_app_name,
+          investment_type: this.bulkForm.investment_type || row.investment_type,
+          sub_type_name: typeChanged
+            ? (this.bulkForm.sub_type_name.trim() || null)
+            : (this.bulkForm.sub_type_name.trim() || row.sub_type_name || null),
+          sub_type_category: typeChanged
+            ? (this.bulkForm.sub_type_category.trim() || null)
+            : (this.bulkForm.sub_type_category.trim() || row.sub_type_category || null),
+          amount: row.amount,
+          investment_date: this.toLocalYmd(row.investment_date),
+          notes: notes || null
+        };
+        await firstValueFrom(this.investmentService.update(id, payload));
+        updated += 1;
+      }
+      this.showFlash(`Updated ${updated} investment${updated === 1 ? '' : 's'}.`, 'success');
+      this.bulkForm = this.emptyBulkForm();
+      this.showBulkReclassify = false;
+      this.selectedIds = new Set();
+      this.loadInvestments();
+    } catch (error: any) {
+      console.error('Error bulk updating investments:', error);
+      this.errorMessage = 'Failed to update some investments. ' + (error?.message || '');
+      this.loadInvestments();
+    } finally {
+      this.bulkWorkingReclassify = false;
+    }
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  onDocumentKeydown(event: KeyboardEvent) {
+    const target = event.target as HTMLElement | null;
+    const typing = !!target && (
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.tagName === 'SELECT' ||
+      target.isContentEditable
+    );
+    if (event.key === '/' && !typing) {
+      event.preventDefault();
+      this.searchInput?.nativeElement.focus();
+      return;
+    }
+    if (typing || this.showModal || this.showHistoryModal) return;
+    if (event.key === 'n' || event.key === 'N') {
+      event.preventDefault();
+      this.openAddModal();
+      return;
+    }
+    if (event.key === 'e' || event.key === 'E') {
+      const first = this.selectedInvestments[0];
+      if (first) {
+        event.preventDefault();
+        this.openEditModal(first);
+      }
+    }
+  }
+
   openCloneModal(investment: any) {
     this.currentInvestment = {
       id: null,
@@ -962,8 +1123,9 @@ export class InvestmentListComponent implements OnInit {
     this.showNewCategoryInput = false;
     this.newSubType = '';
     this.newCategory = '';
+    this.syncMaturityFromNotes();
     if (investment.investment_type) {
-      this.onInvestmentTypeChange().then(() => {
+      this.loadTypeOptions().then(() => {
         this.currentInvestment.sub_type_name = investment.sub_type_name || '';
         this.currentInvestment.sub_type_category = investment.sub_type_category || '';
         this.refreshDuplicateWarning();

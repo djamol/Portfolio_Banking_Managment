@@ -3,6 +3,9 @@ import { AnalyticsService, DeltaRow, InsightsResponse, ValueSeriesResponse } fro
 import { BankAnalyticsService } from '../../services/banking/bank-analytics.service';
 import { ChartConfiguration, ChartOptions } from 'chart.js';
 import { getIndianAmountBreakdown, IndianAmountBreakdown } from '../../utils/indian-number.util';
+import { MATURITY_HELPER_TYPES, parseMaturityDateObject } from '../../utils/maturity-notes.util';
+
+const GOAL_STORAGE_KEY = 'asset-tracker-goal-amount';
 
 type SummaryRow = {
   id: number;
@@ -90,6 +93,9 @@ export class DashboardComponent implements OnInit {
   bankCashLabel = '';
   combinedNetWorth = 0;
   combinedBreakdown: IndianAmountBreakdown | null = null;
+  goalAmount: number | null = null;
+  goalProgressPercent = 0;
+  goalRemaining = 0;
 
   allocationChartData: ChartConfiguration<'doughnut'>['data'] = {
     labels: [],
@@ -162,6 +168,7 @@ export class DashboardComponent implements OnInit {
   refresh() {
     this.loading = true;
     this.errorMessage = '';
+    this.loadGoal();
     this.platformGroups = [];
     this.expandedPlatform = null;
     this.top3ConcentrationPct = 0;
@@ -522,9 +529,9 @@ export class DashboardComponent implements OnInit {
     const items: MaturityItem[] = [];
 
     for (const row of this.summaryRows) {
-      if (!['FD', 'Bond', 'PPF'].includes(row.investment_type)) continue;
+      if (!MATURITY_HELPER_TYPES.includes(row.investment_type)) continue;
 
-      const fromNotes = this.parseMaturityFromNotes(row.notes);
+      const fromNotes = parseMaturityDateObject(row.notes);
       if (fromNotes) {
         const daysLeft = Math.round((fromNotes.getTime() - today.getTime()) / 86400000);
         if (daysLeft >= -30 && daysLeft <= 365) {
@@ -564,20 +571,11 @@ export class DashboardComponent implements OnInit {
     this.maturityItems = items.sort((a, b) => a.daysLeft - b.daysLeft).slice(0, 8);
   }
 
-  private parseMaturityFromNotes(notes: string | null | undefined): Date | null {
-    if (!notes) return null;
-    const match = notes.match(/maturity\s*[:=]\s*(\d{4}-\d{2}-\d{2})/i)
-      || notes.match(/matures?\s*[:=]?\s*(\d{4}-\d{2}-\d{2})/i);
-    if (!match) return null;
-    const d = new Date(match[1]);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-
   private estimateTenorMonths(row: SummaryRow): number | null {
     const cat = (row.sub_type_category || '').toLowerCase();
     if (cat.includes('short')) return 12;
     if (cat.includes('medium')) return 36;
-    if (cat.includes('long') || row.investment_type === 'PPF') return 60;
+    if (cat.includes('long') || row.investment_type === 'PPF' || row.investment_type === 'EPF') return 60;
     if (row.investment_type === 'FD') return 12;
     if (row.investment_type === 'Bond') return 36;
     return null;
@@ -617,6 +615,28 @@ export class DashboardComponent implements OnInit {
   private updateCombinedNetWorth() {
     this.combinedNetWorth = this.totalAmount + this.bankCashInr;
     this.combinedBreakdown = getIndianAmountBreakdown(this.combinedNetWorth);
+    this.updateGoalProgress();
+  }
+
+  private loadGoal() {
+    try {
+      const raw = localStorage.getItem(GOAL_STORAGE_KEY);
+      const value = raw ? Number(raw) : NaN;
+      this.goalAmount = Number.isFinite(value) && value > 0 ? value : null;
+    } catch {
+      this.goalAmount = null;
+    }
+    this.updateGoalProgress();
+  }
+
+  private updateGoalProgress() {
+    if (!this.goalAmount || this.goalAmount <= 0) {
+      this.goalProgressPercent = 0;
+      this.goalRemaining = 0;
+      return;
+    }
+    this.goalProgressPercent = Math.min(100, (this.combinedNetWorth / this.goalAmount) * 100);
+    this.goalRemaining = Math.max(0, this.goalAmount - this.combinedNetWorth);
   }
 
   private formatLabel(dateStr: string): string {

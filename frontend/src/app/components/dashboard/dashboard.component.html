@@ -69,7 +69,15 @@
           [type]="'doughnut'">
         </canvas>
       </div>
-      <ng-template #noAlloc><div class="empty">No allocation data</div></ng-template>
+      <ng-template #noAlloc>
+        <div class="empty">
+          No allocation data yet.
+          <div class="empty-actions">
+            <a routerLink="/investments">Add investments</a>
+            <a routerLink="/import-data">Import statements</a>
+          </div>
+        </div>
+      </ng-template>
     </div>
 
     <div class="panel">
@@ -84,7 +92,15 @@
           [type]="'line'">
         </canvas>
       </div>
-      <ng-template #noSpark><div class="empty">No snapshot trend yet</div></ng-template>
+      <ng-template #noSpark>
+        <div class="empty">
+          No snapshot trend yet.
+          <div class="empty-actions">
+            <a routerLink="/investments">Add investments</a>
+            <a routerLink="/asset-tracker">Open asset tracker</a>
+          </div>
+        </div>
+      </ng-template>
     </div>
   </div>
 
@@ -128,7 +144,14 @@
           </div>
         </div>
       </div>
-      <ng-template #noHoldings><div class="empty">No platform data</div></ng-template>
+      <ng-template #noHoldings>
+        <div class="empty">
+          No platform data yet.
+          <div class="empty-actions">
+            <a routerLink="/investments">Add investments</a>
+          </div>
+        </div>
+      </ng-template>
     </div>
 
     <div class="panel">
@@ -244,7 +267,15 @@
           </div>
         </div>
       </div>
-      <ng-template #noLargest><div class="empty">No holdings yet</div></ng-template>
+      <ng-template #noLargest>
+        <div class="empty">
+          No holdings yet.
+          <div class="empty-actions">
+            <a routerLink="/investments">Add investments</a>
+            <a routerLink="/import-data">Import</a>
+          </div>
+        </div>
+      </ng-template>
     </div>
 
     <div class="panel">
@@ -252,7 +283,7 @@
         <h3>Maturity watch</h3>
       </div>
       <p class="hint">
-        Uses <code>maturity:YYYY-MM-DD</code> in notes, or estimates from FD/Bond/PPF tenor.
+        Uses <code>maturity:YYYY-MM-DD</code> in notes, or estimates from FD/Bond/PPF/EPF tenor.
       </p>
       <div class="list" *ngIf="maturityItems.length; else noMaturity">
         <div class="list-row" *ngFor="let m of maturityItems">
@@ -272,9 +303,39 @@
         </div>
       </div>
       <ng-template #noMaturity>
-        <div class="empty">No near-term maturities. Tip: add <code>maturity:2026-12-31</code> in FD/Bond notes.</div>
+        <div class="empty">No near-term maturities. Tip: set a maturity date on FD / Bond / PPF / EPF holdings.</div>
       </ng-template>
     </div>
+  </div>
+
+  <div class="panel goal-panel">
+    <div class="panel-head">
+      <h3>Net-worth goal</h3>
+      <a routerLink="/asset-tracker" class="link-btn">Edit in Asset Tracker</a>
+    </div>
+    <ng-container *ngIf="goalAmount; else noGoal">
+      <div class="goal-amounts">
+        <span>{{ combinedBreakdown?.primaryDisplay || '₹0' }}</span>
+        <span class="goal-sep">of</span>
+        <span>{{ goalAmount | number:'1.0-0' }}</span>
+      </div>
+      <div class="goal-bar">
+        <div class="goal-bar-fill" [style.width.%]="goalProgressPercent"></div>
+      </div>
+      <p class="hint">
+        {{ goalProgressPercent | number:'1.1-1' }}% of goal
+        <span *ngIf="goalRemaining > 0"> · ₹{{ goalRemaining | number:'1.0-0' }} remaining</span>
+        <span *ngIf="goalRemaining <= 0"> · Goal reached</span>
+      </p>
+    </ng-container>
+    <ng-template #noGoal>
+      <div class="empty">
+        No goal set yet.
+        <div class="empty-actions">
+          <a routerLink="/asset-tracker">Set a net-worth goal</a>
+        </div>
+      </div>
+    </ng-template>
   </div>
 
   <div class="quick-links panel">

@@ -135,6 +135,7 @@
             <th>Last</th>
             <th>Next expected</th>
             <th>Category</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -146,6 +147,9 @@
             <td>{{ r.last_date }}</td>
             <td>{{ r.next_expected }}</td>
             <td>{{ r.category || '—' }}</td>
+            <td>
+              <button type="button" class="link-btn" (click)="createRuleFromRecurring(r)">Create rule</button>
+            </td>
           </tr>
         </tbody>
       </table>

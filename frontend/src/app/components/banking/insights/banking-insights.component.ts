@@ -93,6 +93,15 @@ export class BankingInsightsComponent implements OnInit, OnDestroy {
     this.ctx.flash('info', payee === 'Unknown' ? 'Opened transactions' : `Filtered by payee: ${payee}`);
   }
 
+  createRuleFromRecurring(row: any) {
+    this.router.navigate(['/banking/rules'], {
+      queryParams: {
+        payee: row?.payee || '',
+        category: row?.category || ''
+      }
+    });
+  }
+
   runTransferMatch() {
     this.transferMatching = true;
     this.analyticsService.matchTransfers().subscribe({

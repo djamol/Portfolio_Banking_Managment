@@ -177,6 +177,52 @@
   font-size: 0.9rem;
 }
 
+.empty-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.empty-actions a {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.goal-panel {
+  margin-top: 16px;
+}
+
+.goal-amounts {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.goal-sep {
+  color: #94a3b8;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.goal-bar {
+  height: 10px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 10px 0 6px;
+}
+
+.goal-bar-fill {
+  height: 100%;
+  background: #2563eb;
+  border-radius: 999px;
+  min-width: 0;
+}
+
 .hint {
   margin: 0 0 10px;
   font-size: 0.82rem;

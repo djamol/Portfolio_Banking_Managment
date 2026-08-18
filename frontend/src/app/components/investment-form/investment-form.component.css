@@ -147,6 +147,28 @@
   margin-top: 10px;
 }
 
+.field-hint {
+  display: block;
+  margin-top: 6px;
+  color: #6c757d;
+  font-size: 0.85em;
+}
+
+.duplicate-warning {
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffeeba;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  font-size: 0.9em;
+}
+
+textarea.form-control {
+  min-height: 80px;
+  resize: vertical;
+}
+
 @media (max-width: 600px) {
   .investment-form-container {
     margin: 10px;
