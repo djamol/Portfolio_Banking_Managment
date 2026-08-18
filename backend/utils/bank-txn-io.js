@@ -16,6 +16,10 @@ const EXPORT_COLUMNS = [
   'deposit',
   'balance',
   'category',
+  'Main category',
+  'Sub category',
+  'Sub category 2',
+  'Sub category 3',
   'category_source',
   'payee',
   'txn_type',
@@ -26,6 +30,10 @@ const EXPORT_COLUMNS = [
   'fingerprint',
   'linked_transfer_id'
 ];
+
+const MAX_CATEGORY_DEPTH = 4;
+const CATEGORY_LEVEL_LABELS = ['Category', 'Sub category', 'Sub category 2', 'Sub category 3'];
+const CATEGORY_SPLIT_KEYS = ['Main category', 'Sub category', 'Sub category 2', 'Sub category 3'];
 
 const STARS = '*'.repeat(96);
 const DASH = '-'.repeat(96);
@@ -118,9 +126,11 @@ function buildFingerprint({
 
 function rowsToSheetData(rows) {
   return rows.map((r) => {
+    const split = categorySplitFields(r.category);
     const out = {};
     for (const col of EXPORT_COLUMNS) {
-      out[col] = cell(r, col);
+      if (Object.prototype.hasOwnProperty.call(split, col)) out[col] = split[col];
+      else out[col] = cell(r, col);
     }
     return out;
   });
@@ -228,7 +238,7 @@ function contentDisposition(filename) {
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
-function statementColumnWidths(includeCategory) {
+function statementColumnWidths(extraCols) {
   const cols = [
     { wch: 12 },
     { wch: 48 },
@@ -238,8 +248,8 @@ function statementColumnWidths(includeCategory) {
     { wch: 14 },
     { wch: 16 }
   ];
-  if (includeCategory) {
-    cols.push({ wch: 22 }, { wch: 18 });
+  for (let i = 0; i < extraCols; i++) {
+    cols.push({ wch: i === extraCols - 1 && extraCols === MAX_CATEGORY_DEPTH + 1 ? 18 : 16 });
   }
   return cols;
 }
@@ -254,12 +264,52 @@ function applyAmountFormats(ws, startRow, endRow, amountCols) {
   }
 }
 
-function extraCategoryCells(includeCategory, category, payee) {
-  return includeCategory ? [category || '', payee || ''] : [];
+function splitCategoryParts(category) {
+  const raw = String(category || '').trim();
+  if (!raw) return [];
+  if (raw.includes('_')) {
+    return raw.split('_').map((p) => p.trim()).filter(Boolean);
+  }
+  if (raw.includes(' / ')) {
+    return raw.split(' / ').map((p) => p.trim()).filter(Boolean);
+  }
+  return [raw];
+}
+
+function categoryLevelCells(category) {
+  const parts = splitCategoryParts(category).slice(0, MAX_CATEGORY_DEPTH);
+  const cells = [];
+  for (let i = 0; i < MAX_CATEGORY_DEPTH; i++) cells.push(parts[i] || '');
+  return cells;
+}
+
+function categorySplitFields(category) {
+  const cells = categoryLevelCells(category);
+  const out = {};
+  CATEGORY_SPLIT_KEYS.forEach((key, i) => {
+    out[key] = cells[i] || '';
+  });
+  return out;
+}
+
+function extraStatementCells(opts, category, payee) {
+  const includeLevels = opts.includeCategoryLevels !== false;
+  const includePayee = !!opts.includePayee;
+  const cells = [];
+  if (includeLevels) cells.push(...categoryLevelCells(category));
+  if (includePayee) cells.push(payee || '');
+  return cells;
+}
+
+function extraStatementColCount(opts) {
+  return (opts.includeCategoryLevels !== false ? MAX_CATEGORY_DEPTH : 0) + (opts.includePayee ? 1 : 0);
 }
 
 function buildStatementAoA(account, rows, meta = {}, pageNo = 1, opts = {}) {
-  const includeCategory = !!opts.includeCategory;
+  const includeCategoryLevels = opts.includeCategoryLevels !== false;
+  const includePayee = !!opts.includePayee;
+  const extraOpts = { includeCategoryLevels, includePayee };
+  const extraCols = extraStatementColCount(extraOpts);
   const accountCount = Number(opts.accountCount) || 1;
   const s = computeStatementSummary(account, rows, meta);
   const bank = bankTitle(account.bank_name || rows[0]?.bank_name);
@@ -308,7 +358,8 @@ function buildStatementAoA(account, rows, meta = {}, pageNo = 1, opts = {}) {
     'Deposit Amt.',
     'Closing Balance'
   ];
-  if (includeCategory) headers.push('Category', 'Payee');
+  if (includeCategoryLevels) headers.push(...CATEGORY_LEVEL_LABELS);
+  if (includePayee) headers.push('Payee');
   aoa.push(headers);
   aoa.push([DASH]);
   const dataStart = aoa.length;
@@ -321,7 +372,7 @@ function buildStatementAoA(account, rows, meta = {}, pageNo = 1, opts = {}) {
     '',
     '',
     s.opening,
-    ...extraCategoryCells(includeCategory)
+    ...extraStatementCells(extraOpts)
   ]);
 
   for (const r of s.rows) {
@@ -333,7 +384,7 @@ function buildStatementAoA(account, rows, meta = {}, pageNo = 1, opts = {}) {
       num(r.withdrawal) > 0 ? num(r.withdrawal) : '',
       num(r.deposit) > 0 ? num(r.deposit) : '',
       r.balance != null && r.balance !== '' ? num(r.balance) : '',
-      ...extraCategoryCells(includeCategory, r.category, r.payee)
+      ...extraStatementCells(extraOpts, r.category, r.payee)
     ]);
   }
 
@@ -345,7 +396,7 @@ function buildStatementAoA(account, rows, meta = {}, pageNo = 1, opts = {}) {
     s.totalDebit,
     s.totalCredit,
     s.closing,
-    ...extraCategoryCells(includeCategory)
+    ...extraStatementCells(extraOpts)
   ]);
   const dataEnd = aoa.length - 1;
 
@@ -371,7 +422,7 @@ function buildStatementAoA(account, rows, meta = {}, pageNo = 1, opts = {}) {
     'This is a computer generated statement and does not require signature.'
   ]);
 
-  return { aoa, summary: s, headerRowIndex, dataStart, dataEnd, includeCategory };
+  return { aoa, summary: s, headerRowIndex, dataStart, dataEnd, extraCols };
 }
 
 function sheetNameForAccount(account, index) {
@@ -474,9 +525,9 @@ function appendSummarySheet(wb, groups, meta = {}) {
 }
 
 function applyStatementSheetView(ws, built) {
-  const includeCategory = !!built.includeCategory;
+  const extraCols = Number(built.extraCols) || 0;
   const ySplit = (built.headerRowIndex || 0) + 1;
-  ws['!cols'] = statementColumnWidths(includeCategory);
+  ws['!cols'] = statementColumnWidths(extraCols);
   ws['!views'] = [
     {
       state: 'frozen',
@@ -488,14 +539,15 @@ function applyStatementSheetView(ws, built) {
   ];
   ws['!merges'] = [
     { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } },
-    { s: { r: 0, c: 4 }, e: { r: 0, c: includeCategory ? 8 : 6 } }
+    { s: { r: 0, c: 4 }, e: { r: 0, c: 6 + extraCols } }
   ];
   applyAmountFormats(ws, built.dataStart, built.dataEnd, [4, 5, 6]);
   applyAmountFormats(ws, 11, 11, [4]);
 }
 
 function buildStatementWorkbook(rows, accountsById, meta = {}, opts = {}) {
-  const includeCategory = !!opts.includeCategory;
+  const includePayee = !!opts.includeCategory;
+  const sheetOpts = { includeCategoryLevels: true, includePayee };
   const wb = XLSX.utils.book_new();
   const groups = groupRowsByAccount(rows, accountsById);
   if (!groups.length) {
@@ -504,7 +556,7 @@ function buildStatementWorkbook(rows, accountsById, meta = {}, opts = {}) {
       [],
       meta,
       1,
-      { includeCategory, accountCount: 1 }
+      { ...sheetOpts, accountCount: 1 }
     );
     const ws = XLSX.utils.aoa_to_sheet(built.aoa);
     applyStatementSheetView(ws, built);
@@ -519,7 +571,7 @@ function buildStatementWorkbook(rows, accountsById, meta = {}, opts = {}) {
       }
       used.add(name);
       const built = buildStatementAoA(g.account, g.rows, meta, i + 1, {
-        includeCategory,
+        ...sheetOpts,
         accountCount: groups.length
       });
       const ws = XLSX.utils.aoa_to_sheet(built.aoa);
@@ -546,7 +598,7 @@ function buildStatementWorkbook(rows, accountsById, meta = {}, opts = {}) {
     { key: 'row_count', value: rows.length },
     { key: 'truncated', value: meta.truncated ? '1' : '0' },
     { key: 'apply_filters', value: meta.apply_filters ? '1' : '0' },
-    { key: 'include_category', value: includeCategory ? '1' : '0' },
+    { key: 'include_category', value: includePayee ? '1' : '0' },
     { key: 'format', value: 'portfolio_bank_transactions_v1' },
     { key: 'layout', value: 'statement' }
   ];
@@ -624,17 +676,22 @@ function drawStatementPage(doc, account, rows, meta, pageNo, isFirst, opts = {})
 
   y = 210;
   const cols = [
-    { key: 'date', label: 'Date', w: includeCategory ? 46 : 48 },
-    { key: 'narration', label: 'Narration', w: includeCategory ? 128 : 170 },
-    { key: 'ref', label: 'Chq./Ref.No.', w: includeCategory ? 70 : 78 },
-    { key: 'value', label: 'Value Dt', w: includeCategory ? 46 : 48 },
-    { key: 'wd', label: 'Withdrawal', w: includeCategory ? 58 : 62 },
-    { key: 'dep', label: 'Deposit', w: includeCategory ? 54 : 58 },
-    { key: 'bal', label: 'Closing Balance', w: includeCategory ? 64 : 70 }
+    { key: 'date', label: 'Date', w: includeCategory ? 42 : 48 },
+    { key: 'narration', label: 'Narration', w: includeCategory ? 110 : 170 },
+    { key: 'ref', label: 'Chq./Ref.No.', w: includeCategory ? 62 : 78 },
+    { key: 'value', label: 'Value Dt', w: includeCategory ? 42 : 48 },
+    { key: 'wd', label: 'Withdrawal', w: includeCategory ? 52 : 62 },
+    { key: 'dep', label: 'Deposit', w: includeCategory ? 48 : 58 },
+    { key: 'bal', label: 'Closing Balance', w: includeCategory ? 56 : 70 }
   ];
   if (includeCategory) {
-    cols.push({ key: 'cat', label: 'Category', w: 78 });
-    cols.push({ key: 'payee', label: 'Payee', w: 70 });
+    cols.push(
+      { key: 'cat', label: 'Category', w: 52 },
+      { key: 'sub', label: 'Sub category', w: 56 },
+      { key: 'sub2', label: 'Sub cat. 2', w: 52 },
+      { key: 'sub3', label: 'Sub cat. 3', w: 52 },
+      { key: 'payee', label: 'Payee', w: 58 }
+    );
   }
   const tableWidth = cols.reduce((a, c) => a + c.w, 0);
   const minRowH = 12;
@@ -656,7 +713,7 @@ function drawStatementPage(doc, account, rows, meta, pageNo, isFirst, opts = {})
     for (const c of cols) {
       doc.text(c.label, hx + 2, y + 5, {
         width: c.w - 4,
-        align: c.key === 'narration' || c.key === 'cat' || c.key === 'payee' ? 'left' : 'center'
+        align: c.key === 'narration' || c.key === 'cat' || c.key === 'sub' || c.key === 'sub2' || c.key === 'sub3' || c.key === 'payee' ? 'left' : 'center'
       });
       hx += c.w;
     }
@@ -719,7 +776,7 @@ function drawStatementPage(doc, account, rows, meta, pageNo, isFirst, opts = {})
     '',
     '',
     fmtAmt(s.opening),
-    ...(includeCategory ? ['', ''] : [])
+    ...(includeCategory ? extraStatementCells({ includeCategoryLevels: true, includePayee: true }) : [])
   ]);
 
   for (const r of s.rows) {
@@ -733,7 +790,11 @@ function drawStatementPage(doc, account, rows, meta, pageNo, isFirst, opts = {})
       r.balance != null && r.balance !== '' ? fmtAmt(r.balance) : ''
     ];
     if (includeCategory) {
-      cells.push(String(r.category || '').slice(0, 28), String(r.payee || '').slice(0, 24));
+      cells.push(
+        ...extraStatementCells({ includeCategoryLevels: true, includePayee: true }, r.category, r.payee).map((v) =>
+          String(v || '').slice(0, 28)
+        )
+      );
     }
     drawRow(cells);
   }
@@ -837,7 +898,7 @@ function buildStatementCsv(rows, accountsById, meta = {}, opts = {}) {
     'Deposit Amt.',
     'Closing Balance'
   ];
-  if (includeCategory) headers.push('Category', 'Payee');
+  if (includeCategory) headers.push(...CATEGORY_LEVEL_LABELS, 'Payee');
   const lines = [];
   const list = groups.length
     ? groups
@@ -853,6 +914,7 @@ function buildStatementCsv(rows, accountsById, meta = {}, opts = {}) {
       `# From ${s.from || ''} To ${s.to || ''} | Opening ${s.opening} | Closing ${s.closing} | Dr ${s.drCount} | Cr ${s.crCount}`
     );
     lines.push(headers.map(csvCell).join(','));
+    const extraOpts = { includeCategoryLevels: includeCategory, includePayee: includeCategory };
     const opening = [
       s.from || '',
       'OPENING BALANCE',
@@ -860,9 +922,9 @@ function buildStatementCsv(rows, accountsById, meta = {}, opts = {}) {
       '',
       '',
       '',
-      s.opening
+      s.opening,
+      ...extraStatementCells(extraOpts)
     ];
-    if (includeCategory) opening.push('', '');
     lines.push(opening.map(csvCell).join(','));
     for (const r of s.rows) {
       const row = [
@@ -872,13 +934,12 @@ function buildStatementCsv(rows, accountsById, meta = {}, opts = {}) {
         normalizeDate(r.value_date || r.txn_date) || '',
         num(r.withdrawal) > 0 ? num(r.withdrawal) : '',
         num(r.deposit) > 0 ? num(r.deposit) : '',
-        r.balance != null && r.balance !== '' ? num(r.balance) : ''
+        r.balance != null && r.balance !== '' ? num(r.balance) : '',
+        ...extraStatementCells(extraOpts, r.category, r.payee)
       ];
-      if (includeCategory) row.push(r.category || '', r.payee || '');
       lines.push(row.map(csvCell).join(','));
     }
-    const total = ['', 'TOTAL', '', '', s.totalDebit, s.totalCredit, s.closing];
-    if (includeCategory) total.push('', '');
+    const total = ['', 'TOTAL', '', '', s.totalDebit, s.totalCredit, s.closing, ...extraStatementCells(extraOpts)];
     lines.push(total.map(csvCell).join(','));
   });
   return `\uFEFF${lines.join('\r\n')}`;

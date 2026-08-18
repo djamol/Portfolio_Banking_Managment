@@ -154,7 +154,8 @@
     <h3>Export bank statement</h3>
     <p class="hint">
       Full statement includes every transaction (including transfers) so opening/closing balances match the bank.
-      XLS also has a Summary sheet and a <code>BackupData</code> sheet for re-import.
+      XLS splits category into <code>Category</code> / <code>Sub category</code> / <code>Sub category 2</code> / <code>Sub category 3</code>
+      (e.g. Expense → Food → Grocery). Backup sheet keeps the full <code>category</code> value for re-import.
     </p>
     <div class="form-grid">
       <div class="form-group">
@@ -182,8 +183,8 @@
     <label class="adv-check" style="margin-bottom: 8px;">
       <input type="checkbox" [(ngModel)]="exportIncludeCategory" />
       <span>
-        <strong>Include category &amp; payee columns</strong>
-        <small>Adds extra columns on XLS / PDF / CSV. PDF switches to landscape.</small>
+        <strong>Also include payee (PDF/CSV category split too)</strong>
+        <small>XLS already has split category columns. This adds Payee on XLS, and category levels + payee on PDF/CSV.</small>
       </span>
     </label>
     <label class="adv-check" style="margin-bottom: 8px;">
