@@ -15,6 +15,24 @@ import { BankingAnalyticsState } from '../shared/banking-analytics-state.service
 import { BankingContextService } from '../shared/banking-context.service';
 import { BankingFilterState } from '../shared/banking-filter-state.service';
 
+type ForecastOutflow = {
+  payee?: string;
+  amount?: number;
+  next_expected?: string;
+  category?: string | null;
+};
+
+type ForecastResponse = {
+  projected_next_month?: {
+    month?: string;
+    avg_credit?: number;
+    avg_debit?: number;
+    net?: number;
+    projected_interest?: number;
+  };
+  upcoming_outflows?: ForecastOutflow[];
+};
+
 @Component({
   selector: 'app-banking-overview',
   templateUrl: './banking-overview.component.html',
@@ -24,7 +42,7 @@ import { BankingFilterState } from '../shared/banking-filter-state.service';
 export class BankingOverviewComponent implements OnInit, OnDestroy {
   budgets: BankBudget[] = [];
   budgetMonth = new Date().toISOString().slice(0, 7);
-  forecast: any = null;
+  forecast: ForecastResponse | null = null;
   budgetForm: BankBudget = {
     category: '',
     amount: 0,
@@ -63,6 +81,10 @@ export class BankingOverviewComponent implements OnInit, OnDestroy {
     this.analyticsState.loadCashSummary();
     this.loadBudgets();
     this.loadForecast();
+  }
+
+  get upcomingOutflows(): ForecastOutflow[] {
+    return (this.forecast?.upcoming_outflows || []).slice(0, 5);
   }
 
   loadForecast() {

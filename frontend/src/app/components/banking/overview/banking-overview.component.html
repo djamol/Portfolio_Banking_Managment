@@ -45,12 +45,12 @@
           <div class="stat-value">₹{{ formatMoney(forecast.projected_next_month.projected_interest) }}</div>
         </div>
       </div>
-      <table class="data-table compact" *ngIf="forecast.upcoming_outflows?.length">
+      <table class="data-table compact" *ngIf="upcomingOutflows.length">
         <thead>
           <tr><th>Upcoming outflow</th><th>Amount</th><th>Expected</th><th>Category</th></tr>
         </thead>
         <tbody>
-          <tr *ngFor="let u of forecast.upcoming_outflows | slice:0:5">
+          <tr *ngFor="let u of upcomingOutflows">
             <td>{{ u.payee }}</td>
             <td class="debit">₹{{ formatMoney(u.amount) }}</td>
             <td>{{ u.next_expected }}</td>
