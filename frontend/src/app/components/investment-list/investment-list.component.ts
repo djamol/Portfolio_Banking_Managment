@@ -1,4 +1,5 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, HostListener, OnInit } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
 import { AnalyticsService } from '../../services/analytics.service';
 import { CategoryService, SubTypeName, Category } from '../../services/category.service';
@@ -7,6 +8,7 @@ import { INVESTMENT_TYPES, INVESTMENT_SUB_TYPES } from '../../constants/investme
 import { hasMultiSelectFilter, matchesMultiSelect, pruneSelections } from '../../utils/advanced-filter.util';
 import { matchesPlatformFilter } from '../../utils/ignore-platform.util';
 import { getApiDomain } from '../../utils/api-url.util';
+import { formatIndianFull, getIndianAmountBreakdown } from '../../utils/indian-number.util';
 
 @Component({
   selector: 'app-investment-list',
@@ -29,16 +31,26 @@ export class InvestmentListComponent implements OnInit {
   selectedPlatforms: string[] = [];
   minAmount: number | null = null;
   maxAmount: number | null = null;
+  dateFrom: string = '';
+  dateTo: string = '';
   ignoreZeroAmount = false;
   showAdvancedFilters = false;
   sortBy: string = 'investment_date';
   sortDirection: 'asc' | 'desc' = 'desc';
+  selectedIds = new Set<number>();
+  flashMessage = '';
+  flashType: 'success' | 'error' | 'info' = 'info';
+  saving = false;
+  bulkWorking = false;
+  originalEditDate = '';
+  duplicateMatches: any[] = [];
 
   // Pagination properties
   currentPage: number = 1;
   itemsPerPage: number = 10;
   totalPages: number = 0;
   paginatedData: any[] = [];
+  visiblePageNumbers: number[] = [];
 
   // Unique values for filters
   investmentTypes: string[] = INVESTMENT_TYPES;
@@ -134,6 +146,7 @@ export class InvestmentListComponent implements OnInit {
             investment_date: new Date(item.investment_date),
             history_count: item.history_count || 0
           }));
+          this.selectedIds = new Set();
           this.extractFilterOptions();
           this.applyFilters();
         }
@@ -183,8 +196,13 @@ export class InvestmentListComponent implements OnInit {
       hasMultiSelectFilter(this.selectedCategories) ||
       hasMultiSelectFilter(this.selectedPlatforms) ||
       this.isPriceFilterActive() ||
+      this.isDateFilterActive() ||
       this.ignoreZeroAmount
     );
+  }
+
+  isDateFilterActive(): boolean {
+    return !!(this.dateFrom || this.dateTo);
   }
 
   isPriceFilterActive(): boolean {
@@ -209,12 +227,13 @@ export class InvestmentListComponent implements OnInit {
       const searchStr = this.searchTerm.toLowerCase();
       return (
         !this.searchTerm ||
-        item.website_app_name.toLowerCase().includes(searchStr) ||
-        item.investment_type.toLowerCase().includes(searchStr) ||
+        (item.website_app_name || '').toLowerCase().includes(searchStr) ||
+        (item.investment_type || '').toLowerCase().includes(searchStr) ||
         (item.sub_type_name && item.sub_type_name.toLowerCase().includes(searchStr)) ||
         (item.sub_type_category && item.sub_type_category.toLowerCase().includes(searchStr)) ||
+        (item.notes && item.notes.toLowerCase().includes(searchStr)) ||
         item.amount.toString().includes(searchStr) ||
-        item.investment_date.toISOString().toLowerCase().includes(searchStr)
+        this.toLocalYmd(item.investment_date).includes(searchStr)
       );
     });
 
@@ -250,6 +269,13 @@ export class InvestmentListComponent implements OnInit {
       result = result.filter(item => item.amount <= this.maxAmount!);
     }
 
+    if (this.dateFrom) {
+      result = result.filter(item => this.toLocalYmd(item.investment_date) >= this.dateFrom);
+    }
+    if (this.dateTo) {
+      result = result.filter(item => this.toLocalYmd(item.investment_date) <= this.dateTo);
+    }
+
     // Apply sorting
     result.sort((a, b) => {
       let comparison = 0;
@@ -279,6 +305,7 @@ export class InvestmentListComponent implements OnInit {
     });
 
     this.filteredInvestments = result;
+    this.pruneSelectionToFiltered();
     this.calculatePagination();
     this.updatePaginatedData();
   }
@@ -288,6 +315,7 @@ export class InvestmentListComponent implements OnInit {
     if (this.currentPage > this.totalPages && this.totalPages > 0) {
       this.currentPage = this.totalPages;
     }
+    this.visiblePageNumbers = this.computeVisiblePages();
   }
 
   updatePaginatedData() {
@@ -299,6 +327,7 @@ export class InvestmentListComponent implements OnInit {
   onPageChange(page: number) {
     if (page >= 1 && page <= this.totalPages) {
       this.currentPage = page;
+      this.visiblePageNumbers = this.computeVisiblePages();
       this.updatePaginatedData();
     }
   }
@@ -344,6 +373,8 @@ export class InvestmentListComponent implements OnInit {
     this.selectedPlatforms = [];
     this.minAmount = null;
     this.maxAmount = null;
+    this.dateFrom = '';
+    this.dateTo = '';
     this.ignoreZeroAmount = false;
     this.sortBy = 'investment_date';
     this.sortDirection = 'desc';
@@ -359,11 +390,13 @@ export class InvestmentListComponent implements OnInit {
       sub_type_name: '',
       sub_type_category: '',
       amount: 0,
-      investment_date: new Date().toISOString().split('T')[0],
+      investment_date: this.todayYmd(),
       notes: ''
     };
     this.isEditing = false;
     this.showModal = true;
+    this.originalEditDate = '';
+    this.duplicateMatches = [];
     
     // Reset dynamic options
     this.investmentSubTypes = [];
@@ -375,12 +408,14 @@ export class InvestmentListComponent implements OnInit {
   }
 
   openEditModal(investment: any) {
+    this.originalEditDate = this.toLocalYmd(investment.investment_date);
     this.currentInvestment = {
       ...investment,
-      investment_date: new Date().toISOString().split('T')[0]  // Auto-set to current date when editing
+      investment_date: this.originalEditDate || this.todayYmd()
     };
     this.isEditing = true;
     this.showModal = true;
+    this.duplicateMatches = [];
     
     // Load sub-types and categories for the selected investment type
     if (investment.investment_type) {
@@ -560,49 +595,66 @@ export class InvestmentListComponent implements OnInit {
 
   closePopup() {
     this.showModal = false;
+    this.saving = false;
+    this.duplicateMatches = [];
+    this.originalEditDate = '';
   }
 
   onSubmit() {
+    if (this.saving) return;
+    this.refreshDuplicateWarning();
+    this.saving = true;
+    const payload = {
+      ...this.currentInvestment,
+      notes: this.currentInvestment.notes || null
+    };
     if (this.isEditing && this.currentInvestment.id) {
-      this.investmentService.update(this.currentInvestment.id, this.currentInvestment).subscribe({
+      this.investmentService.update(this.currentInvestment.id, payload).subscribe({
         next: () => {
           this.closePopup();
-          // Reload investments to get updated data including history count
+          this.showFlash('Investment updated.', 'success');
           this.loadInvestments();
         },
         error: (error) => {
           console.error('Error updating investment:', error);
           this.errorMessage = 'Failed to update investment. ' + (error.message || '');
+          this.saving = false;
         }
       });
     } else {
-      this.investmentService.create(this.currentInvestment).subscribe({
+      this.investmentService.create(payload).subscribe({
         next: () => {
           this.closePopup();
-          // Reload investments to get updated data including history count
+          this.showFlash('Investment added.', 'success');
           this.loadInvestments();
         },
         error: (error) => {
           console.error('Error creating investment:', error);
           this.errorMessage = 'Failed to create investment. ' + (error.message || '');
+          this.saving = false;
         }
       });
     }
   }
 
-  deleteInvestment(id: number) {
-    if (confirm('Are you sure you want to delete this investment?')) {
-      this.investmentService.delete(id).subscribe({
-        next: () => {
-          this.investments = this.investments.filter(item => item.id !== id);
-          this.applyFilters(); // Reapply filters to update the display
-        },
-        error: (error) => {
-          console.error('Error deleting investment:', error);
-          this.errorMessage = 'Failed to delete investment. ' + (error.message || '');
-        }
-      });
+  deleteInvestment(investment: any) {
+    const label = this.holdingLabel(investment);
+    if (!confirm(`Delete ${label} (${this.formatInr(investment.amount)})?`)) {
+      return;
     }
+    this.investmentService.delete(investment.id).subscribe({
+      next: () => {
+        this.investments = this.investments.filter(item => item.id !== investment.id);
+        this.selectedIds.delete(investment.id);
+        this.selectedIds = new Set(this.selectedIds);
+        this.showFlash('Investment deleted.', 'success');
+        this.applyFilters();
+      },
+      error: (error) => {
+        console.error('Error deleting investment:', error);
+        this.errorMessage = 'Failed to delete investment. ' + (error.message || '');
+      }
+    });
   }
 
   viewHistory(investment: any) {
@@ -688,7 +740,8 @@ export class InvestmentListComponent implements OnInit {
   }
 
   formatDate(date: Date): string {
-    return date.toLocaleDateString('en-US', {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString('en-IN', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
@@ -718,5 +771,286 @@ export class InvestmentListComponent implements OnInit {
     const historyCount = investment.history_count || 0;
     
     return `📜 ${historyCount}`;
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape() {
+    if (this.showHistoryModal) {
+      this.closeHistoryModal();
+    } else if (this.showModal) {
+      this.closePopup();
+    }
+  }
+
+  todayYmd(): string {
+    return this.toLocalYmd(new Date());
+  }
+
+  toLocalYmd(date: Date | string | null | undefined): string {
+    if (!date) return '';
+    const d = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(d.getTime())) return '';
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  useTodayDate() {
+    this.currentInvestment.investment_date = this.todayYmd();
+  }
+
+  holdingLabel(investment: any): string {
+    const parts = [
+      investment.website_app_name,
+      investment.sub_type_name || investment.investment_type,
+      investment.sub_type_category
+    ].filter(Boolean);
+    return parts.join(' · ');
+  }
+
+  formatInr(value: number): string {
+    return `₹${formatIndianFull(Number(value) || 0)}`;
+  }
+
+  formatInrCompact(value: number): string {
+    return getIndianAmountBreakdown(Number(value) || 0).primaryDisplay;
+  }
+
+  get filteredTotalAmount(): number {
+    return this.filteredInvestments.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  }
+
+  get portfolioTotalAmount(): number {
+    return this.investments.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  }
+
+  get filteredAverageAmount(): number {
+    if (!this.filteredInvestments.length) return 0;
+    return this.filteredTotalAmount / this.filteredInvestments.length;
+  }
+
+  get selectedInvestments(): any[] {
+    return this.filteredInvestments.filter(item => this.selectedIds.has(item.id));
+  }
+
+  get selectedTotalAmount(): number {
+    return this.selectedInvestments.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  }
+
+  amountShare(amount: number): number {
+    if (!this.filteredTotalAmount) return 0;
+    return (Number(amount) || 0) / this.filteredTotalAmount * 100;
+  }
+
+  get typeSummaries(): { type: string; count: number; total: number }[] {
+    const map = new Map<string, { count: number; total: number }>();
+    for (const item of this.investments) {
+      const type = item.investment_type || 'Other';
+      const current = map.get(type) || { count: 0, total: 0 };
+      current.count += 1;
+      current.total += Number(item.amount) || 0;
+      map.set(type, current);
+    }
+    return [...map.entries()]
+      .map(([type, stats]) => ({ type, ...stats }))
+      .sort((a, b) => b.total - a.total);
+  }
+
+  toggleTypeChip(type: string) {
+    if (this.selectedTypes.includes(type)) {
+      this.selectedTypes = this.selectedTypes.filter(item => item !== type);
+    } else {
+      this.selectedTypes = [...this.selectedTypes, type];
+    }
+    this.onAdvancedTypeChange();
+  }
+
+  isSelected(id: number): boolean {
+    return this.selectedIds.has(id);
+  }
+
+  toggleSelect(id: number) {
+    const next = new Set(this.selectedIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    this.selectedIds = next;
+  }
+
+  get allPageSelected(): boolean {
+    return this.paginatedData.length > 0 && this.paginatedData.every(item => this.selectedIds.has(item.id));
+  }
+
+  get somePageSelected(): boolean {
+    return this.paginatedData.some(item => this.selectedIds.has(item.id)) && !this.allPageSelected;
+  }
+
+  toggleSelectPage(selected: boolean) {
+    const next = new Set(this.selectedIds);
+    for (const item of this.paginatedData) {
+      if (selected) {
+        next.add(item.id);
+      } else {
+        next.delete(item.id);
+      }
+    }
+    this.selectedIds = next;
+  }
+
+  selectFiltered() {
+    this.selectedIds = new Set(this.filteredInvestments.map(item => item.id));
+  }
+
+  clearSelection() {
+    this.selectedIds = new Set();
+  }
+
+  private pruneSelectionToFiltered() {
+    if (!this.selectedIds.size) return;
+    const allowed = new Set(this.filteredInvestments.map(item => item.id));
+    const next = new Set<number>();
+    this.selectedIds.forEach(id => {
+      if (allowed.has(id)) next.add(id);
+    });
+    this.selectedIds = next;
+  }
+
+  async bulkDeleteSelected() {
+    const count = this.selectedIds.size;
+    if (!count || this.bulkWorking) return;
+    if (!confirm(`Delete ${count} selected investment${count === 1 ? '' : 's'}? This cannot be undone.`)) {
+      return;
+    }
+    this.bulkWorking = true;
+    const ids = [...this.selectedIds];
+    let deleted = 0;
+    try {
+      for (const id of ids) {
+        await firstValueFrom(this.investmentService.delete(id));
+        deleted += 1;
+      }
+      this.showFlash(`Deleted ${deleted} investment${deleted === 1 ? '' : 's'}.`, 'success');
+      this.selectedIds = new Set();
+      this.loadInvestments();
+    } catch (error: any) {
+      console.error('Error bulk deleting investments:', error);
+      this.errorMessage = 'Failed to delete some investments. ' + (error?.message || '');
+      this.loadInvestments();
+    } finally {
+      this.bulkWorking = false;
+    }
+  }
+
+  openCloneModal(investment: any) {
+    this.currentInvestment = {
+      id: null,
+      website_app_name: investment.website_app_name,
+      investment_type: investment.investment_type,
+      sub_type_name: investment.sub_type_name || '',
+      sub_type_category: investment.sub_type_category || '',
+      amount: investment.amount,
+      investment_date: this.todayYmd(),
+      notes: investment.notes || ''
+    };
+    this.isEditing = false;
+    this.showModal = true;
+    this.originalEditDate = '';
+    this.showNewSubTypeInput = false;
+    this.showNewCategoryInput = false;
+    this.newSubType = '';
+    this.newCategory = '';
+    if (investment.investment_type) {
+      this.onInvestmentTypeChange().then(() => {
+        this.currentInvestment.sub_type_name = investment.sub_type_name || '';
+        this.currentInvestment.sub_type_category = investment.sub_type_category || '';
+        this.refreshDuplicateWarning();
+      });
+    }
+  }
+
+  refreshDuplicateWarning() {
+    const platform = (this.currentInvestment.website_app_name || '').trim().toLowerCase();
+    const type = this.currentInvestment.investment_type;
+    const subType = (this.currentInvestment.sub_type_name || '').trim().toLowerCase();
+    const category = (this.currentInvestment.sub_type_category || '').trim().toLowerCase();
+    if (!platform || !type) {
+      this.duplicateMatches = [];
+      return;
+    }
+    this.duplicateMatches = this.investments.filter(item => {
+      if (this.isEditing && item.id === this.currentInvestment.id) return false;
+      return (item.website_app_name || '').trim().toLowerCase() === platform
+        && item.investment_type === type
+        && (item.sub_type_name || '').trim().toLowerCase() === subType
+        && (item.sub_type_category || '').trim().toLowerCase() === category;
+    });
+  }
+
+  exportFilteredCsv() {
+    if (!this.filteredInvestments.length) return;
+    const headers = [
+      'Platform',
+      'Type',
+      'Sub Type',
+      'Category',
+      'Amount',
+      'Percent of Filtered',
+      'Investment Date',
+      'Notes'
+    ];
+    const lines = this.filteredInvestments.map(item => [
+      this.csvEscape(item.website_app_name || ''),
+      this.csvEscape(item.investment_type || ''),
+      this.csvEscape(item.sub_type_name || ''),
+      this.csvEscape(item.sub_type_category || ''),
+      Number(item.amount || 0).toFixed(2),
+      this.amountShare(item.amount).toFixed(2),
+      this.toLocalYmd(item.investment_date),
+      this.csvEscape(item.notes || '')
+    ].join(','));
+    const csv = [headers.join(','), ...lines].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `investments-${this.todayYmd()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  private csvEscape(value: string): string {
+    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+      return `"${value.replace(/"/g, '""')}"`;
+    }
+    return value;
+  }
+
+  private computeVisiblePages(): number[] {
+    const pages: number[] = [];
+    if (this.totalPages < 1) return pages;
+    const windowSize = 2;
+    const start = Math.max(1, this.currentPage - windowSize);
+    const end = Math.min(this.totalPages, this.currentPage + windowSize);
+    for (let page = start; page <= end; page++) {
+      pages.push(page);
+    }
+    return pages;
+  }
+
+  trackById(_index: number, item: any): number {
+    return item.id;
+  }
+
+  showFlash(message: string, type: 'success' | 'error' | 'info') {
+    this.flashMessage = message;
+    this.flashType = type;
+    setTimeout(() => {
+      if (this.flashMessage === message) {
+        this.flashMessage = '';
+      }
+    }, 4000);
   }
 }

@@ -1,15 +1,68 @@
 <div class="investment-list-container">
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 12px; flex-wrap: wrap;">
-    <h2 style="margin: 0;">Investment Portfolio</h2>
-    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+  <div class="page-header">
+    <div>
+      <h2>Investment Portfolio</h2>
+      <p class="page-subtitle" *ngIf="!loading">{{ investments.length }} holdings · {{ formatInrCompact(portfolioTotalAmount) }}</p>
+    </div>
+    <div class="header-actions">
+      <button type="button" class="btn btn-outline-secondary" (click)="loadInvestments()" [disabled]="loading">Refresh</button>
+      <button type="button" class="btn btn-outline-secondary" (click)="exportFilteredCsv()" [disabled]="!filteredInvestments.length">Export CSV</button>
       <a routerLink="/investments/new" class="btn btn-secondary">Full form</a>
       <button (click)="openAddModal()" class="btn btn-primary">Add Investment</button>
     </div>
   </div>
 
-  <div *ngIf="errorMessage" style="background: #fee; color: #c33; padding: 12px; border-radius: 6px; margin-bottom: 20px;">
+  <div *ngIf="errorMessage" class="banner banner-error">
     <strong>Error:</strong> {{ errorMessage }}<br>
     <small>Make sure the backend is reachable at {{ apiDomain }}</small>
+  </div>
+
+  <div *ngIf="flashMessage" class="banner" [class.banner-success]="flashType === 'success'" [class.banner-info]="flashType === 'info'" [class.banner-error]="flashType === 'error'">
+    {{ flashMessage }}
+  </div>
+
+  <div class="summary-cards" *ngIf="!loading">
+    <div class="summary-card">
+      <span class="summary-label">Filtered holdings</span>
+      <span class="summary-value">{{ filteredInvestments.length }}</span>
+    </div>
+    <div class="summary-card">
+      <span class="summary-label">Filtered total</span>
+      <span class="summary-value" [title]="formatInr(filteredTotalAmount)">{{ formatInrCompact(filteredTotalAmount) }}</span>
+      <span class="summary-sub">{{ formatInr(filteredTotalAmount) }}</span>
+    </div>
+    <div class="summary-card">
+      <span class="summary-label">Average</span>
+      <span class="summary-value">{{ formatInrCompact(filteredAverageAmount) }}</span>
+    </div>
+    <div class="summary-card" *ngIf="hasActiveAdvancedFilters() || searchTerm">
+      <span class="summary-label">Share of portfolio</span>
+      <span class="summary-value">{{ portfolioTotalAmount ? (filteredTotalAmount / portfolioTotalAmount * 100 | number:'1.1-1') : 0 }}%</span>
+    </div>
+    <div class="summary-card" *ngIf="selectedIds.size">
+      <span class="summary-label">Selected {{ selectedIds.size }}</span>
+      <span class="summary-value">{{ formatInrCompact(selectedTotalAmount) }}</span>
+    </div>
+  </div>
+
+  <div class="type-chips" *ngIf="!loading && typeSummaries.length">
+    <button
+      type="button"
+      class="type-chip"
+      [class.active]="!selectedTypes.length"
+      (click)="selectedTypes = []; onAdvancedTypeChange()">
+      All
+    </button>
+    <button
+      type="button"
+      class="type-chip"
+      *ngFor="let summary of typeSummaries"
+      [class.active]="selectedTypes.includes(summary.type)"
+      (click)="toggleTypeChip(summary.type)"
+      [title]="formatInr(summary.total)">
+      {{ summary.type }}
+      <span class="chip-meta">{{ summary.count }} · {{ formatInrCompact(summary.total) }}</span>
+    </button>
   </div>
 
   <!-- Controls Section -->
@@ -18,7 +71,7 @@
     <div class="search-box">
       <input 
         type="text" 
-        placeholder="Search investments..." 
+        placeholder="Search platform, type, scheme, notes..." 
         [(ngModel)]="searchTerm" 
         (input)="onSearchChange()"
         class="search-input">
@@ -44,6 +97,8 @@
             <option [value]="10">10</option>
             <option [value]="20">20</option>
             <option [value]="50">50</option>
+            <option [value]="100">100</option>
+            <option [value]="1000">All</option>
           </select>
         </label>
       </div>
@@ -112,6 +167,15 @@
         </div>
       </div>
 
+      <div class="advanced-filter-group">
+        <label>Date Range</label>
+        <div class="price-range-inputs">
+          <input type="date" [(ngModel)]="dateFrom" (change)="onFilterChange()" class="price-input">
+          <span class="price-range-separator">to</span>
+          <input type="date" [(ngModel)]="dateTo" (change)="onFilterChange()" class="price-input">
+        </div>
+      </div>
+
       <div class="advanced-filter-group checkbox-group">
         <label class="checkbox-label">
           <input
@@ -130,10 +194,22 @@
   </div>
 
   <!-- Results Info and Pagination -->
-  <div class="results-info" *ngIf="!loading">
-    Showing {{ (currentPage - 1) * itemsPerPage + 1 }} to 
-    {{ getMin(currentPage * itemsPerPage, filteredInvestments.length) }} of 
-    {{ filteredInvestments.length }} investments
+  <div class="results-bar" *ngIf="!loading">
+    <div class="results-info">
+      <ng-container *ngIf="filteredInvestments.length">
+        Showing {{ (currentPage - 1) * itemsPerPage + 1 }} to
+        {{ getMin(currentPage * itemsPerPage, filteredInvestments.length) }} of
+        {{ filteredInvestments.length }} investments
+      </ng-container>
+      <ng-container *ngIf="!filteredInvestments.length">No matching investments</ng-container>
+    </div>
+    <div class="bulk-bar" *ngIf="filteredInvestments.length">
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="selectFiltered()">Select filtered</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="clearSelection()" [disabled]="!selectedIds.size">Clear selection</button>
+      <button type="button" class="btn btn-sm btn-outline-danger" (click)="bulkDeleteSelected()" [disabled]="!selectedIds.size || bulkWorking">
+        {{ bulkWorking ? 'Deleting…' : 'Delete selected (' + selectedIds.size + ')' }}
+      </button>
+    </div>
   </div>
 
   <!-- Table -->
@@ -141,6 +217,14 @@
     <table class="investment-table">
       <thead>
         <tr>
+          <th class="col-check">
+            <input
+              type="checkbox"
+              [ngModel]="allPageSelected"
+              (ngModelChange)="toggleSelectPage($event)"
+              [indeterminate]="somePageSelected"
+              title="Select this page">
+          </th>
           <th (click)="onSort('website_app_name')" class="sortable">
             Platform <span class="sort-icon">{{ getSortIcon('website_app_name') }}</span>
           </th>
@@ -153,54 +237,99 @@
           <th (click)="onSort('sub_type_category')" class="sortable">
             Category <span class="sort-icon">{{ getSortIcon('sub_type_category') }}</span>
           </th>
-          <th (click)="onSort('amount')" class="sortable">
-            Amount (₹) <span class="sort-icon">{{ getSortIcon('amount') }}</span>
+          <th (click)="onSort('amount')" class="sortable num">
+            Amount <span class="sort-icon">{{ getSortIcon('amount') }}</span>
           </th>
           <th (click)="onSort('investment_date')" class="sortable">
             Date <span class="sort-icon">{{ getSortIcon('investment_date') }}</span>
           </th>
+          <th>Notes</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody>
-        <tr *ngFor="let investment of paginatedData; let i = index" [class.even-row]="i % 2 === 0" [class.odd-row]="i % 2 !== 0">
+        <tr
+          *ngFor="let investment of paginatedData; trackBy: trackById"
+          [class.row-zero]="investment.amount === 0"
+          [class.row-selected]="isSelected(investment.id)">
+          <td class="col-check">
+            <input type="checkbox" [ngModel]="isSelected(investment.id)" (ngModelChange)="toggleSelect(investment.id)">
+          </td>
           <td>{{ investment.website_app_name }}</td>
           <td>{{ investment.investment_type }}</td>
           <td>{{ investment.sub_type_name || '-' }}</td>
           <td>{{ investment.sub_type_category || '-' }}</td>
-          <td>{{ investment.amount | number:'1.2-2' }}</td>
+          <td class="num amount-cell">
+            <span>{{ formatInr(investment.amount) }}</span>
+            <small class="amount-share">{{ amountShare(investment.amount) | number:'1.1-1' }}%</small>
+          </td>
           <td>{{ formatDate(investment.investment_date) }}</td>
-          <td>
+          <td class="notes-cell" [title]="investment.notes || ''">{{ investment.notes || '—' }}</td>
+          <td class="actions-cell">
             <button (click)="openEditModal(investment)" class="btn btn-sm btn-outline-primary">Edit</button>
-            <a [routerLink]="['/investments/edit', investment.id]" class="btn btn-sm btn-outline-secondary" style="margin-left: 5px;">Full form</a>
-            <button (click)="deleteInvestment(investment.id)" class="btn btn-sm btn-outline-danger" style="margin-left: 5px;">Delete</button>
-            <button 
-              (click)="viewHistory(investment)" 
+            <button (click)="openCloneModal(investment)" class="btn btn-sm btn-outline-secondary">Clone</button>
+            <button
+              (click)="viewHistory(investment)"
               [ngClass]="getHistoryButtonClass(investment)"
-              [title]="'View History'"
-              style="margin-left: 5px;"
+              title="View history"
               [disabled]="historyLoading">
               {{ getHistoryButtonText(investment) }}
             </button>
+            <a [routerLink]="['/investments/edit', investment.id]" class="btn btn-sm btn-outline-secondary">Form</a>
+            <button (click)="deleteInvestment(investment)" class="btn btn-sm btn-outline-danger">Delete</button>
           </td>
         </tr>
       </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="5" class="totals-label">Filtered total</td>
+          <td class="num">{{ formatInr(filteredTotalAmount) }}</td>
+          <td colspan="3"></td>
+        </tr>
+      </tfoot>
     </table>
   </div>
 
   <!-- Pagination Controls -->
-  <div class="pagination-controls" *ngIf="!loading && paginatedData.length > 0">
-    <button 
-      (click)="onPageChange(currentPage - 1)" 
+  <div class="pagination-controls" *ngIf="!loading && paginatedData.length > 0 && totalPages > 1">
+    <button
+      (click)="onPageChange(currentPage - 1)"
       [disabled]="currentPage === 1"
       class="pagination-btn">
       Previous
     </button>
-    
+
+    <button
+      *ngIf="visiblePageNumbers[0] > 1"
+      type="button"
+      class="pagination-btn"
+      (click)="onPageChange(1)">
+      1
+    </button>
+    <span *ngIf="visiblePageNumbers[0] > 2" class="page-ellipsis">…</span>
+
+    <button
+      type="button"
+      class="pagination-btn"
+      *ngFor="let page of visiblePageNumbers"
+      [class.active]="page === currentPage"
+      (click)="onPageChange(page)">
+      {{ page }}
+    </button>
+
+    <span *ngIf="visiblePageNumbers[visiblePageNumbers.length - 1] < totalPages - 1" class="page-ellipsis">…</span>
+    <button
+      *ngIf="visiblePageNumbers[visiblePageNumbers.length - 1] < totalPages"
+      type="button"
+      class="pagination-btn"
+      (click)="onPageChange(totalPages)">
+      {{ totalPages }}
+    </button>
+
     <span class="page-info">Page {{ currentPage }} of {{ totalPages }}</span>
-    
-    <button 
-      (click)="onPageChange(currentPage + 1)" 
+
+    <button
+      (click)="onPageChange(currentPage + 1)"
       [disabled]="currentPage === totalPages"
       class="pagination-btn">
       Next
@@ -208,9 +337,11 @@
   </div>
 
   <!-- Empty State -->
-  <div *ngIf="!loading && paginatedData.length === 0" style="text-align: center; padding: 40px; color: #6b7280;">
-    <p>No investments found matching your criteria.</p>
-    <button (click)="openAddModal()" class="btn btn-primary">Add Your First Investment</button>
+  <div *ngIf="!loading && paginatedData.length === 0" class="empty-state">
+    <p *ngIf="!investments.length">No investments yet.</p>
+    <p *ngIf="investments.length">No investments found matching your criteria.</p>
+    <button *ngIf="!investments.length" (click)="openAddModal()" class="btn btn-primary">Add Your First Investment</button>
+    <button *ngIf="investments.length" (click)="clearFilters()" class="btn btn-secondary">Clear Filters</button>
   </div>
 
   <!-- Modal Popup -->
@@ -230,9 +361,14 @@
               id="website_app_name"
               name="website_app_name"
               [(ngModel)]="currentInvestment.website_app_name"
+              (ngModelChange)="refreshDuplicateWarning()"
               class="form-control"
               required
+              list="platform-options"
               placeholder="e.g., HDFC Bank, Groww, Zerodha">
+            <datalist id="platform-options">
+              <option *ngFor="let platform of platforms" [value]="platform"></option>
+            </datalist>
           </div>
 
           <div class="form-group">
@@ -241,7 +377,7 @@
               id="investment_type"
               name="investment_type"
               [(ngModel)]="currentInvestment.investment_type"
-              (ngModelChange)="onInvestmentTypeChange()"
+              (ngModelChange)="onInvestmentTypeChange(); refreshDuplicateWarning()"
               class="form-control"
               required>
               <option value="">Select Investment Type</option>
@@ -256,6 +392,7 @@
                 id="sub_type_name"
                 name="sub_type_name"
                 [(ngModel)]="currentInvestment.sub_type_name"
+                (ngModelChange)="refreshDuplicateWarning()"
                 class="form-control"
                 required>
                 <option value="">Select Sub Type</option>
@@ -289,6 +426,7 @@
                 id="sub_type_name"
                 name="sub_type_name"
                 [(ngModel)]="currentInvestment.sub_type_name"
+                (ngModelChange)="refreshDuplicateWarning()"
                 class="form-control"
                 required
                 placeholder="e.g., SBI Bluechip Fund, Reliance ETF">
@@ -302,6 +440,7 @@
                 id="sub_type_category"
                 name="sub_type_category"
                 [(ngModel)]="currentInvestment.sub_type_category"
+                (ngModelChange)="refreshDuplicateWarning()"
                 class="form-control"
                 required>
                 <option value="">Select Category</option>
@@ -335,6 +474,7 @@
                 id="sub_type_category"
                 name="sub_type_category"
                 [(ngModel)]="currentInvestment.sub_type_category"
+                (ngModelChange)="refreshDuplicateWarning()"
                 class="form-control"
                 required
                 placeholder="e.g., Large Cap, Nifty 50, Banking Sector">
@@ -357,32 +497,42 @@
 
           <div class="form-group">
             <label for="investment_date">Investment Date *</label>
-            <input
-              type="date"
-              id="investment_date"
-              name="investment_date"
-              [(ngModel)]="currentInvestment.investment_date"
-              class="form-control"
-              required>
+            <div class="input-with-add">
+              <input
+                type="date"
+                id="investment_date"
+                name="investment_date"
+                [(ngModel)]="currentInvestment.investment_date"
+                class="form-control"
+                required>
+              <button type="button" class="btn btn-sm btn-outline-secondary" (click)="useTodayDate()">Today</button>
+            </div>
+            <small class="field-hint" *ngIf="isEditing && originalEditDate && originalEditDate !== currentInvestment.investment_date">
+              Stored date was {{ originalEditDate }}. History uses this date when the amount changes.
+            </small>
           </div>
 
           <div class="form-group">
-            <label for="notes">Notes *</label>
+            <label for="notes">Notes</label>
             <textarea
               id="notes"
               name="notes"
               [(ngModel)]="currentInvestment.notes"
               class="form-control"
-              required
-              placeholder="Enter notes about this investment"></textarea>
+              placeholder="Optional notes about this investment"></textarea>
+          </div>
+
+          <div class="duplicate-warning" *ngIf="duplicateMatches.length">
+            {{ duplicateMatches.length }} existing holding{{ duplicateMatches.length === 1 ? '' : 's' }} already match this platform, type, sub type, and category
+            ({{ formatInr(duplicateMatches[0].amount) }}). Saving will create another row unless you edit the existing one.
           </div>
         </div>
         
         <div class="modal-footer">
-          <button type="submit" class="btn btn-primary" [disabled]="!investmentForm.form.valid">
-            {{ isEditing ? 'Update Investment' : 'Add Investment' }}
+          <button type="submit" class="btn btn-primary" [disabled]="!investmentForm.form.valid || saving">
+            {{ saving ? 'Saving…' : (isEditing ? 'Update Investment' : 'Add Investment') }}
           </button>
-          <button type="button" class="btn btn-secondary" (click)="closePopup()">Cancel</button>
+          <button type="button" class="btn btn-secondary" (click)="closePopup()" [disabled]="saving">Cancel</button>
         </div>
       </form>
     </div>
@@ -409,9 +559,9 @@
           <div *ngFor="let record of historyData; let i = index" class="history-record">
             <div class="history-date">{{ record.change_date | date:'medium' }}</div>
             <div class="history-details">
-              <span class="history-amount">₹{{ record.amount | number:'1.2-2' }}</span>
+              <span class="history-amount">{{ formatInr(record.amount) }}</span>
               <span *ngIf="record.difference !== 0" class="history-change" [class.positive]="record.isIncrease" [class.negative]="record.isDecrease">
-                {{ record.isIncrease ? '▲' : '▼' }} {{ (record.isIncrease ? record.difference : -record.difference) | number:'1.2-2' }} ({{ record.differencePercentage | number:'1.2-2' }}%)
+                {{ record.isIncrease ? '▲' : '▼' }} {{ formatInr(record.isIncrease ? record.difference : -record.difference) }} ({{ record.differencePercentage | number:'1.2-2' }}%)
               </span>
               <span *ngIf="record.notes" class="history-notes">{{ record.notes }}</span>
             </div>
