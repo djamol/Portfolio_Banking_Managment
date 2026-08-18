@@ -67,7 +67,7 @@ export interface BankBudget {
   pct?: number;
 }
 
-export type DatePreset = '1m' | '3m' | '6m' | 'ytd' | '1y' | 'all' | 'custom';
+export type DatePreset = 'tm' | 'lm' | '1m' | '3m' | '6m' | 'ytd' | '1y' | 'all' | 'custom';
 export type PeriodGrain = 'month' | 'quarter' | 'year';
 
 export type PeriodRow = {

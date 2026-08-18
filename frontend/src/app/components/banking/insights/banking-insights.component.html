@@ -9,7 +9,7 @@
       </select>
       <button class="btn btn-secondary" (click)="checkContinuity()" [disabled]="!continuityAccountId">Check balance continuity</button>
       <select [(ngModel)]="duplicateAccountId">
-        <option [ngValue]="''">All ctx.accounts (duplicates)</option>
+        <option [ngValue]="''">All accounts (duplicates)</option>
         <option *ngFor="let a of ctx.accounts" [ngValue]="a.id">{{ a.bank_name }} – {{ a.account_name }}</option>
       </select>
       <button class="btn btn-secondary" (click)="scanDuplicates()" [disabled]="duplicateScanning">
@@ -125,6 +125,7 @@
 
     <div class="card">
       <h3>Recurring payments / credits</h3>
+      <p class="hint">Click a payee to open matching transactions. Create a rule to auto-categorize future rows.</p>
       <table class="data-table compact" *ngIf="recurring.length; else noRecurring">
         <thead>
           <tr>
@@ -139,7 +140,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let r of recurring">
+          <tr *ngFor="let r of recurring" class="clickable-row" (click)="filterByPayee(r.payee)">
             <td>{{ r.payee }}</td>
             <td [class.debit]="r.is_debit" [class.credit]="!r.is_debit">₹{{ formatMoney(r.amount) }}</td>
             <td>{{ r.occurrences }}</td>
@@ -148,7 +149,7 @@
             <td>{{ r.next_expected }}</td>
             <td>{{ r.category || '—' }}</td>
             <td>
-              <button type="button" class="link-btn" (click)="createRuleFromRecurring(r)">Create rule</button>
+              <button type="button" class="link-btn" (click)="createRuleFromRecurring(r, $event)">Create rule</button>
             </td>
           </tr>
         </tbody>
@@ -165,7 +166,7 @@
           <tr><th>Payee</th><th>Amount</th><th>Expected</th><th>Category</th></tr>
         </thead>
         <tbody>
-          <tr *ngFor="let u of forecast.upcoming_outflows">
+          <tr *ngFor="let u of forecast.upcoming_outflows" class="clickable-row" (click)="filterByPayee(u.payee)">
             <td>{{ u.payee }}</td>
             <td class="debit">₹{{ formatMoney(u.amount) }}</td>
             <td>{{ u.next_expected }}</td>

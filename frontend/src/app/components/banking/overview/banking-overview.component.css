@@ -46,3 +46,9 @@ tr.budget-over {
 .forecast-strip .data-table {
   margin-top: 8px;
 }
+
+.compare-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}

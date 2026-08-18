@@ -1,8 +1,9 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Router } from '@angular/router';
 import { Subject, merge, takeUntil } from 'rxjs';
 import { BankBudget } from '../../../services/banking/banking.models';
 import { BankRulesService } from '../../../services/banking/bank-rules.service';
-import { formatMoney } from '../shared/banking-format.util';
+import { formatCat, formatMoney } from '../shared/banking-format.util';
 import { BankingContextService } from '../shared/banking-context.service';
 import { BankingFilterState } from '../shared/banking-filter-state.service';
 
@@ -17,13 +18,15 @@ export class BankingBudgetsComponent implements OnInit, OnDestroy {
   budgetMonth = new Date().toISOString().slice(0, 7);
   editingId: number | null = null;
   budgetForm: BankBudget = this.emptyForm();
+  copying = false;
 
   private readonly destroy$ = new Subject<void>();
 
   constructor(
     public ctx: BankingContextService,
-    private filters: BankingFilterState,
-    private rulesService: BankRulesService
+    public filters: BankingFilterState,
+    private rulesService: BankRulesService,
+    private router: Router
   ) {}
 
   ngOnInit() {
@@ -48,6 +51,10 @@ export class BankingBudgetsComponent implements OnInit, OnDestroy {
     };
   }
 
+  previousMonth(): string {
+    return this.filters.shiftMonthKey(this.budgetMonth, -1);
+  }
+
   loadBudgets() {
     const month = this.budgetMonth || new Date().toISOString().slice(0, 7);
     this.rulesService
@@ -65,7 +72,8 @@ export class BankingBudgetsComponent implements OnInit, OnDestroy {
     this.loadBudgets();
   }
 
-  startEdit(b: BankBudget) {
+  startEdit(b: BankBudget, event?: Event) {
+    event?.stopPropagation();
     if (!b.id) return;
     this.editingId = b.id;
     this.budgetForm = {
@@ -108,7 +116,8 @@ export class BankingBudgetsComponent implements OnInit, OnDestroy {
     });
   }
 
-  deleteBudget(b: BankBudget) {
+  deleteBudget(b: BankBudget, event?: Event) {
+    event?.stopPropagation();
     if (!b.id || !confirm(`Delete budget for ${b.category}?`)) return;
     this.rulesService.deleteBudget(b.id).subscribe({
       next: () => {
@@ -120,6 +129,49 @@ export class BankingBudgetsComponent implements OnInit, OnDestroy {
     });
   }
 
+  copyFromPreviousMonth() {
+    const from = this.previousMonth();
+    const to = this.budgetMonth;
+    if (
+      !confirm(
+        `Copy budgets from ${from} into ${to}? Categories that already exist this month are kept as-is.`
+      )
+    ) {
+      return;
+    }
+    this.copying = true;
+    this.rulesService.copyBudgets(from, to).subscribe({
+      next: (r) => {
+        this.copying = false;
+        if (!r.source_count) {
+          this.ctx.flash('info', `No budgets found for ${from}`);
+          return;
+        }
+        this.ctx.flash('success', `Copied ${r.copied} budget(s), skipped ${r.skipped} existing`);
+        this.loadBudgets();
+      },
+      error: (err) => {
+        this.copying = false;
+        this.ctx.flash('error', err.message || 'Copy failed');
+      }
+    });
+  }
+
+  openBudgetTxns(b: BankBudget) {
+    const month = b.period_month || this.budgetMonth;
+    this.filters.filterCategories = [b.category];
+    this.filters.filterCategory = b.category;
+    this.filters.filterNeedsReview = false;
+    this.filters.filterTransfersOnly = false;
+    this.filters.filterFlow = 'debit';
+    this.filters.filterQ = '';
+    this.filters.filterPayee = '';
+    if (b.account_id) this.filters.filterAccountId = b.account_id;
+    this.filters.applyMonthKey(month);
+    this.router.navigate(['/banking/transactions']);
+    this.ctx.flash('info', `Showing ${formatCat(b.category)} for ${month}`);
+  }
+
   budgetBarWidth(pct: number | null | undefined): number {
     const n = Number(pct) || 0;
     return Math.max(0, Math.min(100, n));
@@ -129,5 +181,18 @@ export class BankingBudgetsComponent implements OnInit, OnDestroy {
     return this.budgets.filter((b) => (Number(b.pct) || 0) >= 100).length;
   }
 
+  totalBudgeted(): number {
+    return this.budgets.reduce((s, b) => s + (Number(b.amount) || 0), 0);
+  }
+
+  totalSpent(): number {
+    return this.budgets.reduce((s, b) => s + (Number(b.spent) || 0), 0);
+  }
+
+  totalRemaining(): number {
+    return this.totalBudgeted() - this.totalSpent();
+  }
+
   formatMoney = formatMoney;
+  formatCat = formatCat;
 }

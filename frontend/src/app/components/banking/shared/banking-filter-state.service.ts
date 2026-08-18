@@ -157,6 +157,27 @@ export class BankingFilterState {
     return n;
   }
 
+  currentMonthKey(): string {
+    return new Date().toISOString().slice(0, 7);
+  }
+
+  shiftMonthKey(yyyyMm: string, delta: number): string {
+    const [y, m] = String(yyyyMm || this.currentMonthKey()).split('-').map(Number);
+    const d = new Date(y || new Date().getFullYear(), (m || 1) - 1 + delta, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  applyMonthKey(yyyyMm: string, opts: { preset?: DatePreset; notify?: boolean } = {}) {
+    const key = String(yyyyMm || '').slice(0, 7);
+    const [y, m] = key.split('-').map(Number);
+    if (!y || !m) return;
+    this.filterFrom = `${key}-01`;
+    this.filterTo = this.toIsoDate(new Date(y, m, 0));
+    this.filterOffset = 0;
+    this.datePreset = opts.preset ?? 'custom';
+    if (opts.notify !== false) this.notifyChanged();
+  }
+
   applyDatePreset(preset: DatePreset) {
     this.datePreset = preset;
     if (preset === 'all') {
@@ -164,6 +185,10 @@ export class BankingFilterState {
       this.filterTo = '';
     } else if (preset === 'custom') {
       return;
+    } else if (preset === 'tm') {
+      this.applyMonthKey(this.currentMonthKey(), { preset: 'tm', notify: false });
+    } else if (preset === 'lm') {
+      this.applyMonthKey(this.shiftMonthKey(this.currentMonthKey(), -1), { preset: 'lm', notify: false });
     } else {
       const to = new Date();
       const from = new Date();

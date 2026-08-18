@@ -30,10 +30,13 @@
         </div>
         <div class="form-group">
           <label>Category</label>
-          <input list="rule-category-list" [(ngModel)]="ruleForm.category" placeholder="Select or type…" />
-          <datalist id="rule-category-list">
-            <option *ngFor="let c of ctx.categories" [value]="c"></option>
-          </datalist>
+          <app-hierarchical-category-picker
+            [options]="ctx.categories"
+            [value]="ruleForm.category"
+            placeholder="Select or type…"
+            (valueChange)="ruleForm.category = $event"
+            (categoryCreated)="ctx.mergeCategories([$event])">
+          </app-hierarchical-category-picker>
         </div>
         <div class="form-group">
           <label>Priority (lower = first)</label>
@@ -42,7 +45,7 @@
         <div class="form-group">
           <label>Account</label>
           <select [(ngModel)]="ruleForm.account_id">
-            <option [ngValue]="null">All ctx.accounts</option>
+            <option [ngValue]="null">All accounts</option>
             <option *ngFor="let a of ctx.accounts" [ngValue]="a.id">{{ a.bank_name }} – {{ a.account_name }}</option>
           </select>
         </div>

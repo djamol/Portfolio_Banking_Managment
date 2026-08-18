@@ -31,6 +31,8 @@
           </option>
         </select>
         <div class="preset-row">
+          <button type="button" class="preset-btn" [class.active]="filters.datePreset==='tm'" (click)="filters.applyDatePreset('tm')">This mo</button>
+          <button type="button" class="preset-btn" [class.active]="filters.datePreset==='lm'" (click)="filters.applyDatePreset('lm')">Last mo</button>
           <button type="button" class="preset-btn" [class.active]="filters.datePreset==='1m'" (click)="filters.applyDatePreset('1m')">1M</button>
           <button type="button" class="preset-btn" [class.active]="filters.datePreset==='3m'" (click)="filters.applyDatePreset('3m')">3M</button>
           <button type="button" class="preset-btn" [class.active]="filters.datePreset==='6m'" (click)="filters.applyDatePreset('6m')">6M</button>

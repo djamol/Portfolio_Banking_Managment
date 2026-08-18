@@ -308,6 +308,21 @@ router.get('/budgets/status', async (req, res) => {
   }
 });
 
+router.post('/budgets/copy', async (req, res) => {
+  try {
+    const from = String(req.body.from_month || '').slice(0, 7);
+    const to = String(req.body.to_month || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(from) || !/^\d{4}-\d{2}$/.test(to)) {
+      return res.status(400).json({ success: false, error: 'from_month and to_month must be YYYY-MM' });
+    }
+    const data = await banking.copyBudgets(from, to);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error copying budgets:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.post('/budgets', async (req, res) => {
   try {
     if (!req.body.category || req.body.amount == null) {

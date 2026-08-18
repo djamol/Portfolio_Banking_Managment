@@ -82,6 +82,7 @@ export class BankingInsightsComponent implements OnInit, OnDestroy {
   }
 
   filterByPayee(payee: string) {
+    if (!payee) return;
     this.filters.filterPayee = payee === 'Unknown' ? '' : payee;
     this.filters.filterQ = '';
     this.filters.filterCategories = [];
@@ -93,7 +94,8 @@ export class BankingInsightsComponent implements OnInit, OnDestroy {
     this.ctx.flash('info', payee === 'Unknown' ? 'Opened transactions' : `Filtered by payee: ${payee}`);
   }
 
-  createRuleFromRecurring(row: any) {
+  createRuleFromRecurring(row: any, event?: Event) {
+    event?.stopPropagation();
     this.router.navigate(['/banking/rules'], {
       queryParams: {
         payee: row?.payee || '',

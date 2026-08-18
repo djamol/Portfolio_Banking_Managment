@@ -64,4 +64,25 @@ export class BankRulesService {
       map((r) => !!r.success)
     );
   }
+
+  copyBudgets(fromMonth: string, toMonth: string): Observable<{
+    copied: number;
+    skipped: number;
+    from_month: string;
+    to_month: string;
+    source_count: number;
+  }> {
+    return this.http
+      .post<ApiResponse<any>>(bankApiUrl('budgets/copy'), {
+        from_month: fromMonth,
+        to_month: toMonth
+      })
+      .pipe(
+        map((r) =>
+          r.success
+            ? r.data
+            : { copied: 0, skipped: 0, from_month: fromMonth, to_month: toMonth, source_count: 0 }
+        )
+      );
+  }
 }

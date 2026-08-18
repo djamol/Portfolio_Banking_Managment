@@ -1,8 +1,21 @@
-<div class="section-head">
+<div class="card empty-start" *ngIf="!ctx.accounts.length">
+  <h3>Set up Bank Tracker</h3>
+  <p>Add an account, then import a statement. Categorize, set budgets, and track cashflow from there.</p>
+  <div class="section-actions wrap" style="justify-content: center;">
+    <a routerLink="/banking/accounts" class="btn btn-primary">Add account</a>
+    <a routerLink="/banking/import" class="btn btn-secondary">Import statement</a>
+  </div>
+</div>
+
+<ng-container *ngIf="ctx.accounts.length">
+    <div class="section-head">
       <div>
         <h3>Get started</h3>
         <p class="section-hint">Jump to the most common Bank Tracker workflows.</p>
       </div>
+      <button type="button" class="btn btn-secondary btn-sm" *ngIf="filters.datePreset !== 'tm'" (click)="openThisMonth()">
+        This calendar month
+      </button>
     </div>
     <div class="quick-links">
       <a class="quick-link-tile" routerLink="/banking/import">
@@ -17,6 +30,34 @@
         Insights
         <small>Forecast, duplicates, continuity</small>
       </a>
+    </div>
+
+    <div class="action-inbox" *ngIf="showActionInbox">
+      <button type="button" class="action-card danger" *ngIf="needsReviewCount" (click)="openNeedsReview()">
+        <div class="action-kicker">Needs review</div>
+        <div class="action-title">{{ needsReviewCount }} uncategorized</div>
+        <div class="action-meta">Open and assign categories or create a rule</div>
+      </button>
+      <button type="button" class="action-card danger" *ngIf="overspentBudgets.length" (click)="openBudget(overspentBudgets[0])">
+        <div class="action-kicker">Budgets</div>
+        <div class="action-title">{{ overspentBudgets.length }} overspent</div>
+        <div class="action-meta">{{ formatCat(overspentBudgets[0].category) }} is over limit</div>
+      </button>
+      <button type="button" class="action-card warn" *ngIf="warnBudgets.length && !overspentBudgets.length" (click)="openBudget(warnBudgets[0])">
+        <div class="action-kicker">Budgets</div>
+        <div class="action-title">{{ warnBudgets.length }} near limit</div>
+        <div class="action-meta">{{ formatCat(warnBudgets[0].category) }} is at {{ warnBudgets[0].pct }}%</div>
+      </button>
+      <button
+        type="button"
+        class="action-card"
+        *ngIf="upcomingOutflows.length"
+        (click)="openPayee(upcomingOutflows[0].payee)"
+      >
+        <div class="action-kicker">Upcoming</div>
+        <div class="action-title">{{ upcomingOutflows.length }} expected outflow{{ upcomingOutflows.length === 1 ? '' : 's' }}</div>
+        <div class="action-meta">Next: {{ upcomingOutflows[0].payee }} · {{ upcomingOutflows[0].next_expected }}</div>
+      </button>
     </div>
 
     <div class="card forecast-strip" *ngIf="projectedNextMonth as next">
@@ -50,11 +91,11 @@
           <tr><th>Upcoming outflow</th><th>Amount</th><th>Expected</th><th>Category</th></tr>
         </thead>
         <tbody>
-          <tr *ngFor="let u of upcomingOutflows">
+          <tr *ngFor="let u of upcomingOutflows" class="clickable-row" (click)="openPayee(u.payee)">
             <td>{{ u.payee }}</td>
             <td class="debit">₹{{ formatMoney(u.amount) }}</td>
             <td>{{ u.next_expected }}</td>
-            <td>{{ u.category || '—' }}</td>
+            <td>{{ formatCat(u.category) }}</td>
           </tr>
         </tbody>
       </table>
@@ -72,41 +113,80 @@
     </div>
 
     <div class="stat-grid">
-      <div class="stat-card">
+      <a class="stat-card click-stat" routerLink="/banking/accounts">
         <div class="stat-label">Accounts</div>
         <div class="stat-value">{{ ctx.accounts.length }}</div>
-      </div>
+        <div class="stat-sub">Manage banks</div>
+      </a>
       <div class="stat-card">
         <div class="stat-label">Latest combined balance</div>
         <div class="stat-value">₹{{ formatMoney(totalBalance()) }}</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">Transactions (filtered)</div>
-        <div class="stat-value">{{ analyticsState.analytics?.summary?.txn_count || 0 }}</div>
-      </div>
-      <div class="stat-card credit">
+      <button type="button" class="stat-card click-stat" (click)="openFlow('credit')">
         <div class="stat-label">Total credits</div>
-        <div class="stat-value">₹{{ formatMoney(analyticsState.analytics?.summary?.total_credit) }}</div>
-      </div>
-      <div class="stat-card debit">
+        <div class="stat-value credit">₹{{ formatMoney(summary.total_credit) }}</div>
+        <div class="stat-sub">{{ summary.txn_count || 0 }} txns · click to list</div>
+      </button>
+      <button type="button" class="stat-card click-stat" (click)="openFlow('debit')">
         <div class="stat-label">Total debits</div>
-        <div class="stat-value">₹{{ formatMoney(analyticsState.analytics?.summary?.total_debit) }}</div>
-      </div>
+        <div class="stat-value debit">₹{{ formatMoney(summary.total_debit) }}</div>
+        <div class="stat-sub">Avg ₹{{ formatMoney(summary.avg_monthly_debit) }} / month</div>
+      </button>
       <div class="stat-card">
         <div class="stat-label">Net cashflow</div>
-        <div class="stat-value">₹{{ formatMoney(analyticsState.analytics?.summary?.net_cashflow) }}</div>
+        <div class="stat-value" [class.credit]="(summary.net_cashflow||0) >= 0" [class.debit]="(summary.net_cashflow||0) < 0">
+          ₹{{ formatMoney(summary.net_cashflow) }}
+        </div>
+        <div class="stat-sub">Savings rate {{ formatPct(summary.savings_rate) }}</div>
       </div>
-      <div class="stat-card">
+      <button type="button" class="stat-card click-stat" (click)="openInterest()">
         <div class="stat-label">Interest earned</div>
         <div class="stat-value">₹{{ formatMoney(analyticsState.analytics?.interestTax?.interest_earned) }}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">TDS / tax deducted</div>
-        <div class="stat-value">₹{{ formatMoney(analyticsState.analytics?.interestTax?.tax_deducted) }}</div>
-      </div>
+        <div class="stat-sub">TDS ₹{{ formatMoney(analyticsState.analytics?.interestTax?.tax_deducted) }}</div>
+      </button>
+      <button type="button" class="stat-card click-stat" (click)="openNeedsReview()">
+        <div class="stat-label">Needs review</div>
+        <div class="stat-value">{{ needsReviewCount }}</div>
+        <div class="stat-sub">Uncategorized / catch-all</div>
+      </button>
       <div class="stat-card">
         <div class="stat-label">FD booked</div>
         <div class="stat-value">₹{{ formatMoney(analyticsState.analytics?.interestTax?.fd_booked) }}</div>
+      </div>
+    </div>
+
+    <div class="mom-grid compare-grid" *ngIf="mom">
+      <div class="card mom-card">
+        <div class="period-header">
+          <div>
+            <h3>Month vs previous</h3>
+            <p class="section-hint">{{ mom.current_month }} vs {{ mom.previous_month || '—' }}</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" (click)="openMomMonth()">Open month</button>
+        </div>
+        <div class="mom-rows">
+          <div>
+            <span>Debits</span>
+            <strong class="debit">₹{{ formatMoney(mom.current_debit) }}</strong>
+            <em [class.debit]="(mom.debit_change_pct||0) > 0" [class.credit]="(mom.debit_change_pct||0) < 0">
+              {{ formatPct(mom.debit_change_pct) }}
+            </em>
+          </div>
+          <div>
+            <span>Credits</span>
+            <strong class="credit">₹{{ formatMoney(mom.current_credit) }}</strong>
+            <em [class.credit]="(mom.credit_change_pct||0) > 0" [class.debit]="(mom.credit_change_pct||0) < 0">
+              {{ formatPct(mom.credit_change_pct) }}
+            </em>
+          </div>
+          <div>
+            <span>Net</span>
+            <strong [class.credit]="(mom.current_net||0) >= 0" [class.debit]="(mom.current_net||0) < 0">₹{{ formatMoney(mom.current_net) }}</strong>
+            <em [class.credit]="(mom.net_change_pct||0) > 0" [class.debit]="(mom.net_change_pct||0) < 0">
+              {{ formatPct(mom.net_change_pct) }}
+            </em>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -144,8 +224,8 @@
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let b of budgets" [class.budget-over]="(b.pct || 0) >= 100">
-            <td>{{ b.category }}</td>
+          <tr *ngFor="let b of budgets" class="clickable-row" [class.budget-over]="(b.pct || 0) >= 100" (click)="openBudget(b)">
+            <td>{{ formatCat(b.category) }}</td>
             <td>₹{{ formatMoney(b.amount) }}</td>
             <td class="debit">₹{{ formatMoney(b.spent) }}</td>
             <td class="budget-progress-cell">
@@ -162,8 +242,32 @@
       </ng-template>
     </div>
 
+    <div class="card" *ngIf="topExpenses.length">
+      <h3>Largest expenses</h3>
+      <p class="section-hint">Click a row to open that day in Transactions.</p>
+      <table class="data-table compact">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Narration</th>
+            <th class="num">Amount</th>
+            <th>Category</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let t of topExpenses" class="clickable-row" (click)="openTxnContext(t)">
+            <td class="nowrap">{{ t.txn_date }}</td>
+            <td class="narration" [title]="t.narration">{{ t.payee || t.narration }}</td>
+            <td class="debit num">₹{{ formatMoney(t.withdrawal) }}</td>
+            <td>{{ formatCat(t.category) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <div class="card" *ngIf="ctx.accounts.length">
       <h3>Accounts snapshot</h3>
+      <p class="section-hint">Click an account to open its transactions.</p>
       <table class="data-table">
         <thead>
           <tr>
@@ -175,7 +279,12 @@
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let a of ctx.accounts" [class.inactive-row]="a.is_active === 0 || a.is_active === false">
+          <tr
+            *ngFor="let a of ctx.accounts"
+            class="clickable-row"
+            [class.inactive-row]="a.is_active === 0 || a.is_active === false"
+            (click)="openAccount(a.id)"
+          >
             <td>{{ a.bank_name }}</td>
             <td>{{ a.account_name }} <span class="badge" *ngIf="a.is_active === 0 || a.is_active === false">inactive</span></td>
             <td>{{ ctx.maskAccount(a.account_number) }}</td>
@@ -185,3 +294,4 @@
         </tbody>
       </table>
     </div>
+</ng-container>

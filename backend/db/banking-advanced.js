@@ -559,6 +559,57 @@ async function mongoDeleteBudget(id) {
   return result.deletedCount > 0;
 }
 
+async function mysqlGetBudgetsExact(periodMonth) {
+  const pool = getPool();
+  const [rows] = await pool.query(
+    'SELECT * FROM bank_budgets WHERE period_month = ? ORDER BY category',
+    [periodMonth]
+  );
+  return rows;
+}
+
+async function mongoGetBudgetsExact(periodMonth) {
+  const db = getMongoDb();
+  return (await db.collection('bank_budgets').find({ period_month: periodMonth }).sort({ category: 1 }).toArray()).map(
+    formatDoc
+  );
+}
+
+function budgetIdentity(b) {
+  const acc = b.account_id == null || b.account_id === '' ? '' : String(Number(b.account_id));
+  return `${String(b.category || '')}::${acc}`;
+}
+
+async function copyBudgets(fromMonth, toMonth) {
+  const from = String(fromMonth || '').slice(0, 7);
+  const to = String(toMonth || '').slice(0, 7);
+  if (from === to) {
+    return { copied: 0, skipped: 0, from_month: from, to_month: to, source_count: 0 };
+  }
+  const source = impl() === 'mongo' ? await mongoGetBudgetsExact(from) : await mysqlGetBudgetsExact(from);
+  const dest = impl() === 'mongo' ? await mongoGetBudgetsExact(to) : await mysqlGetBudgetsExact(to);
+  const existing = new Set((dest || []).map(budgetIdentity));
+  let copied = 0;
+  let skipped = 0;
+  for (const b of source || []) {
+    if (existing.has(budgetIdentity(b))) {
+      skipped += 1;
+      continue;
+    }
+    const payload = {
+      category: b.category,
+      amount: b.amount,
+      period_month: to,
+      account_id: b.account_id ?? null,
+      notes: b.notes || null
+    };
+    if (impl() === 'mongo') await mongoUpsertBudget(payload);
+    else await mysqlUpsertBudget(payload);
+    copied += 1;
+  }
+  return { copied, skipped, from_month: from, to_month: to, source_count: (source || []).length };
+}
+
 function wantsExcludeTransfers(opts = {}) {
   const v = opts.exclude_transfers;
   return v === true || v === 1 || v === '1' || v === 'true';
@@ -1027,6 +1078,7 @@ module.exports = {
   upsertBudget: (...a) => (impl() === 'mongo' ? mongoUpsertBudget(...a) : mysqlUpsertBudget(...a)),
   deleteBudget: (...a) => (impl() === 'mongo' ? mongoDeleteBudget(...a) : mysqlDeleteBudget(...a)),
   budgetStatus: (...a) => (impl() === 'mongo' ? mongoBudgetStatus(...a) : mysqlBudgetStatus(...a)),
+  copyBudgets,
   getRecurring: (...a) => (impl() === 'mongo' ? mongoGetRecurring(...a) : mysqlGetRecurring(...a)),
   matchTransfers: (...a) => (impl() === 'mongo' ? mongoMatchTransfers(...a) : mysqlMatchTransfers(...a)),
   listMatchedTransfers: (...a) =>
