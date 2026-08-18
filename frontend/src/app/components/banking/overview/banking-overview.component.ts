@@ -22,14 +22,16 @@ type ForecastOutflow = {
   category?: string | null;
 };
 
+type ForecastNextMonth = {
+  month?: string;
+  avg_credit?: number;
+  avg_debit?: number;
+  net?: number;
+  projected_interest?: number;
+};
+
 type ForecastResponse = {
-  projected_next_month?: {
-    month?: string;
-    avg_credit?: number;
-    avg_debit?: number;
-    net?: number;
-    projected_interest?: number;
-  };
+  projected_next_month?: ForecastNextMonth;
   upcoming_outflows?: ForecastOutflow[];
 };
 
@@ -81,6 +83,10 @@ export class BankingOverviewComponent implements OnInit, OnDestroy {
     this.analyticsState.loadCashSummary();
     this.loadBudgets();
     this.loadForecast();
+  }
+
+  get projectedNextMonth(): ForecastNextMonth | null {
+    return this.forecast?.projected_next_month || null;
   }
 
   get upcomingOutflows(): ForecastOutflow[] {

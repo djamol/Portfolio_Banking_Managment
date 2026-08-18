@@ -19,7 +19,7 @@
       </a>
     </div>
 
-    <div class="card forecast-strip" *ngIf="forecast?.projected_next_month">
+    <div class="card forecast-strip" *ngIf="projectedNextMonth as next">
       <div class="section-head">
         <div>
           <h3>Next-month forecast</h3>
@@ -29,20 +29,20 @@
       </div>
       <div class="stat-grid">
         <div class="stat-card credit">
-          <div class="stat-label">Projected credits ({{ forecast.projected_next_month.month }})</div>
-          <div class="stat-value">₹{{ formatMoney(forecast.projected_next_month.avg_credit) }}</div>
+          <div class="stat-label">Projected credits ({{ next.month }})</div>
+          <div class="stat-value">₹{{ formatMoney(next.avg_credit) }}</div>
         </div>
         <div class="stat-card debit">
           <div class="stat-label">Projected debits</div>
-          <div class="stat-value">₹{{ formatMoney(forecast.projected_next_month.avg_debit) }}</div>
+          <div class="stat-value">₹{{ formatMoney(next.avg_debit) }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Projected net</div>
-          <div class="stat-value">₹{{ formatMoney(forecast.projected_next_month.net) }}</div>
+          <div class="stat-value">₹{{ formatMoney(next.net) }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Projected interest</div>
-          <div class="stat-value">₹{{ formatMoney(forecast.projected_next_month.projected_interest) }}</div>
+          <div class="stat-value">₹{{ formatMoney(next.projected_interest) }}</div>
         </div>
       </div>
       <table class="data-table compact" *ngIf="upcomingOutflows.length">
