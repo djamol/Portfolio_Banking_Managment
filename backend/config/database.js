@@ -237,7 +237,7 @@ const createTables = async () => {
       CREATE TABLE IF NOT EXISTS investments (
         id INT AUTO_INCREMENT PRIMARY KEY,
         website_app_name VARCHAR(255) NOT NULL,
-        investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'EPF', 'Saving Bank Balance') NOT NULL,
+        investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'EPF', 'Saving Bank Balance', 'Real Estate') NOT NULL,
         sub_type_name VARCHAR(255),
         sub_type_category VARCHAR(255),
         amount DECIMAL(15, 2) NOT NULL,
@@ -270,7 +270,7 @@ const createTables = async () => {
       CREATE TABLE IF NOT EXISTS sub_type_names (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(255) NOT NULL UNIQUE,
-        investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'EPF', 'Saving Bank Balance') NOT NULL,
+        investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'EPF', 'Saving Bank Balance', 'Real Estate') NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_investment_type (investment_type),
         INDEX idx_name (name)
@@ -282,7 +282,7 @@ const createTables = async () => {
         id INT AUTO_INCREMENT PRIMARY KEY,
         category VARCHAR(255) NOT NULL,
         sub_type_name_id INT,
-        investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'EPF', 'Saving Bank Balance') NOT NULL,
+        investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'EPF', 'Saving Bank Balance', 'Real Estate') NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (sub_type_name_id) REFERENCES sub_type_names(id) ON DELETE SET NULL,
         INDEX idx_investment_type (investment_type),
@@ -414,7 +414,10 @@ const createTables = async () => {
       'ALTER TABLE bank_transactions ADD INDEX idx_bank_txn_batch (import_batch_id)',
       'ALTER TABLE bank_transactions MODIFY COLUMN category VARCHAR(150) NULL',
       'ALTER TABLE bank_category_rules MODIFY COLUMN category VARCHAR(150) NOT NULL',
-      'ALTER TABLE bank_budgets MODIFY COLUMN category VARCHAR(150) NOT NULL'
+      'ALTER TABLE bank_budgets MODIFY COLUMN category VARCHAR(150) NOT NULL',
+      "ALTER TABLE investments MODIFY COLUMN investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'EPF', 'Saving Bank Balance', 'Real Estate') NOT NULL",
+      "ALTER TABLE sub_type_names MODIFY COLUMN investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'EPF', 'Saving Bank Balance', 'Real Estate') NOT NULL",
+      "ALTER TABLE sub_type_categories MODIFY COLUMN investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'EPF', 'Saving Bank Balance', 'Real Estate') NOT NULL"
     ];
     for (const sql of alterStatements) {
       try {
@@ -424,6 +427,20 @@ const createTables = async () => {
         if (err && (err.code === 'ER_DUP_FIELDNAME' || err.code === 'ER_DUP_KEYNAME')) continue;
         throw err;
       }
+    }
+
+    try {
+      await connection.query(`
+        UPDATE investments SET investment_type = 'Real Estate'
+        WHERE investment_type = 'Saving Bank Balance'
+          AND (
+            LOWER(COALESCE(sub_type_category, '')) LIKE '%propert%'
+            OR LOWER(COALESCE(sub_type_name, '')) LIKE '%real estate%'
+            OR LOWER(website_app_name) = 'plot'
+          )
+      `);
+    } catch (err) {
+      logger.logError('MySQL: real-estate reclassify skipped', err);
     }
 
     logger.info('MySQL: tables ready');

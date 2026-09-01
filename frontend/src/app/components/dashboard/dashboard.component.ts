@@ -4,8 +4,15 @@ import { BankAnalyticsService } from '../../services/banking/bank-analytics.serv
 import { ChartConfiguration, ChartOptions } from 'chart.js';
 import { getIndianAmountBreakdown, IndianAmountBreakdown } from '../../utils/indian-number.util';
 import { MATURITY_HELPER_TYPES, parseMaturityDateObject } from '../../utils/maturity-notes.util';
+import {
+  computeBucketsFromHoldings,
+  isExcelLegacy,
+  isFunded,
+  NetWorthBucket
+} from '../../utils/net-worth.util';
 
 const GOAL_STORAGE_KEY = 'asset-tracker-goal-amount';
+const LARGE_FD_MATURITY_THRESHOLD = 500000;
 
 type SummaryRow = {
   id: number;
@@ -49,6 +56,28 @@ type PlatformConcentrationGroup = {
   items: SummaryRow[];
 };
 
+type LiquidityAccount = {
+  id: number;
+  bank_name: string;
+  account_name: string;
+  latest_balance: number;
+  stale: boolean;
+  is_credit_card: boolean;
+};
+
+type AttentionChip = {
+  label: string;
+  route: string | string[];
+  tone: 'info' | 'warn' | 'danger';
+};
+
+type LastMonthFlow = {
+  label: string;
+  spend: number;
+  income: number;
+  net: number;
+};
+
 @Component({
   selector: 'app-dashboard',
   templateUrl: './dashboard.component.html',
@@ -58,14 +87,27 @@ type PlatformConcentrationGroup = {
 export class DashboardComponent implements OnInit {
   loading = true;
   errorMessage = '';
+  bankCashError = '';
 
   totalAmount = 0;
-  totalInvestments = 0;
-  totalBreakdown: IndianAmountBreakdown | null = null;
+  fundedCount = 0;
+  zeroCount = 0;
   insights: InsightsResponse | null = null;
   daysSinceSnapshot: number | null = null;
 
+  buckets: NetWorthBucket = { invested: 0, fds: 0, cash: 0, realEstate: 0, total: 0 };
+  bucketBreakdown: IndianAmountBreakdown | null = null;
+  investedBreakdown: IndianAmountBreakdown | null = null;
+  fdsBreakdown: IndianAmountBreakdown | null = null;
+  cashBreakdown: IndianAmountBreakdown | null = null;
+  realEstateBreakdown: IndianAmountBreakdown | null = null;
+
   summaryRows: SummaryRow[] = [];
+  liquidityAccounts: LiquidityAccount[] = [];
+  creditCardAccounts: Array<{ bank_name: string; account_name: string; last_txn_date?: string | null }> = [];
+  savingBankSnapshotNote = false;
+  lastMonthFlow: LastMonthFlow | null = null;
+  attentionChips: AttentionChip[] = [];
 
   platformGroups: PlatformConcentrationGroup[] = [];
   expandedPlatform: string | null = null;
@@ -89,27 +131,24 @@ export class DashboardComponent implements OnInit {
   largestHoldingPct = 0;
   largestHoldingAmount = 0;
   largestHoldingLabel = '';
-  bankCashInr = 0;
-  bankCashLabel = '';
+
   combinedNetWorth = 0;
   combinedBreakdown: IndianAmountBreakdown | null = null;
   goalAmount: number | null = null;
   goalProgressPercent = 0;
   goalRemaining = 0;
 
+  private useLiveBankCash = false;
+
   allocationChartData: ChartConfiguration<'doughnut'>['data'] = {
-    labels: [],
+    labels: ['Invested', 'FDs', 'Cash', 'Real estate'],
     datasets: [{
-      data: [],
+      data: [0, 0, 0, 0],
       backgroundColor: [
         'rgba(59, 130, 246, 0.85)',
-        'rgba(16, 185, 129, 0.85)',
         'rgba(245, 158, 11, 0.85)',
-        'rgba(239, 68, 68, 0.85)',
-        'rgba(118, 75, 162, 0.85)',
-        'rgba(14, 165, 233, 0.85)',
-        'rgba(236, 72, 153, 0.85)',
-        'rgba(34, 197, 94, 0.85)'
+        'rgba(16, 185, 129, 0.85)',
+        'rgba(118, 75, 162, 0.85)'
       ]
     }]
   };
@@ -168,11 +207,12 @@ export class DashboardComponent implements OnInit {
   refresh() {
     this.loading = true;
     this.errorMessage = '';
+    this.bankCashError = '';
+    this.useLiveBankCash = false;
     this.loadGoal();
     this.platformGroups = [];
     this.expandedPlatform = null;
     this.top3ConcentrationPct = 0;
-    this.loadBankCash();
     this.platformCount = 0;
     this.gainerPlatforms = [];
     this.loserPlatforms = [];
@@ -182,6 +222,14 @@ export class DashboardComponent implements OnInit {
     this.totalLoss = 0;
     this.gainerCount = 0;
     this.loserCount = 0;
+    this.attentionChips = [];
+    this.lastMonthFlow = null;
+    this.liquidityAccounts = [];
+
+    this.loadBankCash();
+    this.loadLastMonthBankFlow();
+    this.loadInvestmentCashflowCheck();
+
     let pending = 4;
     const done = () => {
       pending -= 1;
@@ -191,13 +239,6 @@ export class DashboardComponent implements OnInit {
     this.analyticsService.getTotal().subscribe({
       next: (res) => {
         this.totalAmount = this.toNumber(res.data?.total_amount);
-        this.totalInvestments = this.toNumber(res.data?.total_investments);
-        this.totalBreakdown = getIndianAmountBreakdown(this.totalAmount);
-        this.updateCombinedNetWorth();
-        if (this.summaryRows.length) {
-          this.buildLargestHoldings();
-          this.buildPlatformConcentration();
-        }
         done();
       },
       error: () => {
@@ -210,7 +251,6 @@ export class DashboardComponent implements OnInit {
       next: (res) => {
         this.insights = res.data;
         this.daysSinceSnapshot = res.data?.daysSinceLatestSnapshot ?? null;
-        // Prefer insights snapshot pair so movers match "VS PREVIOUS SNAPSHOT".
         const from = this.dateKey(res.data?.prevDate);
         const to = this.dateKey(res.data?.latestDate);
         if (from && to && from !== to) {
@@ -223,28 +263,10 @@ export class DashboardComponent implements OnInit {
       error: () => done()
     });
 
-    this.analyticsService.getAllocationLatest().subscribe({
-      next: (res) => {
-        const rows = [...(res.data || [])].sort(
-          (a, b) => this.toNumber(b.value) - this.toNumber(a.value)
-        );
-        this.allocationChartData = {
-          labels: rows.map((r) => r.investment_type),
-          datasets: [{
-            ...this.allocationChartData.datasets[0],
-            data: rows.map((r) => this.toNumber(r.value))
-          }]
-        };
-        done();
-      },
-      error: () => done()
-    });
-
     const from = this.monthsAgoKey(12);
     this.analyticsService.getValueSeriesFiltered({ from }).subscribe({
       next: (res) => {
         this.buildSparkline(res.data);
-        // Fallback only when insights did not supply a snapshot pair.
         if (!this.moversFrom || !this.moversTo) {
           this.setupDeltaDates(res.data);
           if (this.moversFrom && this.moversTo) {
@@ -268,11 +290,16 @@ export class DashboardComponent implements OnInit {
           investment_date: new Date(item.investment_date),
           notes: item.notes ?? null
         }));
+        this.fundedCount = this.summaryRows.filter((r) => isFunded(r.amount)).length;
+        this.zeroCount = this.summaryRows.length - this.fundedCount;
+        this.recomputeBuckets();
         this.buildLargestHoldings();
         this.buildMaturityWatch();
         this.buildPlatformConcentration();
+        this.buildAttentionChips();
+        done();
       },
-      error: () => { /* non-blocking */ }
+      error: () => done()
     });
   }
 
@@ -313,7 +340,6 @@ export class DashboardComponent implements OnInit {
     return 0;
   }
 
-  /** Type · SubType · Category under a platform. */
   moverItemLabel(row: DeltaRow): string {
     return [row.investment_type, row.sub_type_name, row.sub_type_category]
       .map((part) => (part == null ? '' : String(part).trim()))
@@ -327,6 +353,50 @@ export class DashboardComponent implements OnInit {
 
   toggleLoserPlatform(platform: string) {
     this.expandedLoserPlatform = this.expandedLoserPlatform === platform ? null : platform;
+  }
+
+  private fundedRows(): SummaryRow[] {
+    return this.summaryRows.filter((r) => isFunded(r.amount) && !isExcelLegacy(r));
+  }
+
+  private recomputeBuckets() {
+    const liveCash = this.buckets.cash;
+    this.buckets = computeBucketsFromHoldings(
+      this.summaryRows,
+      liveCash,
+      this.useLiveBankCash
+    );
+    this.savingBankSnapshotNote =
+      this.useLiveBankCash &&
+      this.summaryRows.some(
+        (r) => r.investment_type === 'Saving Bank Balance' && isFunded(r.amount)
+      );
+    this.combinedNetWorth = this.buckets.total;
+    this.combinedBreakdown = getIndianAmountBreakdown(this.combinedNetWorth);
+    this.bucketBreakdown = this.combinedBreakdown;
+    this.investedBreakdown = getIndianAmountBreakdown(this.buckets.invested);
+    this.fdsBreakdown = getIndianAmountBreakdown(this.buckets.fds);
+    this.cashBreakdown = getIndianAmountBreakdown(this.buckets.cash);
+    this.realEstateBreakdown = getIndianAmountBreakdown(this.buckets.realEstate);
+    const bucketEntries: [string, number][] = [
+      ['Invested', this.buckets.invested],
+      ['FDs', this.buckets.fds],
+      ['Cash', this.buckets.cash],
+      ['Real estate', this.buckets.realEstate]
+    ];
+    const entries = bucketEntries.filter((entry) => entry[1] > 0);
+    this.allocationChartData = {
+      labels: entries.map(([l]) => l),
+      datasets: [{
+        ...this.allocationChartData.datasets[0],
+        data: entries.map(([, v]) => v)
+      }]
+    };
+    if (this.summaryRows.length) {
+      this.buildLargestHoldings();
+      this.buildPlatformConcentration();
+    }
+    this.updateGoalProgress();
   }
 
   private groupByPlatform(rows: DeltaRow[], sortDesc: boolean): MoverPlatformGroup[] {
@@ -392,7 +462,6 @@ export class DashboardComponent implements OnInit {
   private buildSparkline(payload: ValueSeriesResponse | undefined) {
     const rows = payload?.rows || [];
     if (!rows.length || payload?.mode === 'series') {
-      // Aggregate series mode by date if needed
       const byDate = new Map<string, number>();
       for (const row of rows) {
         const key = String(row.change_date).slice(0, 10);
@@ -445,7 +514,6 @@ export class DashboardComponent implements OnInit {
     }
   }
 
-  /** Normalize API dates to YYYY-MM-DD without UTC day-shift (IST-safe). */
   private dateKey(value: unknown): string {
     if (value == null || value === '') return '';
     if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -470,7 +538,7 @@ export class DashboardComponent implements OnInit {
 
   private buildPlatformConcentration() {
     const map = new Map<string, PlatformConcentrationGroup>();
-    for (const row of this.summaryRows) {
+    for (const row of this.fundedRows()) {
       const platform = String(row.website_app_name || '').trim() || 'Unknown';
       let group = map.get(platform);
       if (!group) {
@@ -480,9 +548,7 @@ export class DashboardComponent implements OnInit {
       group.amount += row.amount;
       group.items.push(row);
     }
-    const portfolioBase = this.totalAmount > 0
-      ? this.totalAmount
-      : this.summaryRows.reduce((s, r) => s + r.amount, 0);
+    const portfolioBase = this.buckets.total > 0 ? this.buckets.total : this.fundedRows().reduce((s, r) => s + r.amount, 0);
     const groups = [...map.values()]
       .map((g) => {
         g.items = [...g.items].sort((a, b) => b.amount - a.amount);
@@ -500,10 +566,10 @@ export class DashboardComponent implements OnInit {
   }
 
   private buildLargestHoldings() {
-    const portfolioBase = this.totalAmount > 0
-      ? this.totalAmount
-      : this.summaryRows.reduce((s, r) => s + r.amount, 0);
-    const rows = [...this.summaryRows]
+    const portfolioBase = this.buckets.total > 0
+      ? this.buckets.total
+      : this.fundedRows().reduce((s, r) => s + r.amount, 0);
+    const rows = [...this.fundedRows()]
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 12)
       .map((row) => ({
@@ -528,7 +594,7 @@ export class DashboardComponent implements OnInit {
     today.setHours(0, 0, 0, 0);
     const items: MaturityItem[] = [];
 
-    for (const row of this.summaryRows) {
+    for (const row of this.fundedRows()) {
       if (!MATURITY_HELPER_TYPES.includes(row.investment_type)) continue;
 
       const fromNotes = parseMaturityDateObject(row.notes);
@@ -548,7 +614,6 @@ export class DashboardComponent implements OnInit {
         continue;
       }
 
-      // Soft estimate from investment date + category tenor
       if (!row.investment_date || Number.isNaN(row.investment_date.getTime())) continue;
       const months = this.estimateTenorMonths(row);
       if (!months) continue;
@@ -590,32 +655,145 @@ export class DashboardComponent implements OnInit {
     return `${y}-${m}-${day}`;
   }
 
+  private lastCalendarMonthRange(): { from: string; to: string; label: string } {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const end = new Date(now.getFullYear(), now.getMonth(), 0);
+    const label = start.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+    return { from: this.dateKey(start), to: this.dateKey(end), label };
+  }
+
   private loadBankCash() {
     this.bankAnalytics.getCashSummary().subscribe({
       next: (data) => {
+        this.useLiveBankCash = true;
         const inr = (data?.totals_by_currency || []).find(
           (t) => String(t.currency || 'INR').toUpperCase() === 'INR'
         );
-        const first = (data?.totals_by_currency || [])[0];
-        const row = inr || first;
-        this.bankCashInr = this.toNumber(row?.total);
-        this.bankCashLabel = row
-          ? `Bank cash (${String(row.currency || 'INR').toUpperCase()})`
-          : 'Bank cash';
-        this.updateCombinedNetWorth();
+        const cashInr = this.toNumber(inr?.total);
+        this.buckets = { ...this.buckets, cash: cashInr };
+        this.liquidityAccounts = (data?.accounts || [])
+          .filter((a) => a.is_active && !a.is_credit_card)
+          .map((a) => ({
+            id: a.id,
+            bank_name: a.bank_name,
+            account_name: a.account_name,
+            latest_balance: this.toNumber(a.latest_balance),
+            stale: !!a.stale,
+            is_credit_card: !!a.is_credit_card
+          }))
+          .sort((a, b) => b.latest_balance - a.latest_balance);
+        this.creditCardAccounts = (data?.accounts || [])
+          .filter((a) => a.is_active && a.is_credit_card)
+          .map((a) => ({
+            bank_name: a.bank_name,
+            account_name: a.account_name,
+            last_txn_date: a.last_txn_date
+          }));
+        this.recomputeBuckets();
+        this.buildAttentionChips();
       },
       error: () => {
-        this.bankCashInr = 0;
-        this.bankCashLabel = 'Bank cash';
-        this.updateCombinedNetWorth();
+        this.bankCashError = 'Could not load live bank balances — using portfolio cash snapshots only.';
+        this.useLiveBankCash = false;
+        this.recomputeBuckets();
+        this.buildAttentionChips();
       }
     });
   }
 
-  private updateCombinedNetWorth() {
-    this.combinedNetWorth = this.totalAmount + this.bankCashInr;
-    this.combinedBreakdown = getIndianAmountBreakdown(this.combinedNetWorth);
-    this.updateGoalProgress();
+  private loadLastMonthBankFlow() {
+    const range = this.lastCalendarMonthRange();
+    this.bankAnalytics
+      .getAnalytics({ from: range.from, to: range.to, exclude_transfers: true })
+      .subscribe({
+        next: (data) => {
+          const summary = data?.summary;
+          if (!summary) return;
+          this.lastMonthFlow = {
+            label: range.label,
+            spend: this.toNumber(summary.total_debit),
+            income: this.toNumber(summary.total_credit),
+            net: this.toNumber(summary.net_cashflow)
+          };
+        },
+        error: () => {
+          this.lastMonthFlow = null;
+        }
+      });
+  }
+
+  private loadInvestmentCashflowCheck() {
+    this.analyticsService.getCashflowsByMonth().subscribe({
+      next: (res) => {
+        const rows = res.data || [];
+        if (!rows.length) {
+          this.buildAttentionChips(true);
+        }
+      },
+      error: () => { /* non-blocking */ }
+    });
+  }
+
+  private buildAttentionChips(investmentCashflowsEmpty = false) {
+    const chips: AttentionChip[] = [];
+
+    if (this.zeroCount > 0) {
+      chips.push({
+        label: `${this.zeroCount} zero-amount holdings`,
+        route: '/investments',
+        tone: 'info'
+      });
+    }
+
+    const staleAccounts = this.liquidityAccounts.filter((a) => a.stale);
+    if (staleAccounts.length) {
+      chips.push({
+        label: `${staleAccounts.length} stale bank account(s)`,
+        route: '/banking/accounts',
+        tone: 'warn'
+      });
+    }
+
+    const ccLag = this.creditCardAccounts.filter((a) => {
+      if (!a.last_txn_date) return true;
+      const d = new Date(`${String(a.last_txn_date).slice(0, 10)}T00:00:00`);
+      if (Number.isNaN(d.getTime())) return true;
+      const days = Math.round((Date.now() - d.getTime()) / 86400000);
+      return days > 90;
+    });
+    if (ccLag.length) {
+      chips.push({
+        label: `${ccLag.length} credit card(s) need fresh statement`,
+        route: '/banking/import',
+        tone: 'warn'
+      });
+    }
+
+    const largeFdNoMaturity = this.summaryRows.filter(
+      (r) =>
+        r.investment_type === 'FD' &&
+        isFunded(r.amount) &&
+        r.amount >= LARGE_FD_MATURITY_THRESHOLD &&
+        !parseMaturityDateObject(r.notes)
+    );
+    if (largeFdNoMaturity.length) {
+      chips.push({
+        label: `${largeFdNoMaturity.length} large FD(s) missing maturity date`,
+        route: '/investments',
+        tone: 'warn'
+      });
+    }
+
+    if (investmentCashflowsEmpty) {
+      chips.push({
+        label: 'No investment cashflows recorded',
+        route: '/cashflows',
+        tone: 'info'
+      });
+    }
+
+    this.attentionChips = chips;
   }
 
   private loadGoal() {

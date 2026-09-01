@@ -7,7 +7,8 @@ export const INVESTMENT_TYPES = [
   'Crypto',
   'PPF',
   'EPF',
-  'Saving Bank Balance'
+  'Saving Bank Balance',
+  'Real Estate'
 ];
 
 // Define sub-types and categories for each investment type
@@ -47,6 +48,10 @@ export const INVESTMENT_SUB_TYPES: { [key: string]: { subTypes: string[]; catego
   'Saving Bank Balance': {
     subTypes: ['Savings Account', 'Current Account', 'Recurring Deposit'],
     categories: ['Liquid', 'Emergency Fund', 'Short Term']
+  },
+  'Real Estate': {
+    subTypes: ['Residential', 'Commercial', 'Land', 'Plot'],
+    categories: ['Self Occupied', 'Rental', 'Investment', 'Properties']
   }
 };
 

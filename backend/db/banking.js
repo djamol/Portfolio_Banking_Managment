@@ -160,7 +160,10 @@ async function mysqlGetAccounts() {
       (SELECT COUNT(*) FROM bank_transactions t WHERE t.account_id = a.id) AS txn_count,
       (SELECT t.balance FROM bank_transactions t
         WHERE t.account_id = a.id AND t.balance IS NOT NULL
-        ORDER BY t.txn_date DESC, t.id DESC LIMIT 1) AS latest_balance
+        ORDER BY t.txn_date DESC, t.id DESC LIMIT 1) AS latest_balance,
+      (SELECT t.txn_date FROM bank_transactions t
+        WHERE t.account_id = a.id
+        ORDER BY t.txn_date DESC, t.id DESC LIMIT 1) AS last_txn_date
     FROM bank_accounts a
     ORDER BY a.bank_name, a.account_name
   `);
@@ -361,37 +364,68 @@ function wantsExcludeTransfers(filters = {}) {
   return v === true || v === 1 || v === '1' || v === 'true';
 }
 
+function isCreditCardAccountType(accountType) {
+  return String(accountType || '').toLowerCase().includes('credit');
+}
+
+function monthsSinceDate(ymd) {
+  if (!ymd) return null;
+  const d = new Date(`${String(ymd).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  return (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth());
+}
+
 function buildCashSummaryFromAccounts(accounts) {
+  const STALE_MONTHS = 24;
   const list = (accounts || []).map((a) => {
     const isActive = !(a.is_active === 0 || a.is_active === false);
     const latest =
       a.latest_balance !== null && a.latest_balance !== undefined
         ? num(a.latest_balance)
         : num(a.opening_balance);
+    const lastTxn = a.last_txn_date ? String(a.last_txn_date).slice(0, 10) : null;
+    const accountType = a.account_type || 'Savings';
+    const isCreditCard = isCreditCardAccountType(accountType);
+    const months = monthsSinceDate(lastTxn);
+    const stale = isActive && !isCreditCard && months !== null && months >= STALE_MONTHS;
     return {
       id: a.id,
       bank_name: a.bank_name,
       account_name: a.account_name,
+      account_type: accountType,
       currency: a.currency || 'INR',
       latest_balance: latest,
-      is_active: isActive ? 1 : 0
+      is_active: isActive ? 1 : 0,
+      is_credit_card: isCreditCard ? 1 : 0,
+      last_txn_date: lastTxn,
+      stale: stale ? 1 : 0
     };
   });
-  const totals = {};
+  const cashTotals = {};
+  const creditCardTotals = {};
   let active_count = 0;
   let inactive_count = 0;
   for (const a of list) {
     if (a.is_active) {
       active_count += 1;
       const c = a.currency || 'INR';
-      totals[c] = (totals[c] || 0) + num(a.latest_balance);
+      if (a.is_credit_card) {
+        creditCardTotals[c] = (creditCardTotals[c] || 0) + num(a.latest_balance);
+      } else if (!a.stale) {
+        cashTotals[c] = (cashTotals[c] || 0) + num(a.latest_balance);
+      }
     } else {
       inactive_count += 1;
     }
   }
   return {
     accounts: list,
-    totals_by_currency: Object.entries(totals).map(([currency, total]) => ({ currency, total })),
+    totals_by_currency: Object.entries(cashTotals).map(([currency, total]) => ({ currency, total })),
+    credit_card_totals_by_currency: Object.entries(creditCardTotals).map(([currency, total]) => ({
+      currency,
+      total
+    })),
     active_count,
     inactive_count
   };
@@ -878,10 +912,17 @@ async function mongoGetAccounts() {
       .sort({ txn_date: -1, id: -1 })
       .limit(1)
       .toArray();
+    const lastTxnDoc = await db
+      .collection('bank_transactions')
+      .find({ account_id: a.id })
+      .sort({ txn_date: -1, id: -1 })
+      .limit(1)
+      .toArray();
     result.push({
       ...formatBankDoc(a),
       txn_count,
-      latest_balance: latest[0]?.balance ?? null
+      latest_balance: latest[0]?.balance ?? null,
+      last_txn_date: lastTxnDoc[0]?.txn_date ?? null
     });
   }
   return result;

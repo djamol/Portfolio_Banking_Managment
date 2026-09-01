@@ -49,6 +49,94 @@
   margin-bottom: 12px;
 }
 
+.warn-banner {
+  background: #fffbeb;
+  color: #92400e;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  border: 1px solid #fde68a;
+}
+
+.attention-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.attention-chip {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.attention-chip.warn {
+  background: #fffbeb;
+  color: #92400e;
+  border-color: #fde68a;
+}
+
+.attention-chip.danger {
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+
+.kpi-skeleton {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.skel {
+  height: 88px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.cash-note {
+  margin: -4px 0 12px;
+}
+
+.bank-row {
+  margin-bottom: 14px;
+}
+
+.liquidity-row .meta {
+  color: #d97706;
+}
+
+.flow-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.flow-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
 .freshness-banner {
   padding: 10px 14px;
   border-radius: 8px;

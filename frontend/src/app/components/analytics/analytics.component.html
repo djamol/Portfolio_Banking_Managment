@@ -21,7 +21,7 @@
     <button type="button" class="analytics-tab" [class.active]="activeTab==='cashflows'" (click)="setAnalyticsTab('cashflows')">Cashflows</button>
   </nav>
 
-  <div class="stats-grid">
+  <div class="stats-grid" *ngIf="activeTab !== 'overview'">
     <div class="stat-card">
       <h3>Total Portfolio Value</h3>
       <div class="value">₹{{ totalAmount | number:'1.2-2' }}</div>
@@ -141,9 +141,11 @@
       </canvas>
     </div>
     <div *ngIf="!cashflowChartData.labels || cashflowChartData.labels.length === 0" style="text-align: center; padding: 40px; color: #6b7280;">
-      <p>No cashflow data available</p>
+      <p>No investment cashflow transactions in this portfolio yet.</p>
       <p style="margin-top: 8px; font-size: 14px;">
-        <a routerLink="/cashflows">Add investment cashflows</a> to populate this chart.
+        Record buy/sell/dividend entries per holding on the
+        <a routerLink="/cashflows">Cashflows</a> page, or add amounts via
+        <a routerLink="/investments">Investments</a> history.
       </p>
     </div>
   </div>

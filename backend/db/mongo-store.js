@@ -1,7 +1,7 @@
 const { getDb } = require('../config/mongodb');
 
 const INVESTMENT_TYPES = [
-  'FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'Saving Bank Balance'
+  'FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'EPF', 'Saving Bank Balance', 'Real Estate'
 ];
 
 function toDateString(value) {

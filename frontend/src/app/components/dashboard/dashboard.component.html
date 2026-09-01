@@ -2,7 +2,7 @@
   <div class="dash-header">
     <div>
       <h2>Dashboard</h2>
-      <p class="subtitle">Portfolio overview — net worth, allocation, movers &amp; maturity watch</p>
+      <p class="subtitle">Net worth home — composition, bank cash, last-month flow &amp; movers</p>
     </div>
     <button type="button" class="refresh-btn" (click)="refresh()" [disabled]="loading">
       {{ loading ? 'Loading…' : 'Refresh' }}
@@ -10,30 +10,56 @@
   </div>
 
   <div *ngIf="errorMessage" class="error-banner">{{ errorMessage }}</div>
+  <div *ngIf="bankCashError" class="warn-banner">{{ bankCashError }}</div>
 
-  <div class="freshness-banner" [ngClass]="freshnessTone()" *ngIf="daysSinceSnapshot !== null">
+  <div class="freshness-banner" [ngClass]="freshnessTone()" *ngIf="daysSinceSnapshot !== null && !loading">
     <strong>Data freshness:</strong>
     Last snapshot {{ daysSinceSnapshot }} day(s) ago
     <span *ngIf="daysSinceSnapshot > 14"> — add a fresh history entry for better tracking.</span>
     <span *ngIf="daysSinceSnapshot <= 7"> — looking current.</span>
   </div>
 
-  <div class="kpi-grid">
+  <div class="attention-row" *ngIf="attentionChips.length && !loading">
+    <a
+      *ngFor="let chip of attentionChips"
+      class="attention-chip"
+      [class.warn]="chip.tone === 'warn'"
+      [class.danger]="chip.tone === 'danger'"
+      [routerLink]="chip.route">
+      {{ chip.label }}
+    </a>
+  </div>
+
+  <div class="kpi-skeleton" *ngIf="loading">
+    <div class="skel kpi" *ngFor="let _ of [1,2,3,4,5]"></div>
+  </div>
+
+  <div class="kpi-grid" *ngIf="!loading">
     <div class="kpi highlight">
       <span class="kpi-label">Net Worth</span>
       <span class="kpi-value" *ngIf="combinedBreakdown">{{ combinedBreakdown.primaryDisplay }}</span>
       <span class="kpi-meta" *ngIf="combinedBreakdown">{{ combinedBreakdown.full }}</span>
-      <span class="kpi-meta" *ngIf="!combinedBreakdown && totalBreakdown">{{ totalBreakdown.full }}</span>
+      <span class="kpi-meta">{{ fundedCount }} funded · {{ zeroCount }} zero</span>
     </div>
     <div class="kpi">
-      <span class="kpi-label">Investments</span>
-      <span class="kpi-value" *ngIf="totalBreakdown">{{ totalBreakdown.primaryDisplay }}</span>
-      <span class="kpi-meta">{{ totalInvestments }} holdings</span>
+      <span class="kpi-label">Invested</span>
+      <span class="kpi-value" *ngIf="investedBreakdown">{{ investedBreakdown.primaryDisplay }}</span>
+      <span class="kpi-meta">MF, ETF, stocks, bonds, PPF/EPF</span>
     </div>
     <div class="kpi">
-      <span class="kpi-label">{{ bankCashLabel || 'Bank cash' }}</span>
-      <span class="kpi-value">₹{{ bankCashInr | number:'1.0-0' }}</span>
-      <span class="kpi-meta"><a routerLink="/banking">Open Bank Tracker</a></span>
+      <span class="kpi-label">FDs</span>
+      <span class="kpi-value" *ngIf="fdsBreakdown">{{ fdsBreakdown.primaryDisplay }}</span>
+      <span class="kpi-meta">Fixed deposits</span>
+    </div>
+    <div class="kpi">
+      <span class="kpi-label">Cash</span>
+      <span class="kpi-value" *ngIf="cashBreakdown">{{ cashBreakdown.primaryDisplay }}</span>
+      <span class="kpi-meta"><a routerLink="/banking">Live bank balances</a></span>
+    </div>
+    <div class="kpi" *ngIf="buckets.realEstate > 0">
+      <span class="kpi-label">Real estate</span>
+      <span class="kpi-value" *ngIf="realEstateBreakdown">{{ realEstateBreakdown.primaryDisplay }}</span>
+      <span class="kpi-meta">Property &amp; land</span>
     </div>
     <div class="kpi" *ngIf="insights?.portfolio">
       <span class="kpi-label">Vs Previous Snapshot</span>
@@ -52,15 +78,65 @@
       <span class="kpi-meta" *ngIf="largestHoldingLabel">
         {{ largestHoldingLabel }} · ₹{{ largestHoldingAmount | number:'1.0-0' }}
       </span>
-      <span class="kpi-meta" *ngIf="!largestHoldingLabel">Of portfolio</span>
     </div>
   </div>
 
-  <div class="charts-row">
+  <p class="hint cash-note" *ngIf="savingBankSnapshotNote && !loading">
+    Saving-bank balance holdings are excluded from net worth — live bank balances are used instead.
+  </p>
+
+  <div class="two-col bank-row" *ngIf="!loading">
     <div class="panel">
       <div class="panel-head">
-        <h3>Allocation</h3>
-        <a routerLink="/analytics" class="link-btn">Full analytics</a>
+        <h3>Bank liquidity</h3>
+        <a routerLink="/banking/accounts" class="link-btn">Accounts</a>
+      </div>
+      <div class="liquidity-list" *ngIf="liquidityAccounts.length; else noLiquidity">
+        <div class="list-row liquidity-row" *ngFor="let a of liquidityAccounts">
+          <div>
+            <div class="title">{{ a.bank_name }} – {{ a.account_name }}</div>
+            <div class="meta" *ngIf="a.stale">Stale — no recent transactions</div>
+          </div>
+          <div class="right">
+            <div class="strong">₹{{ a.latest_balance | number:'1.0-0' }}</div>
+          </div>
+        </div>
+      </div>
+      <ng-template #noLiquidity>
+        <div class="empty">No active bank accounts. <a routerLink="/banking/accounts">Add one</a></div>
+      </ng-template>
+    </div>
+
+    <div class="panel" *ngIf="lastMonthFlow as flow">
+      <div class="panel-head">
+        <h3>Last month ({{ flow.label }})</h3>
+        <a routerLink="/banking" class="link-btn">Bank Tracker</a>
+      </div>
+      <p class="hint">Excludes transfers between your accounts.</p>
+      <div class="flow-grid">
+        <div class="flow-stat">
+          <span class="meta">Spend</span>
+          <span class="strong neg">₹{{ flow.spend | number:'1.0-0' }}</span>
+        </div>
+        <div class="flow-stat">
+          <span class="meta">Income</span>
+          <span class="strong pos">₹{{ flow.income | number:'1.0-0' }}</span>
+        </div>
+        <div class="flow-stat">
+          <span class="meta">Net</span>
+          <span class="strong" [class.pos]="flow.net >= 0" [class.neg]="flow.net < 0">
+            ₹{{ flow.net | number:'1.0-0' }}
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="charts-row" *ngIf="!loading">
+    <div class="panel">
+      <div class="panel-head">
+        <h3>Net worth composition</h3>
+        <a routerLink="/analytics" class="link-btn">Type analytics</a>
       </div>
       <div class="chart-box" *ngIf="allocationChartData.labels?.length; else noAlloc">
         <canvas baseChart
@@ -71,10 +147,9 @@
       </div>
       <ng-template #noAlloc>
         <div class="empty">
-          No allocation data yet.
+          No composition data yet.
           <div class="empty-actions">
             <a routerLink="/investments">Add investments</a>
-            <a routerLink="/import-data">Import statements</a>
           </div>
         </div>
       </ng-template>
@@ -96,7 +171,6 @@
         <div class="empty">
           No snapshot trend yet.
           <div class="empty-actions">
-            <a routerLink="/investments">Add investments</a>
             <a routerLink="/asset-tracker">Open asset tracker</a>
           </div>
         </div>
@@ -104,7 +178,7 @@
     </div>
   </div>
 
-  <div class="two-col holdings-movers">
+  <div class="two-col holdings-movers" *ngIf="!loading">
     <div class="panel">
       <div class="panel-head">
         <h3>Platform concentration</h3>
@@ -113,7 +187,7 @@
         <span>{{ platformCount }} platform(s)</span>
         <span>Top 3 = {{ top3ConcentrationPct | number:'1.0-0' }}%</span>
       </div>
-      <div class="conc-scroll" style="    max-height: 29.5rem;" *ngIf="platformGroups.length; else noHoldings" [class.scrollable]="platformGroups.length > 10">
+      <div class="conc-scroll" style="max-height: 29.5rem;" *ngIf="platformGroups.length; else noHoldings" [class.scrollable]="platformGroups.length > 10">
         <div class="conc-platform" *ngFor="let g of platformGroups">
           <button
             type="button"
@@ -146,7 +220,7 @@
       </div>
       <ng-template #noHoldings>
         <div class="empty">
-          No platform data yet.
+          No funded holdings yet.
           <div class="empty-actions">
             <a routerLink="/investments">Add investments</a>
           </div>
@@ -156,7 +230,7 @@
 
     <div class="panel">
       <div class="movers-dates">
-        <b>Movers  :</b>
+        <b>Movers:</b>
         <label>
           Start
           <input type="date" [(ngModel)]="moversFrom" />
@@ -181,7 +255,7 @@
           <span class="meta">{{ loserCount }} loser(s)</span>
         </div>
       </div>
-      <div class="movers conc-scroll" *ngIf="gainerPlatforms.length || loserPlatforms.length; else noMovers" [class.scrollable]="gainerPlatforms.length+loserPlatforms.length  > 5 ">
+      <div class="movers conc-scroll" *ngIf="gainerPlatforms.length || loserPlatforms.length; else noMovers" [class.scrollable]="gainerPlatforms.length+loserPlatforms.length > 5">
         <div>
           <h4 class="pos-title">Gainers</h4>
           <div class="movers-scroll" [class.scrollable]="gainerPlatforms.length > 10">
@@ -245,13 +319,13 @@
     </div>
   </div>
 
-  <div class="two-col">
+  <div class="two-col" *ngIf="!loading">
     <div class="panel">
       <div class="panel-head">
         <h3>Largest holdings</h3>
         <a routerLink="/investments" class="link-btn">All investments</a>
       </div>
-      <p class="hint">Biggest individual positions by current amount.</p>
+      <p class="hint">Funded positions only (zero / legacy rows hidden).</p>
       <div class="conc-scroll" *ngIf="largestHoldings.length; else noLargest" [class.scrollable]="largestHoldings.length > 10">
         <div class="list-row largest-row" *ngFor="let h of largestHoldings">
           <div class="conc-main">
@@ -269,10 +343,9 @@
       </div>
       <ng-template #noLargest>
         <div class="empty">
-          No holdings yet.
+          No funded holdings yet.
           <div class="empty-actions">
             <a routerLink="/investments">Add investments</a>
-            <a routerLink="/import-data">Import</a>
           </div>
         </div>
       </ng-template>
@@ -308,7 +381,7 @@
     </div>
   </div>
 
-  <div class="panel goal-panel">
+  <div class="panel goal-panel" *ngIf="!loading">
     <div class="panel-head">
       <h3>Net-worth goal</h3>
       <a routerLink="/asset-tracker" class="link-btn">Edit in Asset Tracker</a>
@@ -338,14 +411,14 @@
     </ng-template>
   </div>
 
-  <div class="quick-links panel">
+  <div class="quick-links panel" *ngIf="!loading">
     <h3>Quick links</h3>
     <div class="links">
       <a routerLink="/investments">Manage investments</a>
       <a routerLink="/investment-summary">Holdings report</a>
       <a routerLink="/analytics">Analytics &amp; projection</a>
       <a routerLink="/asset-tracker">Asset tracker &amp; goals</a>
-      <a routerLink="/import-data">Import MF / ETF</a>
+      <a routerLink="/banking">Bank Tracker</a>
       <a routerLink="/import-export">Backup / restore</a>
     </div>
   </div>

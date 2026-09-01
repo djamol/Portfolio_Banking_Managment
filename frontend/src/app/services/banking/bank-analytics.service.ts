@@ -33,11 +33,16 @@ export class BankAnalyticsService {
       id: number;
       bank_name: string;
       account_name: string;
+      account_type?: string;
       currency: string;
       latest_balance: number;
       is_active: number;
+      is_credit_card?: number;
+      last_txn_date?: string | null;
+      stale?: number;
     }>;
     totals_by_currency: Array<{ currency: string; total: number }>;
+    credit_card_totals_by_currency?: Array<{ currency: string; total: number }>;
     active_count: number;
     inactive_count: number;
   } | null> {
