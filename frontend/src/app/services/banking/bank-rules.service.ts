@@ -38,6 +38,36 @@ export class BankRulesService {
     );
   }
 
+  testRule(data: {
+    pattern: string;
+    match_field?: string;
+    account_id?: number | null;
+    limit?: number;
+  }): Observable<{
+    matched: Array<{
+      id: number;
+      txn_date: string;
+      narration?: string;
+      payee?: string;
+      withdrawal?: number;
+      deposit?: number;
+      category?: string;
+      bank_name?: string;
+      account_name?: string;
+    }>;
+    scanned: number;
+    total_matched: number;
+    truncated: boolean;
+  }> {
+    return this.http.post<ApiResponse<any>>(bankApiUrl('rules/test'), data).pipe(
+      map((r) =>
+        r.success
+          ? r.data
+          : { matched: [], scanned: 0, total_matched: 0, truncated: false }
+      )
+    );
+  }
+
   getBudgetStatus(periodMonth?: string, opts: { exclude_transfers?: boolean } = {}): Observable<BankBudget[]> {
     let params = new HttpParams();
     if (periodMonth) params = params.set('period_month', periodMonth);

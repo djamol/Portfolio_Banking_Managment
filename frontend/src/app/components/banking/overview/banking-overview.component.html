@@ -106,6 +106,9 @@
           <div class="stat-value">₹{{ formatMoney(next.projected_interest) }}</div>
         </div>
       </div>
+      <div class="chart-wrap forecast-chart" *ngIf="forecastHistoryChart">
+        <canvas baseChart [data]="forecastHistoryChart" [options]="barOptions" type="bar"></canvas>
+      </div>
       <table class="data-table compact" *ngIf="upcomingOutflows.length">
         <thead>
           <tr><th>Upcoming outflow</th><th>Amount</th><th>Expected</th><th>Category</th></tr>

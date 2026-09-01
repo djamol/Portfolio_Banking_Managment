@@ -51,6 +51,11 @@ tr.budget-over {
   margin-top: 8px;
 }
 
+.forecast-chart {
+  height: 200px;
+  margin-top: 1rem;
+}
+
 .compare-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

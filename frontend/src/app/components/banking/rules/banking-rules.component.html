@@ -59,7 +59,45 @@
       </div>
       <div class="section-actions">
         <button class="btn btn-primary" (click)="saveRule()">{{ editingRuleId ? 'Update rule' : 'Save rule' }}</button>
-        <button class="btn btn-secondary" (click)="showRuleForm=false; editingRuleId=null">Cancel</button>
+        <button class="btn btn-secondary" (click)="testRulePattern()" [disabled]="ruleTesting">
+          {{ ruleTesting ? 'Testing…' : 'Test pattern' }}
+        </button>
+        <button class="btn btn-secondary" (click)="showRuleForm=false; editingRuleId=null; rulePreview=null">Cancel</button>
+      </div>
+      <div class="rule-preview" *ngIf="rulePreview">
+        <h4>
+          Preview — {{ rulePreview.total_matched }} match(es)
+          <span class="muted" *ngIf="rulePreview.truncated"> (showing {{ rulePreview.matched.length }})</span>
+          <span class="muted"> · scanned {{ rulePreview.scanned }} recent txns</span>
+        </h4>
+        <table class="data-table compact" *ngIf="rulePreview.matched.length; else noRuleMatches">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Account</th>
+              <th>Narration</th>
+              <th>Payee</th>
+              <th>Amount</th>
+              <th>Category</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of rulePreview.matched">
+              <td>{{ row.txn_date | date:'mediumDate' }}</td>
+              <td>{{ row.bank_name }} – {{ row.account_name }}</td>
+              <td class="narration">{{ row.narration }}</td>
+              <td>{{ row.payee || '—' }}</td>
+              <td>
+                <span *ngIf="row.withdrawal" class="debit">−₹{{ formatMoney(row.withdrawal) }}</span>
+                <span *ngIf="row.deposit" class="credit">+₹{{ formatMoney(row.deposit) }}</span>
+              </td>
+              <td>{{ row.category || '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <ng-template #noRuleMatches>
+          <p class="empty">No transactions match this pattern in the recent scan window.</p>
+        </ng-template>
       </div>
     </div>
 
@@ -89,6 +127,7 @@
               </button>
             </td>
             <td class="row-actions">
+              <button class="link-btn" type="button" (click)="testExistingRule(r, $event)">Test</button>
               <button class="link-btn" type="button" (click)="editRule(r)">Edit</button>
               <button class="link-btn danger" type="button" (click)="deleteRule(r)">Delete</button>
             </td>

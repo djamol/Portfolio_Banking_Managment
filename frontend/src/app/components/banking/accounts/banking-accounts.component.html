@@ -1,108 +1,114 @@
 <div class="section-actions">
-      <button class="btn btn-primary" (click)="openCreateAccount()">Add account</button>
-    </div>
+  <button class="btn btn-primary" (click)="openCreateAccount()">Add account</button>
+</div>
 
-    <div class="card" *ngIf="showAccountForm">
-      <h3>{{ editingAccount ? 'Edit account' : 'New account' }}</h3>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Bank</label>
-          <select [(ngModel)]="accountForm.bank_name">
-            <option *ngFor="let b of bankOptions" [value]="b">{{ b }}</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Account name</label>
-          <input [(ngModel)]="accountForm.account_name" placeholder="e.g. Salary HDFC" />
-        </div>
-        <div class="form-group">
-          <label>Account Branch</label>
-          <input [(ngModel)]="accountForm.branch" placeholder="e.g. Aurangabad CIDCO" />
-        </div>
-        <div class="form-group">
-          <label>Account No</label>
-          <input [(ngModel)]="accountForm.account_number" placeholder="Account number" />
-        </div>
-        <div class="form-group">
-          <label>Account Type</label>
-          <select [(ngModel)]="accountForm.account_type">
-            <option *ngFor="let t of accountTypeOptions" [value]="t">{{ t }}</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>RTGS/NEFT IFSC</label>
-          <input
-            [(ngModel)]="accountForm.ifsc"
-            placeholder="e.g. HDFC0000123"
-            (ngModelChange)="accountForm.ifsc = ($event || '').toUpperCase()"
-          />
-        </div>
-        <div class="form-group">
-          <label>Opening balance</label>
-          <input type="number" [(ngModel)]="accountForm.opening_balance" />
-        </div>
-        <div class="form-group">
-          <label>Currency</label>
-          <select [(ngModel)]="accountForm.currency">
-            <option value="INR">INR</option>
-            <option value="USD">USD</option>
-            <option value="EUR">EUR</option>
-            <option value="GBP">GBP</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Active</label>
-          <select [(ngModel)]="accountForm.is_active">
-            <option [ngValue]="1">Active</option>
-            <option [ngValue]="0">Inactive</option>
-          </select>
-        </div>
-        <div class="form-group full">
-          <label>Notes / Address (optional)</label>
-          <input [(ngModel)]="accountForm.notes" placeholder="Shown as address lines on statement export" />
-        </div>
-      </div>
-      <div class="section-actions">
-        <button class="btn btn-primary" (click)="saveAccount()">Save</button>
-        <button class="btn btn-secondary" (click)="showAccountForm=false">Cancel</button>
-      </div>
+<div class="card" *ngIf="showAccountForm">
+  <h3>{{ editingAccount ? 'Edit account' : 'New account' }}</h3>
+  <div class="form-grid">
+    <div class="form-group">
+      <label>Bank</label>
+      <select [(ngModel)]="accountForm.bank_name">
+        <option *ngFor="let b of bankOptions" [value]="b">{{ b }}</option>
+      </select>
     </div>
+    <div class="form-group">
+      <label>Account name</label>
+      <input [(ngModel)]="accountForm.account_name" placeholder="e.g. Salary HDFC" />
+    </div>
+    <div class="form-group">
+      <label>Account Branch</label>
+      <input [(ngModel)]="accountForm.branch" placeholder="e.g. Aurangabad CIDCO" />
+    </div>
+    <div class="form-group">
+      <label>Account No</label>
+      <input [(ngModel)]="accountForm.account_number" placeholder="Account number" />
+    </div>
+    <div class="form-group">
+      <label>Account Type</label>
+      <select [(ngModel)]="accountForm.account_type">
+        <option *ngFor="let t of accountTypeOptions" [value]="t">{{ t }}</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>RTGS/NEFT IFSC</label>
+      <input
+        [(ngModel)]="accountForm.ifsc"
+        placeholder="e.g. HDFC0000123"
+        (ngModelChange)="accountForm.ifsc = ($event || '').toUpperCase()"
+      />
+    </div>
+    <div class="form-group">
+      <label>Opening balance</label>
+      <input type="number" [(ngModel)]="accountForm.opening_balance" />
+    </div>
+    <div class="form-group">
+      <label>Currency</label>
+      <select [(ngModel)]="accountForm.currency">
+        <option value="INR">INR</option>
+        <option value="USD">USD</option>
+        <option value="EUR">EUR</option>
+        <option value="GBP">GBP</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Active</label>
+      <select [(ngModel)]="accountForm.is_active">
+        <option [ngValue]="1">Active</option>
+        <option [ngValue]="0">Inactive</option>
+      </select>
+    </div>
+    <div class="form-group full">
+      <label>Notes / Address (optional)</label>
+      <input [(ngModel)]="accountForm.notes" placeholder="Shown as address lines on statement export" />
+    </div>
+  </div>
+  <div class="section-actions">
+    <button class="btn btn-primary" (click)="saveAccount()">Save</button>
+    <button class="btn btn-secondary" (click)="showAccountForm=false">Cancel</button>
+  </div>
+</div>
 
-    <div class="card">
-      <table class="data-table" *ngIf="ctx.accounts.length; else noAccounts">
-        <thead>
-          <tr>
-            <th>Bank</th>
-            <th>Name</th>
-            <th>Branch</th>
-            <th>Account No</th>
-            <th>Type</th>
-            <th>IFSC</th>
-            <th>Status</th>
-            <th>Txns</th>
-            <th>Balance</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr *ngFor="let a of ctx.accounts" [class.inactive-row]="a.is_active === 0 || a.is_active === false">
-            <td>{{ a.bank_name }}</td>
-            <td>{{ a.account_name }}</td>
-            <td>{{ a.branch || '—' }}</td>
-            <td>{{ a.account_number || '—' }}</td>
-            <td>{{ a.account_type }}</td>
-            <td>{{ a.ifsc || '—' }}</td>
-            <td>{{ (a.is_active === 0 || a.is_active === false) ? 'Inactive' : 'Active' }}</td>
-            <td>{{ a.txn_count || 0 }}</td>
-            <td>{{ formatCurrency(a.latest_balance, a.currency) }}</td>
-            <td class="row-actions">
-              <button class="link-btn" (click)="openEditAccount(a)">Edit</button>
-              <button class="link-btn danger" (click)="deleteAccount(a)">Delete</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <ng-template #noAccounts>
-        <p class="empty">No bank accounts yet. Add one, then import a statement.</p>
-      </ng-template>
-    </div>
+<div class="card table-scroll">
+  <table class="data-table" *ngIf="ctx.accounts.length; else noAccounts">
+    <thead>
+      <tr>
+        <th>Bank</th>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Status</th>
+        <th>Last txn</th>
+        <th>Txns</th>
+        <th>Balance</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let a of ctx.accounts" [class.inactive-row]="a.is_active === 0 || a.is_active === false">
+        <td>{{ a.bank_name }}</td>
+        <td>
+          {{ a.account_name }}
+          <div class="account-badges">
+            <span class="badge warn" *ngIf="isStaleAccount(a)">Stale</span>
+            <span class="badge warn" *ngIf="ccNeedsStatement(a)">Needs statement</span>
+            <span class="badge" *ngIf="isCreditCard(a)">Credit card</span>
+          </div>
+        </td>
+        <td>{{ a.account_type }}</td>
+        <td>{{ (a.is_active === 0 || a.is_active === false) ? 'Inactive' : 'Active' }}</td>
+        <td>{{ accountMeta(a.id).last_txn_date || '—' }}</td>
+        <td>{{ a.txn_count || 0 }}</td>
+        <td>{{ formatCurrency(a.latest_balance, a.currency) }}</td>
+        <td class="row-actions">
+          <button class="link-btn" type="button" (click)="viewTransactions(a)">Txns</button>
+          <button class="link-btn" type="button" (click)="openContinuity(a)">Continuity</button>
+          <button class="link-btn" type="button" (click)="openImport(a)">Import</button>
+          <button class="link-btn" type="button" (click)="openEditAccount(a)">Edit</button>
+          <button class="link-btn danger" type="button" (click)="deleteAccount(a)">Delete</button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <ng-template #noAccounts>
+    <p class="empty">No bank accounts yet. Add one, then import a statement.</p>
+  </ng-template>
+</div>

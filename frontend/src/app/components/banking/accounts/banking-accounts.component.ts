@@ -1,10 +1,18 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
-import { Subject, merge, takeUntil } from 'rxjs';
+import { Router } from '@angular/router';
+import { Subject, takeUntil } from 'rxjs';
 import { BankAccount } from '../../../services/banking/banking.models';
 import { BankAccountsService } from '../../../services/banking/bank-accounts.service';
 import { formatCurrency } from '../shared/banking-format.util';
+import { BankingAnalyticsState } from '../shared/banking-analytics-state.service';
 import { BankingContextService } from '../shared/banking-context.service';
 import { BankingFilterState } from '../shared/banking-filter-state.service';
+
+type AccountMeta = {
+  last_txn_date?: string | null;
+  stale?: boolean | number;
+  is_credit_card?: boolean | number;
+};
 
 @Component({
   selector: 'app-banking-accounts',
@@ -33,18 +41,73 @@ export class BankingAccountsComponent implements OnInit, OnDestroy {
 
   constructor(
     public ctx: BankingContextService,
+    public analyticsState: BankingAnalyticsState,
     private filters: BankingFilterState,
-    private accountsService: BankAccountsService
+    private accountsService: BankAccountsService,
+    private router: Router
   ) {}
 
   ngOnInit() {
     this.ctx.loadAccounts();
-    this.filters.refreshRequested$.pipe(takeUntil(this.destroy$)).subscribe(() => this.ctx.loadAccounts());
+    this.analyticsState.loadCashSummary();
+    this.filters.refreshRequested$.pipe(takeUntil(this.destroy$)).subscribe(() => {
+      this.ctx.loadAccounts();
+      this.analyticsState.loadCashSummary();
+    });
   }
 
   ngOnDestroy() {
     this.destroy$.next();
     this.destroy$.complete();
+  }
+
+  accountMeta(accountId: number): AccountMeta {
+    const row = (this.analyticsState.cashSummary?.accounts || []).find((a) => a.id === accountId);
+    return row || {};
+  }
+
+  isCreditCard(account: BankAccount): boolean {
+    const meta = this.accountMeta(account.id);
+    if (meta.is_credit_card != null) return !!meta.is_credit_card;
+    return String(account.account_type || '').toLowerCase().includes('credit');
+  }
+
+  isStaleAccount(account: BankAccount): boolean {
+    if (account.is_active === 0 || account.is_active === false) return false;
+    if (this.isCreditCard(account)) return false;
+    return !!this.accountMeta(account.id).stale;
+  }
+
+  ccNeedsStatement(account: BankAccount): boolean {
+    if (!this.isCreditCard(account) || account.is_active === 0 || account.is_active === false) {
+      return false;
+    }
+    const last = this.accountMeta(account.id).last_txn_date;
+    if (!last) return true;
+    const d = new Date(`${String(last).slice(0, 10)}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return true;
+    return (Date.now() - d.getTime()) / 86400000 > 90;
+  }
+
+  viewTransactions(account: BankAccount) {
+    this.filters.filterAccountId = account.id;
+    this.filters.filterOffset = 0;
+    this.filters.notifyChanged();
+    this.router.navigate(['/banking/transactions']);
+  }
+
+  openContinuity(account: BankAccount) {
+    this.router.navigate(['/banking/insights'], {
+      queryParams: { workflow: 'quality', accountId: account.id }
+    });
+  }
+
+  openImport(account?: BankAccount) {
+    if (account) {
+      this.filters.filterAccountId = account.id;
+      this.filters.notifyChanged();
+    }
+    this.router.navigate(['/banking/import']);
   }
 
   emptyAccountForm(): Partial<BankAccount> {
@@ -88,6 +151,7 @@ export class BankingAccountsComponent implements OnInit, OnDestroy {
         this.showAccountForm = false;
         this.ctx.flash('success', this.editingAccount ? 'Account updated' : 'Account created');
         this.ctx.refreshCore();
+        this.analyticsState.loadCashSummary();
         this.filters.requestRefresh();
       },
       error: (err) => this.ctx.flash('error', err.message || 'Save failed')
@@ -100,6 +164,7 @@ export class BankingAccountsComponent implements OnInit, OnDestroy {
       next: () => {
         this.ctx.flash('success', 'Account deleted');
         this.ctx.refreshCore();
+        this.analyticsState.loadCashSummary();
         this.filters.requestRefresh();
       },
       error: (err) => this.ctx.flash('error', err.message || 'Delete failed')

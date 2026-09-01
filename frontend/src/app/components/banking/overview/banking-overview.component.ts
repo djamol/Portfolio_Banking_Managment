@@ -25,9 +25,16 @@ type ForecastNextMonth = {
   projected_interest?: number;
 };
 
+type ForecastHistoryRow = {
+  month: string;
+  total_debit: number;
+  total_credit: number;
+};
+
 type ForecastResponse = {
   projected_next_month?: ForecastNextMonth;
   upcoming_outflows?: ForecastOutflow[];
+  history?: ForecastHistoryRow[];
 };
 
 @Component({
@@ -80,6 +87,29 @@ export class BankingOverviewComponent implements OnInit, OnDestroy {
 
   get upcomingOutflows(): ForecastOutflow[] {
     return (this.forecast?.upcoming_outflows || []).slice(0, 5);
+  }
+
+  get forecastHistoryChart(): {
+    labels: string[];
+    datasets: Array<{ label: string; data: number[]; backgroundColor: string }>;
+  } | null {
+    const rows = this.forecast?.history || [];
+    if (!rows.length) return null;
+    return {
+      labels: rows.map((r) => r.month),
+      datasets: [
+        {
+          label: 'Credits',
+          data: rows.map((r) => Number(r.total_credit) || 0),
+          backgroundColor: '#10b981'
+        },
+        {
+          label: 'Debits',
+          data: rows.map((r) => Number(r.total_debit) || 0),
+          backgroundColor: '#ef4444'
+        }
+      ]
+    };
   }
 
   get summary() {

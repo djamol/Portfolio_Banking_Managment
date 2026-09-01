@@ -7,6 +7,7 @@ import { BankTransactionsService } from '../../../services/banking/bank-transact
 import { BankingAnalyticsState } from '../shared/banking-analytics-state.service';
 import { BankingContextService } from '../shared/banking-context.service';
 import { BankingFilterState } from '../shared/banking-filter-state.service';
+import { formatCurrency, formatMoney } from '../shared/banking-format.util';
 
 @Component({
   selector: 'app-banking-rules',
@@ -27,6 +28,23 @@ export class BankingRulesComponent implements OnInit, OnDestroy {
   showRuleForm = false;
   editingRuleId: number | null = null;
   recategorizeMode: 'auto_only' | 'uncategorized' | 'all' = 'auto_only';
+  rulePreview: {
+    matched: Array<{
+      id: number;
+      txn_date: string;
+      narration?: string;
+      payee?: string;
+      withdrawal?: number;
+      deposit?: number;
+      category?: string;
+      bank_name?: string;
+      account_name?: string;
+    }>;
+    scanned: number;
+    total_matched: number;
+    truncated: boolean;
+  } | null = null;
+  ruleTesting = false;
 
   private readonly destroy$ = new Subject<void>();
 
@@ -81,6 +99,7 @@ export class BankingRulesComponent implements OnInit, OnDestroy {
       account_id: null,
       is_active: 1
     };
+    this.rulePreview = null;
     this.showRuleForm = true;
   }
 
@@ -94,7 +113,47 @@ export class BankingRulesComponent implements OnInit, OnDestroy {
       account_id: rule.account_id ?? null,
       is_active: rule.is_active === 0 || rule.is_active === false ? 0 : 1
     };
+    this.rulePreview = null;
     this.showRuleForm = true;
+  }
+
+  testRulePattern() {
+    if (!this.ruleForm.pattern?.trim()) {
+      this.ctx.flash('error', 'Enter a pattern to test');
+      return;
+    }
+    this.ruleTesting = true;
+    this.rulesService
+      .testRule({
+        pattern: this.ruleForm.pattern,
+        match_field: this.ruleForm.match_field || 'narration',
+        account_id: this.ruleForm.account_id || null,
+        limit: 20
+      })
+      .subscribe({
+        next: (data) => {
+          this.ruleTesting = false;
+          this.rulePreview = data;
+          const n = data.total_matched || 0;
+          this.ctx.flash(
+            n ? 'info' : 'success',
+            n
+              ? `Pattern matches ${n} of ${data.scanned} recent transactions`
+              : `No matches in last ${data.scanned} transactions`
+          );
+        },
+        error: (err) => {
+          this.ruleTesting = false;
+          this.rulePreview = null;
+          this.ctx.flash('error', err.message || 'Rule test failed');
+        }
+      });
+  }
+
+  testExistingRule(rule: CategoryRule, event?: Event) {
+    event?.stopPropagation();
+    this.editRule(rule);
+    this.testRulePattern();
   }
 
   saveRule() {
@@ -176,4 +235,7 @@ export class BankingRulesComponent implements OnInit, OnDestroy {
         error: (err) => this.ctx.flash('error', err.message || 'Recategorize failed')
       });
   }
+
+  formatMoney = formatMoney;
+  formatCurrency = formatCurrency;
 }

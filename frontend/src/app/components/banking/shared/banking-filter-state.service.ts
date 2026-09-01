@@ -30,6 +30,7 @@ export class BankingFilterState {
   filterMinAmount: number | '' = '';
   filterMaxAmount: number | '' = '';
   filterCategorySource: '' | 'manual' | 'auto' | 'rule' = '';
+  filterTxnType = '';
   filterNeedsReview = false;
   filterTransfersOnly = false;
   filterSort = 'date_desc';
@@ -99,6 +100,7 @@ export class BankingFilterState {
     }
     if (this.filterNeedsReview) filters['needs_review'] = '1';
     if (this.filterCategorySource) filters['category_source'] = this.filterCategorySource;
+    if (this.filterTxnType) filters['txn_type'] = this.filterTxnType;
     return filters;
   }
 
@@ -120,6 +122,7 @@ export class BankingFilterState {
     if (this.filterFlow) filters['flow'] = this.filterFlow;
     if (this.filterQ) filters['q'] = this.filterQ;
     if (this.filterPayee) filters['payee'] = this.filterPayee;
+    if (this.filterTxnType) filters['txn_type'] = this.filterTxnType;
     return filters;
   }
 
@@ -160,6 +163,7 @@ export class BankingFilterState {
     if (this.filterQ) n += 1;
     if (this.filterPayee) n += 1;
     if (this.filterCategorySource) n += 1;
+    if (this.filterTxnType) n += 1;
     if (this.filterNeedsReview) n += 1;
     if (this.filterTransfersOnly) n += 1;
     return n;
@@ -230,6 +234,7 @@ export class BankingFilterState {
     this.filterMinAmount = '';
     this.filterMaxAmount = '';
     this.filterCategorySource = '';
+    this.filterTxnType = '';
     this.filterNeedsReview = false;
     this.filterTransfersOnly = false;
     this.filterSort = 'date_desc';
@@ -269,6 +274,7 @@ export class BankingFilterState {
     this.filterNeedsReview = false;
     this.filterTransfersOnly = false;
     this.filterCategorySource = '';
+    this.filterTxnType = '';
     if (kind === 'clear') {
       if (wasTransfers) this.excludeTransfers = true;
       this.filterCategories = [];

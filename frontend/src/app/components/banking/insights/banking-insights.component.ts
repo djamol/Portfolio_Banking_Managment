@@ -1,12 +1,15 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Subject, merge, takeUntil } from 'rxjs';
 import { BankAccountsService } from '../../../services/banking/bank-accounts.service';
 import { BankAnalyticsService } from '../../../services/banking/bank-analytics.service';
+import { barOptions } from '../shared/banking-chart.util';
 import { formatCurrency, formatMoney } from '../shared/banking-format.util';
 import { BankingAnalyticsState } from '../shared/banking-analytics-state.service';
 import { BankingContextService } from '../shared/banking-context.service';
 import { BankingFilterState } from '../shared/banking-filter-state.service';
+
+type InsightWorkflow = 'quality' | 'patterns' | 'forecast';
 
 @Component({
   selector: 'app-banking-insights',
@@ -28,6 +31,9 @@ export class BankingInsightsComponent implements OnInit, OnDestroy {
   matchedTransfers: any[] = [];
   transferMatching = false;
   transferWindowDays = 2;
+  activeWorkflow: InsightWorkflow = 'quality';
+
+  readonly barOptions = barOptions;
 
   private readonly destroy$ = new Subject<void>();
 
@@ -37,10 +43,25 @@ export class BankingInsightsComponent implements OnInit, OnDestroy {
     private filters: BankingFilterState,
     private analyticsService: BankAnalyticsService,
     private accountsService: BankAccountsService,
-    private router: Router
+    private router: Router,
+    private route: ActivatedRoute
   ) {}
 
   ngOnInit() {
+    this.route.queryParamMap.pipe(takeUntil(this.destroy$)).subscribe((params) => {
+      const workflow = (params.get('workflow') || '').trim() as InsightWorkflow;
+      if (workflow === 'quality' || workflow === 'patterns' || workflow === 'forecast') {
+        this.activeWorkflow = workflow;
+      }
+      const accountId = params.get('accountId') || params.get('account');
+      if (accountId) {
+        const id = Number(accountId);
+        if (Number.isFinite(id) && id > 0) {
+          this.continuityAccountId = id;
+          this.activeWorkflow = 'quality';
+        }
+      }
+    });
     this.loadInsights();
     merge(this.filters.filtersChanged$, this.filters.refreshRequested$)
       .pipe(takeUntil(this.destroy$))
@@ -65,6 +86,39 @@ export class BankingInsightsComponent implements OnInit, OnDestroy {
     this.analyticsState.loadCashSummary();
     this.loadTopPayees();
     this.loadMatchedTransfers();
+  }
+
+  setWorkflow(workflow: InsightWorkflow) {
+    this.activeWorkflow = workflow;
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { workflow },
+      queryParamsHandling: 'merge',
+      replaceUrl: true
+    });
+  }
+
+  get forecastHistoryChart(): {
+    labels: string[];
+    datasets: Array<{ label: string; data: number[]; backgroundColor: string }>;
+  } | null {
+    const rows = this.forecast?.history || [];
+    if (!rows.length) return null;
+    return {
+      labels: rows.map((r: { month: string }) => r.month),
+      datasets: [
+        {
+          label: 'Credits',
+          data: rows.map((r: { total_credit: number }) => Number(r.total_credit) || 0),
+          backgroundColor: '#10b981'
+        },
+        {
+          label: 'Debits',
+          data: rows.map((r: { total_debit: number }) => Number(r.total_debit) || 0),
+          backgroundColor: '#ef4444'
+        }
+      ]
+    };
   }
 
   loadMatchedTransfers() {

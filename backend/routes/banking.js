@@ -201,6 +201,20 @@ router.post('/rules', async (req, res) => {
   }
 });
 
+router.post('/rules/test', async (req, res) => {
+  try {
+    const { pattern } = req.body || {};
+    if (!pattern || !String(pattern).trim()) {
+      return res.status(400).json({ success: false, error: 'pattern is required' });
+    }
+    const data = await banking.testRulePattern(req.body);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error testing rule:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.put('/rules/:id', async (req, res) => {
   try {
     const row = await banking.updateCategoryRule(req.params.id, req.body);

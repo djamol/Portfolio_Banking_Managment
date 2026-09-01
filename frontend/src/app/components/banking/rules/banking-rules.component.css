@@ -1,1 +1,15 @@
-/* page-specific */
+.rule-preview {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color, #e2e8f0);
+}
+
+.rule-preview h4 {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+}
+
+.rule-preview .muted {
+  font-weight: normal;
+  color: var(--text-muted, #64748b);
+}

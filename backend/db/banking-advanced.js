@@ -1054,6 +1054,95 @@ async function mongoGetForecast(accountId) {
   };
 }
 
+function testPatternMatch(haystack, pattern) {
+  const text = String(haystack || '').trim();
+  const pat = String(pattern || '').trim();
+  if (!text || !pat) return false;
+  try {
+    return new RegExp(pat, 'i').test(text);
+  } catch {
+    return text.toLowerCase().includes(pat.toLowerCase());
+  }
+}
+
+async function mysqlTestRulePattern({ pattern, match_field = 'narration', account_id, limit = 25 } = {}) {
+  const pool = getPool();
+  const lim = Math.min(100, Math.max(1, Number(limit) || 25));
+  const params = [];
+  let sql = `
+    SELECT t.id, t.account_id, t.txn_date, t.narration, t.payee, t.withdrawal, t.deposit,
+           t.category, t.category_source, a.bank_name, a.account_name
+    FROM bank_transactions t
+    JOIN bank_accounts a ON a.id = t.account_id
+    WHERE 1=1`;
+  if (account_id) {
+    sql += ' AND t.account_id = ?';
+    params.push(Number(account_id));
+  }
+  sql += ' ORDER BY t.txn_date DESC, t.id DESC LIMIT 2000';
+  const [rows] = await pool.query(sql, params);
+  const field = String(match_field || 'narration').toLowerCase();
+  const matched = [];
+  let totalMatched = 0;
+  for (const row of rows) {
+    const haystack = field === 'payee' ? row.payee : row.narration;
+    if (!testPatternMatch(haystack, pattern)) continue;
+    totalMatched += 1;
+    if (matched.length < lim) matched.push(row);
+  }
+  return {
+    matched,
+    scanned: rows.length,
+    total_matched: totalMatched,
+    truncated: totalMatched > lim
+  };
+}
+
+async function mongoTestRulePattern({ pattern, match_field = 'narration', account_id, limit = 25 } = {}) {
+  const db = getMongoDb();
+  const lim = Math.min(100, Math.max(1, Number(limit) || 25));
+  const q = {};
+  if (account_id) q.account_id = Number(account_id);
+  const rows = await db
+    .collection('bank_transactions')
+    .find(q)
+    .sort({ txn_date: -1, id: -1 })
+    .limit(2000)
+    .toArray();
+  const accounts = await db.collection('bank_accounts').find({}).toArray();
+  const accMap = Object.fromEntries(accounts.map((a) => [a.id, a]));
+  const field = String(match_field || 'narration').toLowerCase();
+  const matched = [];
+  let totalMatched = 0;
+  for (const row of rows) {
+    const haystack = field === 'payee' ? row.payee : row.narration;
+    if (!testPatternMatch(haystack, pattern)) continue;
+    totalMatched += 1;
+    if (matched.length < lim) {
+      const acc = accMap[row.account_id] || {};
+      matched.push({
+        id: row.id,
+        account_id: row.account_id,
+        txn_date: row.txn_date,
+        narration: row.narration,
+        payee: row.payee,
+        withdrawal: row.withdrawal,
+        deposit: row.deposit,
+        category: row.category,
+        category_source: row.category_source,
+        bank_name: acc.bank_name,
+        account_name: acc.account_name
+      });
+    }
+  }
+  return {
+    matched,
+    scanned: rows.length,
+    total_matched: totalMatched,
+    truncated: totalMatched > lim
+  };
+}
+
 const impl = () => (isMongoDb() ? 'mongo' : 'mysql');
 
 module.exports = {
@@ -1085,5 +1174,7 @@ module.exports = {
     impl() === 'mongo' ? mongoListMatchedTransfers(...a) : mysqlListMatchedTransfers(...a),
   unmatchTransfer: (...a) =>
     impl() === 'mongo' ? mongoUnmatchTransfer(...a) : mysqlUnmatchTransfer(...a),
-  getForecast: (...a) => (impl() === 'mongo' ? mongoGetForecast(...a) : mysqlGetForecast(...a))
+  getForecast: (...a) => (impl() === 'mongo' ? mongoGetForecast(...a) : mysqlGetForecast(...a)),
+  testRulePattern: (...a) =>
+    impl() === 'mongo' ? mongoTestRulePattern(...a) : mysqlTestRulePattern(...a)
 };

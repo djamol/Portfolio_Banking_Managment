@@ -68,7 +68,7 @@
         <button class="btn btn-primary" (click)="filters.applyFilters()">Apply</button>
         <button class="btn btn-secondary" (click)="filters.clearFilters()">Clear</button>
       </div>
-      <div class="active-filter-chips" *ngIf="filters.filterPayee || filters.filterQ || filters.filterNeedsReview || filters.filterTransfersOnly || filters.filterCategorySource">
+      <div class="active-filter-chips" *ngIf="filters.filterPayee || filters.filterQ || filters.filterNeedsReview || filters.filterTransfersOnly || filters.filterCategorySource || filters.filterTxnType">
         <button type="button" class="filter-chip" *ngIf="filters.filterQ" (click)="clearSearchFilter()" title="Clear search">
           Search: {{ filters.filterQ }}
           <span aria-hidden="true">×</span>
@@ -87,6 +87,10 @@
         </button>
         <button type="button" class="filter-chip" *ngIf="filters.filterCategorySource" (click)="clearSourceFilter()" title="Clear source filter">
           Source: {{ filters.filterCategorySource }}
+          <span aria-hidden="true">×</span>
+        </button>
+        <button type="button" class="filter-chip" *ngIf="filters.filterTxnType" (click)="clearTxnTypeFilter()" title="Clear transaction type filter">
+          Type: {{ filters.filterTxnType }}
           <span aria-hidden="true">×</span>
         </button>
       </div>
@@ -116,6 +120,22 @@
             <option value="manual">Manual</option>
             <option value="auto">Auto</option>
             <option value="rule">Rule</option>
+          </select>
+        </label>
+        <label class="adv-field" *ngIf="filters.activeRoute === 'transactions'">
+          <span>Transaction type</span>
+          <select [(ngModel)]="filters.filterTxnType">
+            <option value="">Any type</option>
+            <option value="interest">Interest</option>
+            <option value="tax">Tax / TDS</option>
+            <option value="fd_book">FD booking</option>
+            <option value="fd_maturity">FD maturity</option>
+            <option value="transfer">Transfer</option>
+            <option value="upi">UPI</option>
+            <option value="neft">NEFT</option>
+            <option value="imps">IMPS</option>
+            <option value="pos">POS</option>
+            <option value="atm">ATM</option>
           </select>
         </label>
         <label class="adv-field">

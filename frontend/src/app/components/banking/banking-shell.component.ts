@@ -219,4 +219,10 @@ export class BankingShellComponent implements OnInit, OnDestroy {
     this.filters.filterOffset = 0;
     this.filters.notifyChanged();
   }
+
+  clearTxnTypeFilter() {
+    this.filters.filterTxnType = '';
+    this.filters.filterOffset = 0;
+    this.filters.notifyChanged();
+  }
 }
