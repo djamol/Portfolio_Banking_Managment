@@ -731,6 +731,16 @@ async function mysqlGetAnalytics(filters = {}) {
     `SELECT DISTINCT category FROM bank_transactions WHERE category IS NOT NULL AND category <> '' ORDER BY category`
   );
 
+  const [byCategorySource] = await pool.query(
+    `SELECT COALESCE(NULLIF(TRIM(category_source), ''), 'auto') AS category_source,
+            COUNT(*) AS txn_count
+     FROM bank_transactions
+     WHERE ${whereSql}
+     GROUP BY COALESCE(NULLIF(TRIM(category_source), ''), 'auto')
+     ORDER BY txn_count DESC`,
+    params
+  );
+
   const summary = summaryRows[0];
   const extras = buildAnalyticsExtras(summary, byMonth, byCategory, uncatRows[0]?.cnt || 0);
 
@@ -749,7 +759,8 @@ async function mysqlGetAnalytics(filters = {}) {
     insights: extras.insights,
     mom: extras.mom,
     yoy: extras.yoy,
-    categories: categories.map((c) => c.category)
+    categories: categories.map((c) => c.category),
+    byCategorySource
   };
 }
 
@@ -1410,6 +1421,14 @@ async function mongoGetAnalytics(filters = {}) {
     .sort((a, b) => a.month.localeCompare(b.month));
 
   const uncategorizedCount = rows.filter((r) => isNeedsReviewCategory(r.category)).length;
+  const sourceMap = {};
+  for (const r of rows) {
+    const src = String(r.category_source || 'auto').trim() || 'auto';
+    sourceMap[src] = (sourceMap[src] || 0) + 1;
+  }
+  const byCategorySource = Object.entries(sourceMap)
+    .map(([category_source, txn_count]) => ({ category_source, txn_count }))
+    .sort((a, b) => b.txn_count - a.txn_count);
   const extras = buildAnalyticsExtras(summary, byMonth, byCategory, uncategorizedCount);
   const categories = [...new Set(rows.map((r) => r.category).filter(Boolean))].sort();
 
@@ -1428,7 +1447,8 @@ async function mongoGetAnalytics(filters = {}) {
     insights: extras.insights,
     mom: extras.mom,
     yoy: extras.yoy,
-    categories
+    categories,
+    byCategorySource
   };
 }
 

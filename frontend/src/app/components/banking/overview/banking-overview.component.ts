@@ -52,7 +52,7 @@ export class BankingOverviewComponent implements OnInit, OnDestroy {
     public filters: BankingFilterState,
     private rulesService: BankRulesService,
     private analyticsService: BankAnalyticsService,
-    private router: Router
+    public router: Router
   ) {}
 
   ngOnInit() {
@@ -114,8 +114,54 @@ export class BankingOverviewComponent implements OnInit, OnDestroy {
       this.needsReviewCount > 0 ||
       this.overspentBudgets.length > 0 ||
       this.warnBudgets.length > 0 ||
-      this.upcomingOutflows.length > 0
+      this.upcomingOutflows.length > 0 ||
+      this.staleAccountCount > 0 ||
+      this.ccStatementLagCount > 0 ||
+      (this.budgets.length === 0 && this.ctx.accounts.length > 0)
     );
+  }
+
+  get staleAccountCount(): number {
+    return (this.analyticsState.cashSummary?.accounts || []).filter(
+      (a) => a.is_active && !a.is_credit_card && a.stale
+    ).length;
+  }
+
+  get ccStatementLagCount(): number {
+    const now = Date.now();
+    return (this.analyticsState.cashSummary?.accounts || []).filter((a) => {
+      if (!a.is_active || !a.is_credit_card) return false;
+      if (!a.last_txn_date) return true;
+      const d = new Date(`${String(a.last_txn_date).slice(0, 10)}T00:00:00`);
+      if (Number.isNaN(d.getTime())) return true;
+      return (now - d.getTime()) / 86400000 > 90;
+    }).length;
+  }
+
+  get categorySourceRows(): Array<{ category_source: string; txn_count: number }> {
+    return this.analyticsState.analytics?.byCategorySource || [];
+  }
+
+  openBudgetsSetup() {
+    this.router.navigate(['/banking/budgets']);
+    this.ctx.flash('info', 'Use “Suggest from last month spend” to bootstrap budgets');
+  }
+
+  openInsights() {
+    this.router.navigate(['/banking/insights']);
+  }
+
+  openAccounts() {
+    this.router.navigate(['/banking/accounts']);
+  }
+
+  filterByCategorySource(source: string) {
+    const allowed = ['manual', 'auto', 'rule'] as const;
+    if (!allowed.includes(source as (typeof allowed)[number])) return;
+    this.filters.filterCategorySource = source as 'manual' | 'auto' | 'rule';
+    this.filters.filterOffset = 0;
+    this.filters.notifyChanged();
+    this.goToTransactions(`Filtered by source: ${source}`);
   }
 
   loadForecast() {

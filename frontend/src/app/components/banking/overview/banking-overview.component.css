@@ -31,6 +31,10 @@
   color: var(--bank-muted, #64748b);
 }
 
+.compact-sources .stat-card {
+  min-width: 120px;
+}
+
 tr.budget-over {
   background: #fef2f2;
 }

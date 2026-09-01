@@ -59,8 +59,8 @@ export class BankAnalyticsService {
     );
   }
 
-  matchTransfers(): Observable<{ matched: number }> {
-    return this.http.post<ApiResponse<{ matched: number }>>(bankApiUrl('transfers/match'), {}).pipe(
+  matchTransfers(windowDays = 2): Observable<{ matched: number }> {
+    return this.http.post<ApiResponse<{ matched: number }>>(bankApiUrl('transfers/match'), { windowDays }).pipe(
       map((r) => r.data || { matched: 0 })
     );
   }

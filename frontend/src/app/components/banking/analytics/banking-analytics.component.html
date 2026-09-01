@@ -51,6 +51,16 @@
         <div class="stat-value">{{ summary.uncategorized_count || 0 }}</div>
         <div class="stat-sub">Uncategorized / catch-all</div>
       </button>
+      <button
+        type="button"
+        class="stat-card click-stat"
+        *ngFor="let row of analyticsState.analytics?.byCategorySource || []"
+        (click)="filterBySource(row.category_source)"
+      >
+        <div class="stat-label">{{ row.category_source }} categorized</div>
+        <div class="stat-value">{{ row.txn_count | number }}</div>
+        <div class="stat-sub">Click to list</div>
+      </button>
     </div>
 
     <div class="insight-actions" *ngIf="hasData && analyticsState.analytics?.insights?.length">

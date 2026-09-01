@@ -33,6 +33,26 @@
     </div>
 
     <div class="action-inbox" *ngIf="showActionInbox">
+      <button
+        type="button"
+        class="action-card warn"
+        *ngIf="budgets.length === 0"
+        (click)="openBudgetsSetup()"
+      >
+        <div class="action-kicker">Budgets</div>
+        <div class="action-title">No budgets this month</div>
+        <div class="action-meta">Suggest limits from last month’s spending</div>
+      </button>
+      <button type="button" class="action-card warn" *ngIf="staleAccountCount" (click)="openAccounts()">
+        <div class="action-kicker">Accounts</div>
+        <div class="action-title">{{ staleAccountCount }} stale account(s)</div>
+        <div class="action-meta">No recent transactions — excluded from cash total</div>
+      </button>
+      <button type="button" class="action-card warn" *ngIf="ccStatementLagCount" (click)="router.navigate(['/banking/import'])">
+        <div class="action-kicker">Credit cards</div>
+        <div class="action-title">{{ ccStatementLagCount }} need fresh statement</div>
+        <div class="action-meta">Last import over 90 days ago</div>
+      </button>
       <button type="button" class="action-card danger" *ngIf="needsReviewCount" (click)="openNeedsReview()">
         <div class="action-kicker">Needs review</div>
         <div class="action-title">{{ needsReviewCount }} uncategorized</div>
@@ -106,9 +126,31 @@
         <div class="stat-label">Cash position ({{ t.currency }})</div>
         <div class="stat-value">{{ formatCurrency(t.total, t.currency) }}</div>
       </div>
+      <div class="stat-card" *ngIf="analyticsState.cashSummary?.credit_card_totals_by_currency?.length">
+        <div class="stat-label">Credit cards ({{ analyticsState.cashSummary!.credit_card_totals_by_currency![0].currency }})</div>
+        <div class="stat-value">{{ formatCurrency(analyticsState.cashSummary!.credit_card_totals_by_currency![0].total, analyticsState.cashSummary!.credit_card_totals_by_currency![0].currency) }}</div>
+        <div class="stat-sub">Outstanding balance</div>
+      </div>
       <div class="stat-card" *ngIf="analyticsState.cashSummary">
         <div class="stat-label">Active accounts</div>
         <div class="stat-value">{{ analyticsState.cashSummary.active_count }}</div>
+      </div>
+    </div>
+
+    <div class="card" *ngIf="categorySourceRows.length">
+      <h3>Categorization quality</h3>
+      <p class="section-hint">How transactions were categorized in the current filter range.</p>
+      <div class="stat-grid compact-sources">
+        <button
+          type="button"
+          class="stat-card click-stat"
+          *ngFor="let row of categorySourceRows"
+          (click)="filterByCategorySource(row.category_source)"
+        >
+          <div class="stat-label">{{ row.category_source }}</div>
+          <div class="stat-value">{{ row.txn_count | number }}</div>
+          <div class="stat-sub">txns · click to list</div>
+        </button>
       </div>
     </div>
 

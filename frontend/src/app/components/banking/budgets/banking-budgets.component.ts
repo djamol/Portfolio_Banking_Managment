@@ -1,8 +1,9 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
-import { Subject, merge, takeUntil } from 'rxjs';
+import { Subject, firstValueFrom, merge, takeUntil } from 'rxjs';
 import { BankBudget } from '../../../services/banking/banking.models';
 import { BankRulesService } from '../../../services/banking/bank-rules.service';
+import { BankAnalyticsService } from '../../../services/banking/bank-analytics.service';
 import { formatCat, formatMoney } from '../shared/banking-format.util';
 import { BankingContextService } from '../shared/banking-context.service';
 import { BankingFilterState } from '../shared/banking-filter-state.service';
@@ -19,6 +20,7 @@ export class BankingBudgetsComponent implements OnInit, OnDestroy {
   editingId: number | null = null;
   budgetForm: BankBudget = this.emptyForm();
   copying = false;
+  suggesting = false;
 
   private readonly destroy$ = new Subject<void>();
 
@@ -26,6 +28,7 @@ export class BankingBudgetsComponent implements OnInit, OnDestroy {
     public ctx: BankingContextService,
     public filters: BankingFilterState,
     private rulesService: BankRulesService,
+    private analyticsService: BankAnalyticsService,
     private router: Router
   ) {}
 
@@ -153,6 +156,71 @@ export class BankingBudgetsComponent implements OnInit, OnDestroy {
       error: (err) => {
         this.copying = false;
         this.ctx.flash('error', err.message || 'Copy failed');
+      }
+    });
+  }
+
+  suggestFromLastMonthSpend() {
+    const sourceMonth = this.previousMonth();
+    const targetMonth = this.budgetMonth;
+    if (
+      !confirm(
+        `Create budgets for ${targetMonth} from ${sourceMonth} spending?\n\nUses top expense categories (transfers excluded). Existing categories are skipped.`
+      )
+    ) {
+      return;
+    }
+    this.suggesting = true;
+    const [y, m] = sourceMonth.split('-').map(Number);
+    const from = `${sourceMonth}-01`;
+    const to = this.filters.toIsoDate(new Date(y, m, 0));
+    this.analyticsService.getAnalytics({ from, to, exclude_transfers: true }).subscribe({
+      next: async (data) => {
+        const existing = new Set(this.budgets.map((b) => String(b.category || '')));
+        const candidates = (data?.expenseByCategory || [])
+          .filter((r: { category?: string; total_debit?: number }) => {
+            const cat = String(r.category || '');
+            return (
+              Number(r.total_debit) > 0 &&
+              !cat.startsWith('Transfer') &&
+              cat !== 'Uncategorized' &&
+              !existing.has(cat)
+            );
+          })
+          .slice(0, 15);
+        let created = 0;
+        let failed = 0;
+        for (const row of candidates) {
+          const amount = Math.max(100, Math.round(Number(row.total_debit) / 100) * 100);
+          try {
+            await firstValueFrom(
+              this.rulesService.saveBudget({
+                category: row.category,
+                amount,
+                period_month: targetMonth,
+                account_id: null,
+                notes: `Suggested from ${sourceMonth} spend`
+              })
+            );
+            created += 1;
+          } catch {
+            failed += 1;
+          }
+        }
+        this.suggesting = false;
+        if (!created) {
+          this.ctx.flash('info', `No new budgets created (${failed || candidates.length} skipped)`);
+        } else {
+          this.ctx.flash(
+            'success',
+            `Created ${created} budget(s) from ${sourceMonth} spend${failed ? `, ${failed} failed` : ''}`
+          );
+        }
+        this.loadBudgets();
+      },
+      error: (err) => {
+        this.suggesting = false;
+        this.ctx.flash('error', err.message || 'Could not load spending data');
       }
     });
   }

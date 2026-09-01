@@ -1,8 +1,12 @@
 <div class="section-actions wrap">
       <button class="btn btn-primary" (click)="loadInsights()">Refresh insights</button>
       <button class="btn btn-secondary" (click)="runTransferMatch()" [disabled]="transferMatching">
-        {{ transferMatching ? 'Matching…' : 'Match cross-account transfers' }}
+        {{ transferMatching ? 'Matching…' : 'Match transfers' }}
       </button>
+      <label class="inline-label">
+        Window (days)
+        <input type="number" min="1" max="14" [(ngModel)]="transferWindowDays" style="width: 4rem;" />
+      </label>
       <select [(ngModel)]="continuityAccountId">
         <option [ngValue]="''">Account for continuity…</option>
         <option *ngFor="let a of ctx.accounts" [ngValue]="a.id">{{ a.bank_name }} – {{ a.account_name }}</option>

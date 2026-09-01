@@ -166,6 +166,15 @@ export class BankingAnalyticsComponent implements OnInit, OnDestroy {
     this.goToTransactions('Showing transactions that need review');
   }
 
+  filterBySource(source: string) {
+    const allowed = ['manual', 'auto', 'rule'] as const;
+    if (!allowed.includes(source as (typeof allowed)[number])) return;
+    this.filters.filterCategorySource = source as 'manual' | 'auto' | 'rule';
+    this.filters.filterOffset = 0;
+    this.filters.notifyChanged();
+    this.goToTransactions(`Filtered by source: ${source}`);
+  }
+
   openFlow(kind: 'debit' | 'credit') {
     this.filters.applyQuickFilter(kind);
     this.goToTransactions(kind === 'debit' ? 'Showing debits' : 'Showing credits');

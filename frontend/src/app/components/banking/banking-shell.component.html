@@ -21,6 +21,14 @@
     <a routerLink="/banking/insights" routerLinkActive="active">Insights</a>
   </nav>
 
+  <nav class="tabs tabs-secondary" *ngIf="isAnalyticsTabActive()">
+    <a routerLink="/banking/analytics" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Summary</a>
+    <a routerLink="/banking/charts" routerLinkActive="active">Charts</a>
+    <a routerLink="/banking/cashflow" routerLinkActive="active">Cashflow</a>
+    <a routerLink="/banking/income" routerLinkActive="active">Income</a>
+    <a routerLink="/banking/expense" routerLinkActive="active">Expense</a>
+  </nav>
+
   <div class="filters-shell" *ngIf="filters.showFilterBar">
     <div class="filter-bar card-lite">
       <div class="filter-primary">

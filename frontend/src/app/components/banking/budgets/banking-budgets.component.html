@@ -11,6 +11,14 @@
     <button
       type="button"
       class="btn btn-secondary"
+      (click)="suggestFromLastMonthSpend()"
+      [disabled]="suggesting"
+    >
+      {{ suggesting ? 'Suggesting…' : 'Suggest from ' + previousMonth() + ' spend' }}
+    </button>
+    <button
+      type="button"
+      class="btn btn-secondary"
       (click)="copyFromPreviousMonth()"
       [disabled]="copying"
     >
@@ -129,7 +137,8 @@
   <ng-template #noBudgets>
     <p class="empty">
       No budgets for this month.
-      Add one above, or copy last month’s limits with “Copy from {{ previousMonth() }}”.
+      Add one above, use <strong>Suggest from {{ previousMonth() }} spend</strong> to auto-create from last month’s top categories,
+      or copy last month’s limits with “Copy from {{ previousMonth() }}”.
     </p>
   </ng-template>
 </div>

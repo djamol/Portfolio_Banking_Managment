@@ -27,6 +27,7 @@ export class BankingInsightsComponent implements OnInit, OnDestroy {
   topPayees: any[] = [];
   matchedTransfers: any[] = [];
   transferMatching = false;
+  transferWindowDays = 2;
 
   private readonly destroy$ = new Subject<void>();
 
@@ -106,7 +107,8 @@ export class BankingInsightsComponent implements OnInit, OnDestroy {
 
   runTransferMatch() {
     this.transferMatching = true;
-    this.analyticsService.matchTransfers().subscribe({
+    const windowDays = Math.min(14, Math.max(1, Number(this.transferWindowDays) || 2));
+    this.analyticsService.matchTransfers(windowDays).subscribe({
       next: (r) => {
         this.transferMatching = false;
         this.ctx.flash('success', `Matched ${r.matched} cross-account transfers`);

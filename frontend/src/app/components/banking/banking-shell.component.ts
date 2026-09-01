@@ -91,8 +91,8 @@ export class BankingShellComponent implements OnInit, OnDestroy {
     this.filters.setActiveRoute(route);
   }
 
-  openExportPanel(_fromFilters = false) {
-    this.exportApplyFilters = false;
+  openExportPanel(fromFilters = false) {
+    this.exportApplyFilters = !!fromFilters;
     this.showExportPanel = true;
     this.exportAccountId = this.filters.filterAccountId || '';
     this.exportFrom = this.filters.filterFrom || '';
