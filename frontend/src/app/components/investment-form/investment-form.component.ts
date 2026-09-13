@@ -31,6 +31,7 @@ export class InvestmentFormComponent implements OnInit {
   loading = false;
   errorMessage = '';
   maturityDate = '';
+  originalEditDate = '';
   platforms: string[] = [];
   existingInvestments: any[] = [];
   duplicateMatches: any[] = [];
@@ -115,13 +116,14 @@ export class InvestmentFormComponent implements OnInit {
     this.investmentService.getById(id).subscribe({
       next: (response) => {
         if (response) {
+          this.originalEditDate = this.toLocalYmd(response.investment_date);
           this.investment = {
             website_app_name: response.website_app_name || '',
             investment_type: response.investment_type || '',
             sub_type_name: response.sub_type_name || '',
             sub_type_category: response.sub_type_category || '',
             amount: Number(response.amount) || 0,
-            investment_date: new Date(response.investment_date).toISOString().split('T')[0],
+            investment_date: this.todayYmd(),
             notes: response.notes || ''
           };
           this.maturityDate = parseMaturityDateFromNotes(this.investment.notes) || '';
@@ -363,5 +365,19 @@ export class InvestmentFormComponent implements OnInit {
 
   onCancel() {
     this.router.navigate(['/investments']);
+  }
+
+  todayYmd(): string {
+    return this.toLocalYmd(new Date());
+  }
+
+  toLocalYmd(date: Date | string | null | undefined): string {
+    if (!date) return '';
+    const d = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(d.getTime())) return '';
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 }

@@ -161,6 +161,9 @@
         [(ngModel)]="investment.investment_date"
         class="form-control"
         required>
+      <small class="field-hint" *ngIf="isEditing && originalEditDate && originalEditDate !== investment.investment_date">
+        Stored date was {{ originalEditDate }}. History uses this date when the amount changes.
+      </small>
     </div>
 
     <div class="form-group" *ngIf="showMaturityHelper">

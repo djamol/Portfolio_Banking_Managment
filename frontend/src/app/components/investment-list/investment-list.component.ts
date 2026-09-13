@@ -436,7 +436,7 @@ export class InvestmentListComponent implements OnInit {
     this.originalEditDate = this.toLocalYmd(investment.investment_date);
     this.currentInvestment = {
       ...investment,
-      investment_date: this.originalEditDate || this.todayYmd()
+      investment_date: this.todayYmd()
     };
     this.isEditing = true;
     this.showModal = true;
