@@ -30,3 +30,4 @@ logs/
 
 # Angular
 frontend/.angular/
+data/*.sql
