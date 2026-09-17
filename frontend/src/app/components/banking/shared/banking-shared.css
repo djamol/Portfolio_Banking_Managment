@@ -893,6 +893,54 @@
   color: var(--bank-accent);
 }
 
+.clickable-row {
+  cursor: pointer;
+}
+
+.clickable-row:hover td {
+  background: #f8fafc;
+}
+
+.stat-meta {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--bank-muted);
+}
+
+.stat-card.clickable {
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.stat-card.clickable:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1);
+}
+
+.rank-idx {
+  color: var(--bank-muted);
+  font-variant-numeric: tabular-nums;
+  width: 2.2rem;
+}
+
+.share-bar.debit {
+  background: var(--bank-debit);
+}
+
+.share-bar.credit {
+  background: var(--bank-credit);
+}
+
+.txn-sum.clickable {
+  cursor: pointer;
+}
+
+.txn-sum.clickable:hover {
+  outline: 1px solid #cbd5e1;
+}
+
 .click-stat {
   display: block;
   text-align: left;

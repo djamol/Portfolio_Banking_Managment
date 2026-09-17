@@ -1,21 +1,38 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { ChartConfiguration } from 'chart.js';
-import { Subject, merge, takeUntil } from 'rxjs';
+import { EMPTY, Subject, merge, switchMap, takeUntil } from 'rxjs';
 import { BankAnalyticsService } from '../../../services/banking/bank-analytics.service';
-import { DEFAULT_BANK_CATEGORIES } from '../../../services/banking/banking.models';
+import { BankTransaction, DEFAULT_BANK_CATEGORIES } from '../../../services/banking/banking.models';
+import { BankTransactionsService } from '../../../services/banking/bank-transactions.service';
 import {
   defaultIncomeCategories,
   matchSelectedCategories,
   rollupCategoryMonthRows
 } from '../../../utils/category-rollup.util';
 import { formatCategoryLabel } from '../../../utils/category-tree.util';
-import { BANK_CHART_COLORS, doughnutOptions, netLineOptions } from '../shared/banking-chart.util';
+import {
+  BANK_CHART_COLORS,
+  doughnutOptions,
+  horizontalBarOptions,
+  netLineOptions
+} from '../shared/banking-chart.util';
 import { formatCat, formatMoney, formatPct } from '../shared/banking-format.util';
 import { BankingContextService } from '../shared/banking-context.service';
 import { BankingFilterState } from '../shared/banking-filter-state.service';
+import {
+  AmountPeriodRow,
+  FlowHighlights,
+  MonthBucket,
+  buildFlowHighlights,
+  formatYearMonthLabel,
+  rankMonths,
+  rankYears
+} from '../shared/flow-highlights.util';
 
 const INCOME_CATS_KEY = 'bank-income-categories';
+const TOP_TXN_LIMIT = 10;
+const TOP_MONTHS = 12;
 
 export type IncomeTableRow = {
   category: string;
@@ -35,22 +52,32 @@ export type IncomeTableRow = {
 export class BankingIncomeComponent implements OnInit, OnDestroy {
   readonly doughnutOptions = doughnutOptions;
   readonly netLineOptions = netLineOptions;
+  readonly horizontalBarOptions = horizontalBarOptions;
 
   /** Credit-only analytics payload (does not share Charts/Summary state). */
   incomeAnalytics: any = null;
   incomeCategories: string[] = [];
   incomeChartData: ChartConfiguration<'doughnut'>['data'] = { labels: [], datasets: [] };
   incomeTrendChartData: ChartConfiguration<'line'>['data'] = { labels: [], datasets: [] };
+  monthRankChartData: ChartConfiguration<'bar'>['data'] = { labels: [], datasets: [] };
   incomeTableRows: IncomeTableRow[] = [];
+  monthRankRows: AmountPeriodRow[] = [];
+  yearRankRows: AmountPeriodRow[] = [];
+  highlights: FlowHighlights | null = null;
+  topTransactions: BankTransaction[] = [];
+  topTxnsLoading = false;
   totalIncome = 0;
   totalTxnCount = 0;
+  avgTxn = 0;
   loading = false;
 
   private readonly destroy$ = new Subject<void>();
+  private readonly topTxnLeaves$ = new Subject<string[]>();
 
   constructor(
     public ctx: BankingContextService,
     private analyticsService: BankAnalyticsService,
+    private txnService: BankTransactionsService,
     private filters: BankingFilterState,
     private router: Router
   ) {}
@@ -62,6 +89,36 @@ export class BankingIncomeComponent implements OnInit, OnDestroy {
     if (saved === null && this.incomeCategories.length) {
       this.persistIncomeCategories();
     }
+    this.topTxnLeaves$
+      .pipe(
+        takeUntil(this.destroy$),
+        switchMap((leaves) => {
+          if (!leaves.length) {
+            this.topTransactions = [];
+            this.topTxnsLoading = false;
+            return EMPTY;
+          }
+          this.topTxnsLoading = true;
+          return this.txnService.getTransactions({
+            ...this.filters.buildSharedFilters(),
+            flow: 'credit',
+            category: leaves.join(','),
+            sort: 'credit_desc',
+            limit: TOP_TXN_LIMIT,
+            offset: 0
+          });
+        })
+      )
+      .subscribe({
+        next: (res) => {
+          this.topTransactions = res.rows || [];
+          this.topTxnsLoading = false;
+        },
+        error: () => {
+          this.topTransactions = [];
+          this.topTxnsLoading = false;
+        }
+      });
     this.loadIncomeAnalytics();
     merge(this.filters.filtersChanged$, this.filters.refreshRequested$)
       .pipe(takeUntil(this.destroy$))
@@ -128,6 +185,33 @@ export class BankingIncomeComponent implements OnInit, OnDestroy {
     this.ctx.flash('info', `Showing credit transactions for ${row.label}`);
   }
 
+  openPeriod(row: AmountPeriodRow) {
+    this.filters.applyPeriodRange({ key: row.key, label: row.label }, row.grain);
+    this.ctx.flash('info', `Filtered to ${row.label}`);
+  }
+
+  openTopTxn(t: BankTransaction) {
+    const date = String(t.txn_date || '').slice(0, 10);
+    const q = String(t.payee || t.narration || '').trim().slice(0, 48);
+    if (date) {
+      this.filters.applyTxnDay(date, q);
+      this.filters.filterFlow = 'credit';
+      this.router.navigate(['/banking/transactions']);
+      this.ctx.flash('info', `Showing ${date}`);
+      return;
+    }
+    if (t.category) {
+      this.openIncomeCategory({
+        category: t.category,
+        label: formatCategoryLabel(t.category),
+        total_credit: Number(t.deposit) || 0,
+        txn_count: 1,
+        pct: 0,
+        leaves: [t.category]
+      });
+    }
+  }
+
   rebuildIncomeViews() {
     const analytics = this.incomeAnalytics;
     if (!analytics) {
@@ -159,6 +243,7 @@ export class BankingIncomeComponent implements OnInit, OnDestroy {
 
     this.totalIncome = matched.reduce((s, r) => s + r.total_credit, 0);
     this.totalTxnCount = matched.reduce((s, r) => s + r.txn_count, 0);
+    this.avgTxn = this.totalTxnCount ? this.totalIncome / this.totalTxnCount : 0;
 
     this.incomeTableRows = matched
       .map((r) => ({
@@ -191,16 +276,20 @@ export class BankingIncomeComponent implements OnInit, OnDestroy {
       }))
       .filter((r: { total_credit: number }) => r.total_credit > 0);
     const rolled = rollupCategoryMonthRows(catMonth, 'leaf');
-    const byMonth = new Map<string, number>();
+    const byMonth = new Map<string, MonthBucket>();
     for (const row of rolled) {
-      byMonth.set(row.month, (byMonth.get(row.month) || 0) + (Number(row.total_credit) || 0));
+      const cur = byMonth.get(row.month) || { month: row.month, amount: 0, txn_count: 0 };
+      cur.amount += Number(row.total_credit) || 0;
+      cur.txn_count += Number(row.txn_count) || 0;
+      byMonth.set(row.month, cur);
     }
+    const buckets = [...byMonth.values()];
     const monthLabels = [...byMonth.keys()].sort().slice(-24);
     this.incomeTrendChartData = {
-      labels: monthLabels,
+      labels: monthLabels.map((m) => formatYearMonthLabel(m)),
       datasets: [{
         label: 'Income (credits)',
-        data: monthLabels.map((m) => byMonth.get(m) || 0),
+        data: monthLabels.map((m) => byMonth.get(m)?.amount || 0),
         borderColor: '#10b981',
         backgroundColor: 'rgba(16, 185, 129, 0.12)',
         fill: true,
@@ -208,14 +297,37 @@ export class BankingIncomeComponent implements OnInit, OnDestroy {
         pointRadius: 2
       }]
     };
+
+    this.monthRankRows = rankMonths(buckets, this.totalIncome).slice(0, TOP_MONTHS);
+    this.yearRankRows = rankYears(buckets, this.totalIncome);
+    this.highlights = buckets.length ? buildFlowHighlights(buckets, this.totalIncome) : null;
+    const chartMonths = [...this.monthRankRows].reverse();
+    this.monthRankChartData = {
+      labels: chartMonths.map((r) => r.label),
+      datasets: [{
+        label: 'Income',
+        data: chartMonths.map((r) => r.amount),
+        backgroundColor: 'rgba(16, 185, 129, 0.75)'
+      }]
+    };
+
+    this.topTxnLeaves$.next(this.incomeTableRows.map((r) => r.category));
   }
 
   private clearViews() {
     this.incomeTableRows = [];
+    this.monthRankRows = [];
+    this.yearRankRows = [];
+    this.highlights = null;
+    this.topTransactions = [];
+    this.topTxnsLoading = false;
     this.totalIncome = 0;
     this.totalTxnCount = 0;
+    this.avgTxn = 0;
     this.incomeChartData = { labels: [], datasets: [] };
     this.incomeTrendChartData = { labels: [], datasets: [] };
+    this.monthRankChartData = { labels: [], datasets: [] };
+    this.topTxnLeaves$.next([]);
   }
 
   /** null = never saved (use defaults); array = explicit user selection */

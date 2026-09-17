@@ -170,7 +170,7 @@ export function defaultExpenseCategories(allCategories: string[]): string[] {
     const s = String(c || '');
     if (!s) return false;
     if (s === 'Interest Income' || s.startsWith('Income_') || s.startsWith('Income /')) return false;
-    if (s.startsWith('Transfer_') || s.startsWith('Transfer /')) return false;
+    if (s.startsWith('Transfer_') || s.startsWith('Transfer /') || s.startsWith('Investments_')) return false;
     return true;
   });
   return [...new Set(fromList)].sort((a, b) => a.localeCompare(b));

@@ -11,3 +11,12 @@
 .income-page .chart-grid {
   margin-bottom: 1rem;
 }
+
+.income-page tr.peak-row td {
+  background: #ecfdf5;
+}
+
+.income-page .month-rank-box {
+  height: 260px;
+  margin-bottom: 0.75rem;
+}

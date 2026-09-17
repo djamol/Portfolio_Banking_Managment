@@ -13,6 +13,8 @@
     category that receives credits (e.g. salary miscategorized elsewhere).
   </p>
 
+  <p class="empty" *ngIf="loading && !incomeAnalytics">Loading income analytics…</p>
+
   <div class="card income-picker-card">
     <div class="period-header">
       <div>
@@ -36,18 +38,68 @@
     <div class="stat-card credit">
       <div class="stat-label">Total income</div>
       <div class="stat-value">₹{{ formatMoney(totalIncome) }}</div>
+      <span class="stat-meta" *ngIf="totalTxnCount">{{ totalTxnCount }} txns · avg ₹{{ formatMoney(avgTxn) }}</span>
+    </div>
+    <div
+      class="stat-card credit clickable"
+      *ngIf="highlights?.peakMonth"
+      (click)="openPeriod(highlights!.peakMonth!)"
+      title="Filter to this month"
+    >
+      <div class="stat-label">Highest month</div>
+      <div class="stat-value">₹{{ formatMoney(highlights!.peakMonth!.amount) }}</div>
+      <span class="stat-meta">{{ highlights!.peakMonth!.label }}</span>
+    </div>
+    <div
+      class="stat-card clickable"
+      *ngIf="highlights?.peakYear"
+      (click)="openPeriod(highlights!.peakYear!)"
+      title="Filter to this year"
+    >
+      <div class="stat-label">Highest year</div>
+      <div class="stat-value">₹{{ formatMoney(highlights!.peakYear!.amount) }}</div>
+      <span class="stat-meta">{{ highlights!.peakYear!.label }}</span>
     </div>
     <div class="stat-card">
-      <div class="stat-label">Income categories</div>
-      <div class="stat-value">{{ incomeTableRows.length }}</div>
+      <div class="stat-label">Avg / month</div>
+      <div class="stat-value">₹{{ formatMoney(highlights?.avgMonthly || 0) }}</div>
+      <span class="stat-meta" *ngIf="highlights?.monthCount">{{ highlights!.monthCount }} months with income</span>
     </div>
-    <div class="stat-card">
-      <div class="stat-label">Income txns</div>
-      <div class="stat-value">{{ totalTxnCount }}</div>
+  </div>
+
+  <div class="period-stat-row" *ngIf="highlights && incomeTableRows.length">
+    <div
+      class="txn-sum clickable"
+      *ngIf="highlights.quietMonth"
+      (click)="openPeriod(highlights.quietMonth)"
+    >
+      <span class="txn-sum-label">Lowest month · {{ highlights.quietMonth.label }}</span>
+      <strong>₹{{ formatMoney(highlights.quietMonth.amount) }}</strong>
     </div>
-    <div class="stat-card">
-      <div class="stat-label">Selected filters</div>
-      <div class="stat-value">{{ incomeCategories.length }}</div>
+    <div
+      class="txn-sum clickable"
+      *ngIf="highlights.latest"
+      (click)="openPeriod(highlights.latest)"
+    >
+      <span class="txn-sum-label">Latest · {{ highlights.latest.label }}</span>
+      <strong class="credit">₹{{ formatMoney(highlights.latest.amount) }}</strong>
+      <span class="stat-meta" *ngIf="highlights.latestChangePct !== null">
+        {{ formatPct(highlights.latestChangePct) }} vs {{ highlights.previous?.label }}
+      </span>
+    </div>
+    <div class="txn-sum" *ngIf="highlights.peakVsAvg">
+      <span class="txn-sum-label">Peak vs average</span>
+      <strong>{{ highlights.peakVsAvg | number:'1.1-1' }}×</strong>
+      <span class="stat-meta">Highest month vs monthly avg</span>
+    </div>
+    <div
+      class="txn-sum clickable"
+      *ngIf="topTransactions[0] as top"
+      (click)="openTopTxn(top)"
+    >
+      <span class="txn-sum-label">Largest transaction</span>
+      <strong class="credit">₹{{ formatMoney(top.deposit) }}</strong>
+      <span class="stat-meta">{{ top.txn_date | slice:0:10 }} · {{ formatCat(top.category) }}</span>
     </div>
   </div>
 
@@ -72,6 +124,119 @@
     <p class="empty">No income credits for the selected categories in this range.</p>
   </ng-template>
 
+  <div class="two-col" *ngIf="incomeAnalytics && incomeTableRows.length">
+    <div class="card">
+      <h3>Highest months</h3>
+      <p class="hint">Top months by income. Click a row to filter this page to that month.</p>
+      <div class="chart-box month-rank-box" *ngIf="monthRankRows.length">
+        <canvas baseChart [data]="monthRankChartData" [options]="horizontalBarOptions" type="bar"></canvas>
+      </div>
+      <table class="data-table compact" *ngIf="monthRankRows.length">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Month</th>
+            <th class="num">Txns</th>
+            <th class="num">Income</th>
+            <th class="num">Share</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            *ngFor="let r of monthRankRows; let i = index"
+            class="clickable-row"
+            [class.peak-row]="i === 0"
+            (click)="openPeriod(r)"
+          >
+            <td class="rank-idx">{{ i + 1 }}</td>
+            <td>
+              {{ r.label }}
+              <span class="badge" *ngIf="i === 0">Peak</span>
+            </td>
+            <td class="num">{{ r.txn_count }}</td>
+            <td class="credit num">₹{{ formatMoney(r.amount) }}</td>
+            <td class="num">
+              <div class="share-bar-wrap">
+                <div class="share-bar credit" [style.width.%]="r.pct"></div>
+                <span>{{ r.pct | number:'1.0-1' }}%</span>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Highest years</h3>
+      <p class="hint">Annual income for the selected range. Click to filter to that year.</p>
+      <table class="data-table compact" *ngIf="yearRankRows.length; else noYearRows">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Year</th>
+            <th class="num">Txns</th>
+            <th class="num">Income</th>
+            <th class="num">Share</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            *ngFor="let r of yearRankRows; let i = index"
+            class="clickable-row"
+            [class.peak-row]="i === 0"
+            (click)="openPeriod(r)"
+          >
+            <td class="rank-idx">{{ i + 1 }}</td>
+            <td>
+              {{ r.label }}
+              <span class="badge" *ngIf="i === 0">Peak</span>
+            </td>
+            <td class="num">{{ r.txn_count }}</td>
+            <td class="credit num">₹{{ formatMoney(r.amount) }}</td>
+            <td class="num">
+              <div class="share-bar-wrap">
+                <div class="share-bar credit" [style.width.%]="r.pct"></div>
+                <span>{{ r.pct | number:'1.0-1' }}%</span>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <ng-template #noYearRows>
+        <p class="empty">No yearly totals in this range.</p>
+      </ng-template>
+    </div>
+  </div>
+
+  <div class="card" *ngIf="incomeAnalytics">
+    <h3>Top {{ topTransactions.length || 10 }} income transactions</h3>
+    <p class="hint" *ngIf="topTransactions.length">Largest credits in the selected categories. Click a row to open that day.</p>
+    <p class="empty" *ngIf="topTxnsLoading">Loading largest transactions…</p>
+    <table class="data-table compact" *ngIf="!topTxnsLoading && topTransactions.length">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Date</th>
+          <th>Narration</th>
+          <th>Category</th>
+          <th class="num">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let t of topTransactions; let i = index" class="clickable-row" (click)="openTopTxn(t)">
+          <td class="rank-idx">{{ i + 1 }}</td>
+          <td class="nowrap">{{ t.txn_date | slice:0:10 }}</td>
+          <td class="narration" [title]="t.narration">{{ t.payee || t.narration }}</td>
+          <td>{{ formatCat(t.category) }}</td>
+          <td class="credit num">₹{{ formatMoney(t.deposit) }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="empty" *ngIf="!topTxnsLoading && incomeTableRows.length && !topTransactions.length">
+      No individual credit transactions found for the selected categories.
+    </p>
+  </div>
+
   <div class="card" *ngIf="incomeAnalytics">
     <h3>Income breakdown</h3>
     <p class="hint" *ngIf="incomeTableRows.length">Click a row to open matching credit transactions</p>
@@ -91,7 +256,7 @@
           <td class="credit num">₹{{ formatMoney(r.total_credit) }}</td>
           <td class="num">
             <div class="share-bar-wrap">
-              <div class="share-bar" [style.width.%]="r.pct"></div>
+              <div class="share-bar credit" [style.width.%]="r.pct"></div>
               <span>{{ r.pct | number:'1.0-1' }}%</span>
             </div>
           </td>

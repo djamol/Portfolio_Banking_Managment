@@ -11,3 +11,12 @@
 .expense-page .chart-grid {
   margin-bottom: 1rem;
 }
+
+.expense-page tr.peak-row td {
+  background: #fef2f2;
+}
+
+.expense-page .month-rank-box {
+  height: 260px;
+  margin-bottom: 0.75rem;
+}

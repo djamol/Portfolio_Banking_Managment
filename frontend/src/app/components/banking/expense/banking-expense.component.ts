@@ -1,21 +1,38 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
 import { ChartConfiguration } from 'chart.js';
-import { Subject, merge, takeUntil } from 'rxjs';
+import { EMPTY, Subject, merge, switchMap, takeUntil } from 'rxjs';
 import { BankAnalyticsService } from '../../../services/banking/bank-analytics.service';
-import { DEFAULT_BANK_CATEGORIES } from '../../../services/banking/banking.models';
+import { BankTransaction, DEFAULT_BANK_CATEGORIES } from '../../../services/banking/banking.models';
+import { BankTransactionsService } from '../../../services/banking/bank-transactions.service';
 import {
   defaultExpenseCategories,
   matchSelectedCategories,
   rollupCategoryMonthRows
 } from '../../../utils/category-rollup.util';
 import { formatCategoryLabel } from '../../../utils/category-tree.util';
-import { BANK_CHART_COLORS, doughnutOptions, netLineOptions } from '../shared/banking-chart.util';
+import {
+  BANK_CHART_COLORS,
+  doughnutOptions,
+  horizontalBarOptions,
+  netLineOptions
+} from '../shared/banking-chart.util';
 import { formatCat, formatMoney, formatPct } from '../shared/banking-format.util';
 import { BankingContextService } from '../shared/banking-context.service';
 import { BankingFilterState } from '../shared/banking-filter-state.service';
+import {
+  AmountPeriodRow,
+  FlowHighlights,
+  MonthBucket,
+  buildFlowHighlights,
+  formatYearMonthLabel,
+  rankMonths,
+  rankYears
+} from '../shared/flow-highlights.util';
 
 const EXPENSE_CATS_KEY = 'bank-expense-categories';
+const TOP_TXN_LIMIT = 10;
+const TOP_MONTHS = 12;
 
 export type ExpenseTableRow = {
   category: string;
@@ -35,22 +52,32 @@ export type ExpenseTableRow = {
 export class BankingExpenseComponent implements OnInit, OnDestroy {
   readonly doughnutOptions = doughnutOptions;
   readonly netLineOptions = netLineOptions;
+  readonly horizontalBarOptions = horizontalBarOptions;
 
   /** Debit-only analytics payload (does not share Charts/Summary state). */
   expenseAnalytics: any = null;
   expenseCategories: string[] = [];
   expenseChartData: ChartConfiguration<'doughnut'>['data'] = { labels: [], datasets: [] };
   expenseTrendChartData: ChartConfiguration<'line'>['data'] = { labels: [], datasets: [] };
+  monthRankChartData: ChartConfiguration<'bar'>['data'] = { labels: [], datasets: [] };
   expenseTableRows: ExpenseTableRow[] = [];
+  monthRankRows: AmountPeriodRow[] = [];
+  yearRankRows: AmountPeriodRow[] = [];
+  highlights: FlowHighlights | null = null;
+  topTransactions: BankTransaction[] = [];
+  topTxnsLoading = false;
   totalExpense = 0;
   totalTxnCount = 0;
+  avgTxn = 0;
   loading = false;
 
   private readonly destroy$ = new Subject<void>();
+  private readonly topTxnLeaves$ = new Subject<string[]>();
 
   constructor(
     public ctx: BankingContextService,
     private analyticsService: BankAnalyticsService,
+    private txnService: BankTransactionsService,
     private filters: BankingFilterState,
     private router: Router
   ) {}
@@ -62,6 +89,36 @@ export class BankingExpenseComponent implements OnInit, OnDestroy {
     if (saved === null && this.expenseCategories.length) {
       this.persistExpenseCategories();
     }
+    this.topTxnLeaves$
+      .pipe(
+        takeUntil(this.destroy$),
+        switchMap((leaves) => {
+          if (!leaves.length) {
+            this.topTransactions = [];
+            this.topTxnsLoading = false;
+            return EMPTY;
+          }
+          this.topTxnsLoading = true;
+          return this.txnService.getTransactions({
+            ...this.filters.buildSharedFilters(),
+            flow: 'debit',
+            category: leaves.join(','),
+            sort: 'debit_desc',
+            limit: TOP_TXN_LIMIT,
+            offset: 0
+          });
+        })
+      )
+      .subscribe({
+        next: (res) => {
+          this.topTransactions = res.rows || [];
+          this.topTxnsLoading = false;
+        },
+        error: () => {
+          this.topTransactions = [];
+          this.topTxnsLoading = false;
+        }
+      });
     this.loadExpenseAnalytics();
     merge(this.filters.filtersChanged$, this.filters.refreshRequested$)
       .pipe(takeUntil(this.destroy$))
@@ -128,6 +185,33 @@ export class BankingExpenseComponent implements OnInit, OnDestroy {
     this.ctx.flash('info', `Showing debit transactions for ${row.label}`);
   }
 
+  openPeriod(row: AmountPeriodRow) {
+    this.filters.applyPeriodRange({ key: row.key, label: row.label }, row.grain);
+    this.ctx.flash('info', `Filtered to ${row.label}`);
+  }
+
+  openTopTxn(t: BankTransaction) {
+    const date = String(t.txn_date || '').slice(0, 10);
+    const q = String(t.payee || t.narration || '').trim().slice(0, 48);
+    if (date) {
+      this.filters.applyTxnDay(date, q);
+      this.filters.filterFlow = 'debit';
+      this.router.navigate(['/banking/transactions']);
+      this.ctx.flash('info', `Showing ${date}`);
+      return;
+    }
+    if (t.category) {
+      this.openExpenseCategory({
+        category: t.category,
+        label: formatCategoryLabel(t.category),
+        total_debit: Number(t.withdrawal) || 0,
+        txn_count: 1,
+        pct: 0,
+        leaves: [t.category]
+      });
+    }
+  }
+
   rebuildExpenseViews() {
     const analytics = this.expenseAnalytics;
     if (!analytics) {
@@ -159,6 +243,7 @@ export class BankingExpenseComponent implements OnInit, OnDestroy {
 
     this.totalExpense = matched.reduce((s, r) => s + r.total_debit, 0);
     this.totalTxnCount = matched.reduce((s, r) => s + r.txn_count, 0);
+    this.avgTxn = this.totalTxnCount ? this.totalExpense / this.totalTxnCount : 0;
 
     this.expenseTableRows = matched
       .map((r) => ({
@@ -191,16 +276,20 @@ export class BankingExpenseComponent implements OnInit, OnDestroy {
       }))
       .filter((r: { total_debit: number }) => r.total_debit > 0);
     const rolled = rollupCategoryMonthRows(catMonth, 'leaf');
-    const byMonth = new Map<string, number>();
+    const byMonth = new Map<string, MonthBucket>();
     for (const row of rolled) {
-      byMonth.set(row.month, (byMonth.get(row.month) || 0) + (Number(row.total_debit) || 0));
+      const cur = byMonth.get(row.month) || { month: row.month, amount: 0, txn_count: 0 };
+      cur.amount += Number(row.total_debit) || 0;
+      cur.txn_count += Number(row.txn_count) || 0;
+      byMonth.set(row.month, cur);
     }
+    const buckets = [...byMonth.values()];
     const monthLabels = [...byMonth.keys()].sort().slice(-24);
     this.expenseTrendChartData = {
-      labels: monthLabels,
+      labels: monthLabels.map((m) => formatYearMonthLabel(m)),
       datasets: [{
         label: 'Expense (debits)',
-        data: monthLabels.map((m) => byMonth.get(m) || 0),
+        data: monthLabels.map((m) => byMonth.get(m)?.amount || 0),
         borderColor: '#ef4444',
         backgroundColor: 'rgba(239, 68, 68, 0.12)',
         fill: true,
@@ -208,14 +297,37 @@ export class BankingExpenseComponent implements OnInit, OnDestroy {
         pointRadius: 2
       }]
     };
+
+    this.monthRankRows = rankMonths(buckets, this.totalExpense).slice(0, TOP_MONTHS);
+    this.yearRankRows = rankYears(buckets, this.totalExpense);
+    this.highlights = buckets.length ? buildFlowHighlights(buckets, this.totalExpense) : null;
+    const chartMonths = [...this.monthRankRows].reverse();
+    this.monthRankChartData = {
+      labels: chartMonths.map((r) => r.label),
+      datasets: [{
+        label: 'Expense',
+        data: chartMonths.map((r) => r.amount),
+        backgroundColor: 'rgba(239, 68, 68, 0.75)'
+      }]
+    };
+
+    this.topTxnLeaves$.next(this.expenseTableRows.map((r) => r.category));
   }
 
   private clearViews() {
     this.expenseTableRows = [];
+    this.monthRankRows = [];
+    this.yearRankRows = [];
+    this.highlights = null;
+    this.topTransactions = [];
+    this.topTxnsLoading = false;
     this.totalExpense = 0;
     this.totalTxnCount = 0;
+    this.avgTxn = 0;
     this.expenseChartData = { labels: [], datasets: [] };
     this.expenseTrendChartData = { labels: [], datasets: [] };
+    this.monthRankChartData = { labels: [], datasets: [] };
+    this.topTxnLeaves$.next([]);
   }
 
   /** null = never saved (use defaults); array = explicit user selection */
