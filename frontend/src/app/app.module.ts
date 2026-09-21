@@ -31,6 +31,7 @@ import { BankingInterestComponent } from './components/banking/interest/banking-
 import { BankingInsightsComponent } from './components/banking/insights/banking-insights.component';
 import { BankingBudgetsComponent } from './components/banking/budgets/banking-budgets.component';
 import { CashflowsComponent } from './components/cashflows/cashflows.component';
+import { MutualFundHistoryComponent } from './components/mutual-fund-history/mutual-fund-history.component';
 import { AuthInterceptor } from './services/auth.interceptor';
 import { routes } from './app.routes';
 
@@ -60,7 +61,8 @@ import { routes } from './app.routes';
     BankingInterestComponent,
     BankingInsightsComponent,
     BankingBudgetsComponent,
-    CashflowsComponent
+    CashflowsComponent,
+    MutualFundHistoryComponent
   ],
   imports: [
     BrowserModule,

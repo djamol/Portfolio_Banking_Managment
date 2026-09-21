@@ -41,14 +41,22 @@ async function getInvestmentById(id) {
 async function createInvestment(data) {
   const pool = getPool();
   const [result] = await pool.query(
-    `INSERT INTO investments (website_app_name, investment_type, sub_type_name, sub_type_category, amount, investment_date, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO investments (website_app_name, investment_type, sub_type_name, sub_type_category, amount, units, nav_price, nav_source, mutual_fund_scheme_code, mutual_fund_scheme_name, profit_loss, avg_buy_price, invested_amount, investment_date, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.website_app_name,
       data.investment_type,
       data.sub_type_name || null,
       data.sub_type_category || null,
       data.amount,
+      data.units != null && data.units !== '' ? Number(data.units) : null,
+      data.nav_price != null && data.nav_price !== '' ? Number(data.nav_price) : null,
+      data.nav_source || null,
+      data.mutual_fund_scheme_code || null,
+      data.mutual_fund_scheme_name || null,
+      data.profit_loss != null && data.profit_loss !== '' ? Number(data.profit_loss) : null,
+      data.avg_buy_price != null && data.avg_buy_price !== '' ? Number(data.avg_buy_price) : null,
+      data.invested_amount != null && data.invested_amount !== '' ? Number(data.invested_amount) : null,
       data.investment_date,
       data.notes || null
     ]
@@ -71,7 +79,8 @@ async function updateInvestment(id, data) {
   await pool.query(
     `UPDATE investments
      SET website_app_name = ?, investment_type = ?, sub_type_name = ?,
-         sub_type_category = ?, amount = ?, investment_date = ?, notes = ?
+         sub_type_category = ?, amount = ?, units = ?, nav_price = ?, nav_source = ?, mutual_fund_scheme_code = ?, mutual_fund_scheme_name = ?, profit_loss = ?, avg_buy_price = ?, invested_amount = ?,
+         investment_date = ?, notes = ?
      WHERE id = ?`,
     [
       data.website_app_name,
@@ -79,6 +88,14 @@ async function updateInvestment(id, data) {
       data.sub_type_name || null,
       data.sub_type_category || null,
       data.amount,
+      data.units != null && data.units !== '' ? Number(data.units) : null,
+      data.nav_price != null && data.nav_price !== '' ? Number(data.nav_price) : null,
+      data.nav_source || null,
+      data.mutual_fund_scheme_code || null,
+      data.mutual_fund_scheme_name || null,
+      data.profit_loss != null && data.profit_loss !== '' ? Number(data.profit_loss) : null,
+      data.avg_buy_price != null && data.avg_buy_price !== '' ? Number(data.avg_buy_price) : null,
+      data.invested_amount != null && data.invested_amount !== '' ? Number(data.invested_amount) : null,
       data.investment_date,
       data.notes || null,
       id
@@ -441,6 +458,45 @@ async function syncAmountsFromLatestHistory() {
   return result.affectedRows || 0;
 }
 
+async function saveMutualFundNavSnapshot(snapshot) {
+  const pool = getPool();
+  const [result] = await pool.query(
+    `INSERT INTO mutual_fund_nav_history
+      (investment_id, snapshot_date, nav_date, units, nav_price, value, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+      nav_date = VALUES(nav_date), units = VALUES(units), nav_price = VALUES(nav_price),
+      value = VALUES(value), source = VALUES(source)`,
+    [snapshot.investment_id, snapshot.snapshot_date, snapshot.nav_date, snapshot.units,
+      snapshot.nav_price, snapshot.value, snapshot.source]
+  );
+  const [rows] = await pool.query(
+    'SELECT * FROM mutual_fund_nav_history WHERE investment_id = ? AND snapshot_date = ?',
+    [snapshot.investment_id, snapshot.snapshot_date]
+  );
+  await pool.query(
+    `INSERT INTO investment_history (investment_id, amount, change_date, change_type, notes)
+     SELECT ?, ?, ?, 'updated', ?
+     WHERE NOT EXISTS (
+       SELECT 1 FROM investment_history WHERE investment_id = ? AND change_date = ? AND amount = ?
+     )`,
+    [snapshot.investment_id, snapshot.value, snapshot.snapshot_date, 'MFAPI NAV snapshot',
+      snapshot.investment_id, snapshot.snapshot_date, snapshot.value]
+  );
+  return rows[0] || { ...snapshot, id: result.insertId };
+}
+
+async function listMutualFundNavSnapshots(investmentId, from, to) {
+  const pool = getPool();
+  let sql = 'SELECT * FROM mutual_fund_nav_history WHERE investment_id = ?';
+  const params = [investmentId];
+  if (from) { sql += ' AND snapshot_date >= ?'; params.push(from); }
+  if (to) { sql += ' AND snapshot_date <= ?'; params.push(to); }
+  sql += ' ORDER BY snapshot_date ASC';
+  const [rows] = await pool.query(sql, params);
+  return rows;
+}
+
 module.exports = {
   getAllInvestments,
   searchInvestments,
@@ -464,5 +520,7 @@ module.exports = {
   updateTransaction,
   deleteTransaction,
   syncAmountsFromLatestHistory,
+  saveMutualFundNavSnapshot,
+  listMutualFundNavSnapshots,
   VALID_TXN_TYPES
 };

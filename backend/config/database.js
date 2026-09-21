@@ -241,6 +241,14 @@ const createTables = async () => {
         sub_type_name VARCHAR(255),
         sub_type_category VARCHAR(255),
         amount DECIMAL(15, 2) NOT NULL,
+        units DECIMAL(20, 4) NULL,
+        nav_price DECIMAL(20, 4) NULL,
+        nav_source VARCHAR(32) NULL,
+        mutual_fund_scheme_code VARCHAR(32) NULL,
+        mutual_fund_scheme_name VARCHAR(255) NULL,
+        profit_loss DECIMAL(20, 4) NULL,
+        avg_buy_price DECIMAL(20, 4) NULL,
+        invested_amount DECIMAL(15, 2) NULL,
         investment_date DATE NOT NULL,
         notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -263,6 +271,23 @@ const createTables = async () => {
         FOREIGN KEY (investment_id) REFERENCES investments(id) ON DELETE CASCADE,
         INDEX idx_investment_id (investment_id),
         INDEX idx_change_date (change_date)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS mutual_fund_nav_history (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        investment_id INT NOT NULL,
+        snapshot_date DATE NOT NULL,
+        nav_date DATE NOT NULL,
+        units DECIMAL(20, 8) NOT NULL,
+        nav_price DECIMAL(20, 8) NOT NULL,
+        value DECIMAL(20, 4) NOT NULL,
+        source VARCHAR(32) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_mf_nav_snapshot (investment_id, snapshot_date),
+        FOREIGN KEY (investment_id) REFERENCES investments(id) ON DELETE CASCADE,
+        INDEX idx_mf_nav_investment_date (investment_id, snapshot_date)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
 
@@ -417,7 +442,15 @@ const createTables = async () => {
       'ALTER TABLE bank_budgets MODIFY COLUMN category VARCHAR(150) NOT NULL',
       "ALTER TABLE investments MODIFY COLUMN investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'EPF', 'Saving Bank Balance', 'Real Estate') NOT NULL",
       "ALTER TABLE sub_type_names MODIFY COLUMN investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'EPF', 'Saving Bank Balance', 'Real Estate') NOT NULL",
-      "ALTER TABLE sub_type_categories MODIFY COLUMN investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'EPF', 'Saving Bank Balance', 'Real Estate') NOT NULL"
+      "ALTER TABLE sub_type_categories MODIFY COLUMN investment_type ENUM('FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'EPF', 'Saving Bank Balance', 'Real Estate') NOT NULL",
+      'ALTER TABLE investments ADD COLUMN units DECIMAL(20, 4) NULL',
+      'ALTER TABLE investments ADD COLUMN nav_price DECIMAL(20, 4) NULL',
+      'ALTER TABLE investments ADD COLUMN nav_source VARCHAR(32) NULL',
+      'ALTER TABLE investments ADD COLUMN mutual_fund_scheme_code VARCHAR(32) NULL',
+      'ALTER TABLE investments ADD COLUMN mutual_fund_scheme_name VARCHAR(255) NULL',
+      'ALTER TABLE investments ADD COLUMN profit_loss DECIMAL(20, 4) NULL',
+      'ALTER TABLE investments ADD COLUMN avg_buy_price DECIMAL(20, 4) NULL',
+      'ALTER TABLE investments ADD COLUMN invested_amount DECIMAL(15, 2) NULL'
     ];
     for (const sql of alterStatements) {
       try {

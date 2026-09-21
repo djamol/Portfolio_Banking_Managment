@@ -8,6 +8,7 @@ const COLLECTIONS = [
   'investments',
   'investment_history',
   'investment_transactions',
+  'mutual_fund_nav_history',
   'bank_accounts',
   'bank_transactions',
   'bank_category_rules',

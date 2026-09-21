@@ -1,4 +1,5 @@
 const { getDb } = require('../config/mongodb');
+const mutualFundNavStore = require('./mutual-fund-nav-store');
 
 const INVESTMENT_TYPES = [
   'FD', 'Stock', 'ETF', 'Bond', 'Mutual Fund', 'Crypto', 'PPF', 'EPF', 'Saving Bank Balance', 'Real Estate'
@@ -41,6 +42,13 @@ function formatDoc(doc) {
     change_date: rest.change_date ? toDateString(rest.change_date) : rest.change_date,
     txn_date: rest.txn_date ? toDateString(rest.txn_date) : rest.txn_date,
     amount: rest.amount != null ? Number(rest.amount) : rest.amount,
+    units: rest.units != null ? Number(rest.units) : rest.units,
+    nav_price: rest.nav_price != null ? Number(rest.nav_price) : rest.nav_price,
+    nav_source: rest.nav_source || null,
+    mutual_fund_scheme_name: rest.mutual_fund_scheme_name || null,
+    profit_loss: rest.profit_loss != null ? Number(rest.profit_loss) : rest.profit_loss,
+    avg_buy_price: rest.avg_buy_price != null ? Number(rest.avg_buy_price) : rest.avg_buy_price,
+    invested_amount: rest.invested_amount != null ? Number(rest.invested_amount) : rest.invested_amount,
     created_at: rest.created_at ? new Date(rest.created_at).toISOString() : rest.created_at,
     updated_at: rest.updated_at ? new Date(rest.updated_at).toISOString() : rest.updated_at
   };
@@ -106,6 +114,14 @@ async function createInvestment(data) {
     sub_type_name: data.sub_type_name || null,
     sub_type_category: data.sub_type_category || null,
     amount: Number(data.amount),
+    units: data.units != null && data.units !== '' ? Number(data.units) : null,
+    nav_price: data.nav_price != null && data.nav_price !== '' ? Number(data.nav_price) : null,
+    nav_source: data.nav_source || null,
+    mutual_fund_scheme_name: data.mutual_fund_scheme_name || null,
+    mutual_fund_scheme_code: data.mutual_fund_scheme_code || null,
+    profit_loss: data.profit_loss != null && data.profit_loss !== '' ? Number(data.profit_loss) : null,
+    avg_buy_price: data.avg_buy_price != null && data.avg_buy_price !== '' ? Number(data.avg_buy_price) : null,
+    invested_amount: data.invested_amount != null && data.invested_amount !== '' ? Number(data.invested_amount) : null,
     investment_date: toDateString(data.investment_date),
     notes: data.notes || null,
     created_at: now,
@@ -136,6 +152,14 @@ async function updateInvestment(id, data) {
     sub_type_name: data.sub_type_name || null,
     sub_type_category: data.sub_type_category || null,
     amount: Number(data.amount),
+    units: data.units != null && data.units !== '' ? Number(data.units) : null,
+    nav_price: data.nav_price != null && data.nav_price !== '' ? Number(data.nav_price) : null,
+    nav_source: data.nav_source || null,
+    mutual_fund_scheme_name: data.mutual_fund_scheme_name || null,
+    mutual_fund_scheme_code: data.mutual_fund_scheme_code || null,
+    profit_loss: data.profit_loss != null && data.profit_loss !== '' ? Number(data.profit_loss) : null,
+    avg_buy_price: data.avg_buy_price != null && data.avg_buy_price !== '' ? Number(data.avg_buy_price) : null,
+    invested_amount: data.invested_amount != null && data.invested_amount !== '' ? Number(data.invested_amount) : null,
     investment_date: toDateString(data.investment_date),
     notes: data.notes || null,
     updated_at: now
@@ -657,5 +681,24 @@ module.exports = {
   updateTransaction,
   deleteTransaction,
   syncAmountsFromLatestHistory,
+  saveMutualFundNavSnapshot: async (snapshot) => {
+    const saved = await mutualFundNavStore.saveSnapshot(snapshot);
+    const existing = await getDb().collection('investment_history').findOne({
+      investment_id: Number(snapshot.investment_id),
+      change_date: snapshot.snapshot_date,
+      amount: Number(snapshot.value)
+    });
+    if (!existing) {
+      await addHistory({
+        investment_id: Number(snapshot.investment_id),
+        amount: Number(snapshot.value),
+        change_date: snapshot.snapshot_date,
+        change_type: 'updated',
+        notes: 'MFAPI NAV snapshot'
+      });
+    }
+    return saved;
+  },
+  listMutualFundNavSnapshots: mutualFundNavStore.listSnapshots,
   VALID_TXN_TYPES
 };

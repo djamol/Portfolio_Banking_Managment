@@ -1,10 +1,24 @@
 const express = require('express');
 const router = express.Router();
 const store = require('../db');
+const { resolveNav } = require('../utils/mf-api');
 
 const VALID_TXN_TYPES = store.VALID_TXN_TYPES || new Set([
   'buy', 'sell', 'dividend', 'interest', 'fee', 'deposit', 'withdrawal', 'transfer_in', 'transfer_out'
 ]);
+
+async function resolveMutualFundNav(schemeCode, investmentDate, savedNav) {
+  if (!schemeCode) return { nav: savedNav, source: savedNav != null ? 'imported' : null };
+  try {
+    const resolved = await resolveNav(schemeCode, investmentDate);
+    return { nav: resolved.nav, source: `mfapi-${resolved.source}` };
+  } catch (error) {
+    if (savedNav != null && savedNav !== '' && Number(savedNav) > 0) {
+      return { nav: savedNav, source: 'imported' };
+    }
+    throw error;
+  }
+}
 
 router.get('/', async (req, res) => {
   try {
@@ -131,7 +145,7 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { website_app_name, investment_type, sub_type_name, sub_type_category, amount, investment_date, notes } = req.body;
+    const { website_app_name, investment_type, sub_type_name, sub_type_category, amount, units, nav_price, nav_source, avg_buy_price, invested_amount, profit_loss, investment_date, notes, mutual_fund_scheme_code, mutual_fund_scheme_name } = req.body;
 
     if (!website_app_name || !investment_type || !amount || !investment_date) {
       return res.status(400).json({
@@ -140,12 +154,28 @@ router.post('/', async (req, res) => {
       });
     }
 
+    let resolvedNav = nav_price;
+    let resolvedNavSource = nav_source || (nav_price != null ? 'imported' : null);
+    if (investment_type === 'Mutual Fund' && mutual_fund_scheme_code) {
+      const resolved = await resolveMutualFundNav(mutual_fund_scheme_code, investment_date, nav_price);
+      resolvedNav = resolved.nav;
+      resolvedNavSource = resolved.source;
+    }
+
     const newInvestment = await store.createInvestment({
       website_app_name,
       investment_type,
       sub_type_name,
       sub_type_category,
       amount,
+      units,
+      nav_price: resolvedNav,
+      nav_source: resolvedNavSource,
+      mutual_fund_scheme_code,
+      mutual_fund_scheme_name,
+      avg_buy_price,
+      invested_amount,
+      profit_loss,
       investment_date,
       notes
     });
@@ -159,13 +189,28 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const { website_app_name, investment_type, sub_type_name, sub_type_category, amount, investment_date, notes } = req.body;
+    const { website_app_name, investment_type, sub_type_name, sub_type_category, amount, units, nav_price, nav_source, avg_buy_price, invested_amount, profit_loss, investment_date, notes, mutual_fund_scheme_code, mutual_fund_scheme_name } = req.body;
+    let resolvedNav = nav_price;
+    let resolvedNavSource = nav_source || (nav_price != null ? 'imported' : null);
+    if (investment_type === 'Mutual Fund' && mutual_fund_scheme_code) {
+      const resolved = await resolveMutualFundNav(mutual_fund_scheme_code, investment_date, nav_price);
+      resolvedNav = resolved.nav;
+      resolvedNavSource = resolved.source;
+    }
     const updatedInvestment = await store.updateInvestment(req.params.id, {
       website_app_name,
       investment_type,
       sub_type_name,
       sub_type_category,
       amount,
+      units,
+      nav_price: resolvedNav,
+      nav_source: resolvedNavSource,
+      mutual_fund_scheme_code,
+      mutual_fund_scheme_name,
+      avg_buy_price,
+      invested_amount,
+      profit_loss,
       investment_date,
       notes
     });

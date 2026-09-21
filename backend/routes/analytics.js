@@ -711,6 +711,14 @@ router.get('/summary-table', async (req, res) => {
         i.investment_type,
         i.sub_type_name,
         i.sub_type_category,
+        i.units,
+        i.nav_price,
+        i.nav_source,
+        i.mutual_fund_scheme_name,
+        i.avg_buy_price,
+        i.invested_amount,
+        i.profit_loss,
+        i.mutual_fund_scheme_code,
         COALESCE(
           (
             SELECT h.amount

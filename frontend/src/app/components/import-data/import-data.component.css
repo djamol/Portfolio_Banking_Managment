@@ -416,3 +416,39 @@
   font-size: 28px;
   color: green;
 }
+
+.mfapi-cell {
+  min-width: 240px;
+  position: relative;
+}
+
+.mfapi-search {
+  min-width: 220px;
+  font-size: 13px;
+  padding: 6px;
+}
+
+.mfapi-results {
+  position: absolute;
+  z-index: 5;
+  width: 320px;
+  max-height: 180px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #ced4da;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.18);
+}
+
+.mfapi-results button {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  background: white;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mfapi-results button:hover {
+  background: #eef5ff;
+}

@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { InvestmentService } from '../../services/investment.service';
+import { MutualFundScheme, MutualFundService } from '../../services/mutual-fund.service';
 import { CategoryService, SubTypeName, Category } from '../../services/category.service';
 import { formatIndianFull } from '../../utils/indian-number.util';
 
@@ -36,6 +37,9 @@ export class ImportDataComponent implements OnInit {
   useCustomDate = false;
   customDate: string = new Date().toISOString().split('T')[0]; // Default to today's date
   csvPortfolioDate: string | null = null;
+  mfSearchQueries: { [key: string]: string } = {};
+  mfSearchResults: { [key: string]: MutualFundScheme[] } = {};
+  private mfSearchTimers: { [key: string]: ReturnType<typeof setTimeout> } = {};
 
   get supportsCsvImport(): boolean {
     return this.investmentType === 'Mutual Fund' || this.investmentType === 'ETF';
@@ -119,7 +123,8 @@ export class ImportDataComponent implements OnInit {
 
   constructor(
     private investmentService: InvestmentService,
-    private categoryService: CategoryService
+    private categoryService: CategoryService,
+    private mutualFundService: MutualFundService
   ) {}
 
   async ngOnInit() {
@@ -217,6 +222,15 @@ export class ImportDataComponent implements OnInit {
           const previousValue = this.lookupPreviousValue(record, previousLookup);
           const newValue = Number(record.presentValue) || 0;
           const change = newValue - previousValue;
+          const existingMatch = existingInvestments?.find(inv =>
+            inv.investment_type === 'Mutual Fund'
+            && inv.website_app_name === this.platform
+            && inv.sub_type_name === record.subTypeName
+            && this.getCategoryNameVariants(record.subTypeCategory).includes(inv.sub_type_category)
+          );
+          record.mutualFundSchemeCode = record.mutualFundSchemeCode
+            || existingMatch?.mutual_fund_scheme_code
+            || '';
           return {
             key: this.getRecordKey(record.subTypeName, record.subTypeCategory),
             folioNo: record.folioNo,
@@ -224,9 +238,14 @@ export class ImportDataComponent implements OnInit {
             extractedAMC: record.subTypeName,
             extractedScheme: record.subTypeCategory,
             presentValue: newValue,
+            units: record.units,
+            navPrice: record.navPrice,
+            investedAmount: record.investedAmount,
+            profitLoss: record.profitLoss,
             newValue,
             previousValue,
             change,
+            mutualFundSchemeCode: record.mutualFundSchemeCode,
             status: this.getRowStatus(previousValue, newValue),
             selected: true,
             isNewAMC: !typeAmcs.has(record.subTypeName),
@@ -264,6 +283,22 @@ export class ImportDataComponent implements OnInit {
         // If key exists, aggregate the present value
         const existingRecord = aggregatedMap.get(key);
         existingRecord.presentValue += record.presentValue;
+        if (record.units != null) {
+          existingRecord.units = (existingRecord.units || 0) + record.units;
+        }
+        if (record.investedAmount != null) {
+          existingRecord.investedAmount = (existingRecord.investedAmount || 0) + record.investedAmount;
+        }
+        if (record.profitLoss != null) {
+          existingRecord.profitLoss = (existingRecord.profitLoss || 0) + record.profitLoss;
+        }
+        // Recompute derived NAV/avg buy price after combining units/amounts
+        existingRecord.navPrice = existingRecord.units
+          ? existingRecord.presentValue / existingRecord.units
+          : (record.navPrice ?? existingRecord.navPrice);
+        existingRecord.avgBuyPrice = (existingRecord.investedAmount && existingRecord.units)
+          ? existingRecord.investedAmount / existingRecord.units
+          : existingRecord.avgBuyPrice;
         // Update folio no to show multiple folios if needed
         if (record.folioNo && existingRecord.folioNo !== record.folioNo) {
           existingRecord.folioNo = `${existingRecord.folioNo},${record.folioNo}`;
@@ -341,6 +376,10 @@ export class ImportDataComponent implements OnInit {
     this.hasNewAMC = false;
     this.hasNewScheme = false;
     this.csvPortfolioDate = null;
+    this.mfSearchQueries = {};
+    this.mfSearchResults = {};
+    Object.values(this.mfSearchTimers).forEach(timer => clearTimeout(timer));
+    this.mfSearchTimers = {};
   }
 
   private getInvestmentDate(): string {
@@ -429,6 +468,10 @@ export class ImportDataComponent implements OnInit {
     const headers = this.parseCSVLine(lines[headerIndex]);
     const scripNameColIndex = headers.findIndex(h => h.toLowerCase().includes('scrip name'));
     const currentValueColIndex = headers.findIndex(h => h.toLowerCase().includes('current value'));
+    const quantityColIndex = headers.findIndex(h => h.toLowerCase().includes('quantity'));
+    const avgBuyRateColIndex = headers.findIndex(h => h.toLowerCase().includes('avg. buy rate') || h.toLowerCase().includes('avg buy rate'));
+    const buyValueColIndex = headers.findIndex(h => h.toLowerCase().includes('buy value'));
+    const ltpColIndex = headers.findIndex(h => h.toLowerCase() === 'ltp');
 
     for (let i = headerIndex + 1; i < lines.length; i++) {
       const line = lines[i].trim();
@@ -445,6 +488,11 @@ export class ImportDataComponent implements OnInit {
       const currentValueNum = parseFloat(currentValue.replace(/,/g, ''));
       if (isNaN(currentValueNum) || currentValueNum <= 0) continue;
 
+      const quantityNum = quantityColIndex >= 0 ? this.parseNumericField(fields[quantityColIndex]) : null;
+      const avgBuyRateNum = avgBuyRateColIndex >= 0 ? this.parseNumericField(fields[avgBuyRateColIndex]) : null;
+      const buyValueNum = buyValueColIndex >= 0 ? this.parseNumericField(fields[buyValueColIndex]) : null;
+      const ltpNum = ltpColIndex >= 0 ? this.parseNumericField(fields[ltpColIndex]) : null;
+
       const { amcName, schemeNameWithoutAMC } = this.extractAMCAndScheme(scripName, true);
 
       this.parsedData.push({
@@ -453,7 +501,11 @@ export class ImportDataComponent implements OnInit {
         schemeName: scripName,
         presentValue: currentValueNum,
         subTypeName: amcName || 'Unknown Issuer',
-        subTypeCategory: schemeNameWithoutAMC || scripName
+        subTypeCategory: schemeNameWithoutAMC || scripName,
+        units: quantityNum,
+        avgBuyPrice: avgBuyRateNum,
+        investedAmount: buyValueNum,
+        navPrice: ltpNum ?? (quantityNum ? currentValueNum / quantityNum : null)
       });
     }
   }
@@ -494,9 +546,10 @@ export class ImportDataComponent implements OnInit {
     // Identify column indices
     const nameColIndex = headers.findIndex(h => h.toLowerCase().trim() === 'name');
     const currentValueColIndex = headers.findIndex(h => h.toLowerCase().includes('current value'));
-    const navColIndex = headers.findIndex(h => h.toLowerCase().includes('nav'));
+    const navColIndex = headers.findIndex(h => h.toLowerCase().trim() === 'nav');
     const investmentColIndex = headers.findIndex(h => h.toLowerCase().includes('investment'));
     const plColIndex = headers.findIndex(h => h.toLowerCase().includes('p&l') && !h.toLowerCase().includes('%'));
+    const unitsColIndex = headers.findIndex(h => h.toLowerCase().trim() === 'units');
     
     // Parse data rows starting after header
     for (let i = headerIndex + 1; i < lines.length; i++) {
@@ -516,6 +569,7 @@ export class ImportDataComponent implements OnInit {
         const navValue = navColIndex >= 0 ? fields[navColIndex]?.trim() : '';
         const investmentValue = investmentColIndex >= 0 ? fields[investmentColIndex]?.trim() : '';
         const plValue = plColIndex >= 0 ? fields[plColIndex]?.trim() : '';
+        const unitsValue = unitsColIndex >= 0 ? fields[unitsColIndex]?.trim() : '';
 
         // Skip if current value is not a number or if scheme name is empty
         if (!schemeName || !currentValue) {
@@ -530,6 +584,11 @@ export class ImportDataComponent implements OnInit {
           continue;
         }
 
+        const unitsNum = this.parseNumericField(unitsValue);
+        const navNum = this.parseNumericField(navValue);
+        const investedAmountNum = this.parseNumericField(investmentValue);
+        const profitLossNum = this.parseNumericField(plValue);
+
         // Clean up the scheme name to extract AMC and actual scheme name
         const { amcName, schemeNameWithoutAMC } = this.extractAMCAndScheme(schemeName);
 
@@ -539,7 +598,12 @@ export class ImportDataComponent implements OnInit {
           schemeName: schemeName,
           presentValue: currentValueNum,
           subTypeName: amcName || 'Unknown AMC', // Use extracted AMC or default
-          subTypeCategory: schemeNameWithoutAMC || 'Uncategorized' // Use extracted scheme name or default
+          subTypeCategory: schemeNameWithoutAMC || 'Uncategorized', // Use extracted scheme name or default
+          units: unitsNum,
+          navPrice: navNum ?? (unitsNum ? currentValueNum / unitsNum : null),
+          investedAmount: investedAmountNum,
+          profitLoss: profitLossNum,
+          avgBuyPrice: (investedAmountNum && unitsNum) ? investedAmountNum / unitsNum : null
         });
       }
     }
@@ -557,6 +621,9 @@ export class ImportDataComponent implements OnInit {
     const profitLossColIndex = headers.findIndex(h => h.toLowerCase().includes('profit/ loss'));
     const categoryColIndex = headers.findIndex(h => h.toLowerCase().includes('category'));
     const subCategoryColIndex = headers.findIndex(h => h.toLowerCase().includes('sub category'));
+    const unitsHeldColIndex = headers.findIndex(h => h.toLowerCase().includes('units held'));
+    const avgCostPriceColIndex = headers.findIndex(h => h.toLowerCase().includes('average cost price'));
+    const lastRecordedNavColIndex = headers.findIndex(h => h.toLowerCase().includes('last recorded nav') && !h.toLowerCase().includes('on'));
     
     // Parse data rows starting from line 1 (skip header)
     for (let i = 1; i < lines.length; i++) {
@@ -576,6 +643,9 @@ export class ImportDataComponent implements OnInit {
         const fundHouse = fundColIndex >= 0 ? fields[fundColIndex]?.trim() : '';
         const category = categoryColIndex >= 0 ? fields[categoryColIndex]?.trim() : '';
         const subCategory = subCategoryColIndex >= 0 ? fields[subCategoryColIndex]?.trim() : '';
+        const unitsHeldValue = unitsHeldColIndex >= 0 ? fields[unitsHeldColIndex]?.trim() : '';
+        const avgCostPriceValue = avgCostPriceColIndex >= 0 ? fields[avgCostPriceColIndex]?.trim() : '';
+        const lastRecordedNavValue = lastRecordedNavColIndex >= 0 ? fields[lastRecordedNavColIndex]?.trim() : '';
 
         // Skip if scheme name is empty
         if (!schemeName) {
@@ -604,6 +674,10 @@ export class ImportDataComponent implements OnInit {
           continue;
         }
 
+        const unitsNum = this.parseNumericField(unitsHeldValue);
+        const navNum = this.parseNumericField(lastRecordedNavValue) ?? (unitsNum ? presentValue / unitsNum : null);
+        const avgCostPriceNum = this.parseNumericField(avgCostPriceValue);
+
         // Clean up the scheme name to extract AMC and actual scheme name
         const { amcName, schemeNameWithoutAMC } = this.extractAMCAndScheme(schemeName);
 
@@ -613,7 +687,11 @@ export class ImportDataComponent implements OnInit {
           schemeName: schemeName,
           presentValue: presentValue,
           subTypeName: amcName || fundHouse || 'Unknown AMC', // Use fund house if AMC not found
-          subTypeCategory: schemeNameWithoutAMC || subCategory || category || 'Uncategorized' // Prioritize extracted scheme name
+          subTypeCategory: schemeNameWithoutAMC || subCategory || category || 'Uncategorized', // Prioritize extracted scheme name
+          units: unitsNum,
+          navPrice: navNum,
+          investedAmount: valueAtCostNum || null,
+          avgBuyPrice: avgCostPriceNum ?? ((valueAtCostNum && unitsNum) ? valueAtCostNum / unitsNum : null)
         });
       }
     }
@@ -634,6 +712,10 @@ export class ImportDataComponent implements OnInit {
       return;
     }
 
+    const headerFields = this.parseCSVLine(lines[headerIndex]);
+    const investedAmtColIndex = headerFields.findIndex(h => h.toLowerCase().includes('invested amt'));
+    const balanceUnitsColIndex = headerFields.findIndex(h => h.toLowerCase().includes('balance units'));
+
     // Parse data starting from the header row
     for (let i = headerIndex + 1; i < lines.length; i++) {
       const line = lines[i].trim();
@@ -653,6 +735,10 @@ export class ImportDataComponent implements OnInit {
           continue;
         }
 
+        const presentValueNum = parseFloat(presentValue);
+        const investedAmountNum = investedAmtColIndex >= 0 ? this.parseNumericField(fields[investedAmtColIndex]) : null;
+        const unitsNum = balanceUnitsColIndex >= 0 ? this.parseNumericField(fields[balanceUnitsColIndex]) : null;
+
         // Clean up the scheme name to extract AMC and actual scheme name
         const { amcName, schemeNameWithoutAMC } = this.extractAMCAndScheme(schemeName);
 
@@ -660,9 +746,13 @@ export class ImportDataComponent implements OnInit {
           folioNo,
           originalSchemeName: schemeName, // Store original for reference
           schemeName: schemeName,
-          presentValue: parseFloat(presentValue),
+          presentValue: presentValueNum,
           subTypeName: amcName,
-          subTypeCategory: schemeNameWithoutAMC
+          subTypeCategory: schemeNameWithoutAMC,
+          units: unitsNum,
+          navPrice: unitsNum ? presentValueNum / unitsNum : null,
+          investedAmount: investedAmountNum,
+          avgBuyPrice: (investedAmountNum && unitsNum) ? investedAmountNum / unitsNum : null
         });
       }
     }
@@ -688,6 +778,14 @@ export class ImportDataComponent implements OnInit {
     
     fields.push(currentField.trim());
     return fields;
+  }
+
+  private parseNumericField(value: string | undefined | null): number | null {
+    if (value == null) return null;
+    const trimmed = String(value).trim();
+    if (!trimmed) return null;
+    const num = parseFloat(trimmed.replace(/,/g, ''));
+    return isNaN(num) ? null : num;
   }
 
   private cleanSchemeName(schemeName: string): string {
@@ -1082,7 +1180,7 @@ export class ImportDataComponent implements OnInit {
           const categoryToKeep = this.canonicalizeFoFCategory(
             record.subTypeCategory || primary.sub_type_category
           );
-          await this.updateExistingInvestment(primary, record.presentValue, categoryToKeep);
+          await this.updateExistingInvestment(primary, record.presentValue, categoryToKeep, undefined, record);
 
           for (const duplicate of matchingInvestments.slice(1)) {
             try {
@@ -1127,12 +1225,21 @@ export class ImportDataComponent implements OnInit {
     investment: any,
     newValue: number,
     canonicalCategory?: string,
-    notesOverride?: string
+    notesOverride?: string,
+    record?: any
   ) {
     const updatedInvestment = {
       ...investment,
       amount: newValue,
       ...(canonicalCategory ? { sub_type_category: canonicalCategory } : {}),
+      ...(record?.units != null ? { units: record.units } : {}),
+      ...(record?.navPrice != null ? { nav_price: record.navPrice } : {}),
+      ...(record?.navPrice != null ? { nav_source: 'imported' } : {}),
+      ...(record?.avgBuyPrice != null ? { avg_buy_price: record.avgBuyPrice } : {}),
+      ...(record?.investedAmount != null ? { invested_amount: record.investedAmount } : {}),
+      ...(record?.profitLoss != null ? { profit_loss: record.profitLoss } : {}),
+      ...(record?.mutualFundSchemeCode ? { mutual_fund_scheme_code: record.mutualFundSchemeCode } : {}),
+      ...(record?.originalSchemeName ? { mutual_fund_scheme_name: record.originalSchemeName } : {}),
       investment_date: this.getInvestmentDate(),
       notes: notesOverride
         || investment.notes
@@ -1154,6 +1261,14 @@ export class ImportDataComponent implements OnInit {
       sub_type_name: record.subTypeName,
       sub_type_category: record.subTypeCategory,
       amount: record.presentValue,
+      ...(record.units != null ? { units: record.units } : {}),
+      ...(record.navPrice != null ? { nav_price: record.navPrice } : {}),
+      ...(record.navPrice != null ? { nav_source: 'imported' } : {}),
+      ...(record.avgBuyPrice != null ? { avg_buy_price: record.avgBuyPrice } : {}),
+      ...(record.investedAmount != null ? { invested_amount: record.investedAmount } : {}),
+      ...(record.profitLoss != null ? { profit_loss: record.profitLoss } : {}),
+      ...(record.mutualFundSchemeCode ? { mutual_fund_scheme_code: record.mutualFundSchemeCode } : {}),
+      ...(record.originalSchemeName ? { mutual_fund_scheme_name: record.originalSchemeName } : {}),
       investment_date: this.getInvestmentDate(),
       notes: this.investmentType === 'ETF'
         ? `Imported from Dhan ETF CSV on ${new Date().toLocaleDateString()}`
@@ -1176,6 +1291,29 @@ export class ImportDataComponent implements OnInit {
         this.message = '';
       }
     }, 5000);
+  }
+
+  searchImportMutualFunds(row: any) {
+    const query = (this.mfSearchQueries[row.key] || '').trim();
+    if (this.mfSearchTimers[row.key]) clearTimeout(this.mfSearchTimers[row.key]);
+    if (query.length < 2) {
+      this.mfSearchResults[row.key] = [];
+      return;
+    }
+    this.mfSearchTimers[row.key] = setTimeout(() => {
+      this.mutualFundService.search(query).subscribe({
+        next: results => this.mfSearchResults[row.key] = results.slice(0, 10),
+        error: () => this.mfSearchResults[row.key] = []
+      });
+    }, 300);
+  }
+
+  selectImportMutualFund(row: any, scheme: MutualFundScheme) {
+    row.mutualFundSchemeCode = String(scheme.schemeCode);
+    this.mfSearchQueries[row.key] = scheme.schemeName;
+    this.mfSearchResults[row.key] = [];
+    const record = this.parsedData.find(item => this.getRecordKey(item.subTypeName, item.subTypeCategory) === row.key);
+    if (record) record.mutualFundSchemeCode = row.mutualFundSchemeCode;
   }
 
   private getRecordKey(amc: string, scheme: string): string {

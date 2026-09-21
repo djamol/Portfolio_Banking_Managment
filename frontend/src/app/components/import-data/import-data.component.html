@@ -221,6 +221,11 @@
               <span *ngIf="hasNewScheme" class="new-indicator" title="New category not in existing data">*</span>
               {{ sortIndicator('extractedScheme') }}
             </th>
+            <th *ngIf="investmentType === 'Mutual Fund'">MFAPI Scheme</th>
+            <th class="sortable num">Units</th>
+            <th class="sortable num">NAV/LTP</th>
+            <th class="sortable num">Invested</th>
+            <th class="sortable num">P&amp;L</th>
             <th class="sortable num" (click)="sortPreview('previousValue')">Previous Value{{ sortIndicator('previousValue') }}</th>
             <th class="sortable num" (click)="sortPreview('newValue')">New Values{{ sortIndicator('newValue') }}</th>
             <th class="sortable num" (click)="sortPreview('change')">Change{{ sortIndicator('change') }}</th>
@@ -245,6 +250,28 @@
             <td>
               {{ record.extractedScheme }}
               <span *ngIf="record.isNewScheme" class="new-indicator-cell" title="New scheme category not in existing data">🆕</span>
+            </td>
+            <td *ngIf="investmentType === 'Mutual Fund'" class="mfapi-cell">
+              <span *ngIf="record.mutualFundSchemeCode">{{ record.mutualFundSchemeCode }}</span>
+              <ng-container *ngIf="!record.mutualFundSchemeCode">
+                <input
+                  type="search"
+                  class="form-control mfapi-search"
+                  [(ngModel)]="mfSearchQueries[record.key]"
+                  (ngModelChange)="searchImportMutualFunds(record)"
+                  placeholder="Search MFAPI scheme">
+                <div class="mfapi-results" *ngIf="mfSearchResults[record.key]?.length">
+                  <button type="button" *ngFor="let scheme of mfSearchResults[record.key]" (click)="selectImportMutualFund(record, scheme)">
+                    {{ scheme.schemeName }}
+                  </button>
+                </div>
+              </ng-container>
+            </td>
+            <td class="num">{{ record.units != null ? record.units : '—' }}</td>
+            <td class="num">{{ record.navPrice != null ? formatInr(record.navPrice) : '—' }}</td>
+            <td class="num">{{ record.investedAmount != null ? formatInr(record.investedAmount) : '—' }}</td>
+            <td class="num" [ngClass]="record.profitLoss >= 0 ? 'positive' : 'negative'">
+              {{ record.profitLoss != null ? formatSignedInr(record.profitLoss) : '—' }}
             </td>
             <td class="num">{{ record.status === 'new' ? '—' : formatInr(record.previousValue) }}</td>
             <td class="num">{{ formatInr(record.newValue) }}</td>

@@ -278,9 +278,13 @@
           <th (click)="onSort('sub_type_category')" class="sortable">
             Category <span class="sort-icon">{{ getSortIcon('sub_type_category') }}</span>
           </th>
+          <th class="num">Units</th>
+          <th class="num">NAV/LTP</th>
+          <th class="num">Invested</th>
           <th (click)="onSort('amount')" class="sortable num">
-            Amount <span class="sort-icon">{{ getSortIcon('amount') }}</span>
+            Current Value <span class="sort-icon">{{ getSortIcon('amount') }}</span>
           </th>
+          <th class="num">P&amp;L</th>
           <th (click)="onSort('investment_date')" class="sortable">
             Date <span class="sort-icon">{{ getSortIcon('investment_date') }}</span>
           </th>
@@ -300,9 +304,25 @@
           <td>{{ investment.investment_type }}</td>
           <td>{{ investment.sub_type_name || '-' }}</td>
           <td>{{ investment.sub_type_category || '-' }}</td>
+          <td class="num">{{ isFundHolding(investment) && (investment.units ?? investment.unitsHeld) != null ? ((investment.units ?? investment.unitsHeld) | number:'1.0-4') : '-' }}</td>
+          <td class="num">
+            <ng-container *ngIf="isFundHolding(investment) && (investment.nav_price ?? investment.navPrice) != null; else noNav">
+              {{ formatInr(investment.nav_price ?? investment.navPrice) }}
+              <span *ngIf="isApiNav(investment)" class="nav-api-badge" [title]="navSourceLabel(investment)">[API]</span>
+            </ng-container>
+            <ng-template #noNav>-</ng-template>
+          </td>
+          <td class="num">{{ isFundHolding(investment) && holdingInvestedAmount(investment) != null ? formatInr(holdingInvestedAmount(investment)!) : '-' }}</td>
           <td class="num amount-cell">
             <span>{{ formatInr(investment.amount) }}</span>
             <small class="amount-share">{{ amountShare(investment.amount) | number:'1.1-1' }}%</small>
+          </td>
+          <td class="num" [class.pl-positive]="(holdingPl(investment) || 0) >= 0" [class.pl-negative]="(holdingPl(investment) || 0) < 0">
+            <ng-container *ngIf="isFundHolding(investment) && holdingPl(investment) != null; else noPl">
+              {{ formatInr(holdingPl(investment)!) }}
+              <small>({{ holdingPlPercent(investment) | number:'1.1-1' }}%)</small>
+            </ng-container>
+            <ng-template #noPl>-</ng-template>
           </td>
           <td>{{ formatDate(investment.investment_date) }}</td>
           <td class="notes-cell" [title]="investment.notes || ''">{{ investment.notes || '—' }}</td>
@@ -324,9 +344,9 @@
       </tbody>
       <tfoot>
         <tr>
-          <td colspan="5" class="totals-label">Filtered total</td>
+          <td colspan="8" class="totals-label">Filtered total</td>
           <td class="num">{{ formatInr(filteredTotalAmount) }}</td>
-          <td colspan="3"></td>
+          <td colspan="4"></td>
         </tr>
       </tfoot>
     </table>
@@ -532,6 +552,72 @@
               min="0"
               step="0.01"
               placeholder="Enter amount">
+          </div>
+
+          <div class="form-row" *ngIf="currentInvestment.investment_type === 'Mutual Fund' || currentInvestment.investment_type === 'ETF'">
+            <div class="form-group">
+              <label for="units">Units/Quantity</label>
+              <input
+                type="number"
+                id="units"
+                name="units"
+                [(ngModel)]="currentInvestment.units"
+                class="form-control"
+                min="0"
+                step="0.0001"
+                placeholder="e.g., 100.5">
+            </div>
+            <div class="form-group">
+              <label for="nav_price">Current NAV/LTP (₹)</label>
+              <input
+                type="number"
+                id="nav_price"
+                name="nav_price"
+                [(ngModel)]="currentInvestment.nav_price"
+                class="form-control"
+                min="0"
+                step="0.0001"
+                placeholder="e.g., 42.34">
+            </div>
+          </div>
+
+          <div class="form-row" *ngIf="currentInvestment.investment_type === 'Mutual Fund' || currentInvestment.investment_type === 'ETF'">
+            <div class="form-group">
+              <label for="avg_buy_price">Avg Buy Price (₹)</label>
+              <input
+                type="number"
+                id="avg_buy_price"
+                name="avg_buy_price"
+                [(ngModel)]="currentInvestment.avg_buy_price"
+                class="form-control"
+                min="0"
+                step="0.0001"
+                placeholder="e.g., 38.20">
+            </div>
+            <div class="form-group">
+              <label for="invested_amount">Invested Amount (₹)</label>
+              <input
+                type="number"
+                id="invested_amount"
+                name="invested_amount"
+                [(ngModel)]="currentInvestment.invested_amount"
+                class="form-control"
+                min="0"
+                step="0.01"
+                placeholder="e.g., 29998.46">
+            </div>
+          </div>
+
+          <div class="form-group" *ngIf="currentInvestment.investment_type === 'Mutual Fund' || currentInvestment.investment_type === 'ETF'">
+            <label for="profit_loss">P&amp;L (₹)</label>
+            <input
+              type="number"
+              id="profit_loss"
+              name="profit_loss"
+              [(ngModel)]="currentInvestment.profit_loss"
+              class="form-control"
+              step="0.01"
+              placeholder="e.g., 598.67">
           </div>
 
           <div class="form-group">

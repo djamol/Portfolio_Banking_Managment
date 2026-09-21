@@ -1,0 +1,82 @@
+<div class="mf-history-page">
+  <div class="page-header">
+    <div>
+      <h2>Mutual Fund NAV History</h2>
+      <p>Fetch historical NAV from MFAPI and save value snapshots using current units.</p>
+    </div>
+  </div>
+
+  <div class="controls">
+    <label class="search-field">Search funds
+      <input type="search" [(ngModel)]="search" (ngModelChange)="applyFundFilter()" placeholder="Scheme, category or code">
+    </label>
+    <label class="check-label"><input type="checkbox" [(ngModel)]="showOnlyMissing" (ngModelChange)="applyFundFilter()"> Show only without saved history</label>
+    <label>From <input type="date" [(ngModel)]="from"></label>
+    <label>To <input type="date" [(ngModel)]="to"></label>
+    <button type="button" (click)="fetchAndSave()" [disabled]="saving || loading || !selectedCount || from > to">
+      {{ saving ? 'Fetching...' : 'Fetch and save history' }}
+    </button>
+    <button type="button" class="secondary" (click)="loadSnapshots()" [disabled]="loading || !selectedCount">Refresh</button>
+  </div>
+
+  <div class="selection-toolbar">
+    <label class="check-label"><input type="checkbox" [checked]="allVisibleSelected" (change)="toggleAllVisible()"> Select all visible</label>
+    <span>{{ selectedCount }} selected of {{ investments.length }}</span>
+    <button type="button" class="link-button" (click)="clearSelection()" [disabled]="!selectedCount">Clear selection</button>
+  </div>
+
+  <div class="view-toolbar">
+    <span class="toolbar-label">Analytics period</span>
+    <button type="button" [class.active]="period === 'daily'" (click)="setPeriod('daily')">Daily</button>
+    <button type="button" [class.active]="period === 'weekly'" (click)="setPeriod('weekly')">Weekly</button>
+    <button type="button" [class.active]="period === 'monthly'" (click)="setPeriod('monthly')">Monthly</button>
+    <span class="toolbar-spacer"></span>
+    <button type="button" [class.active]="view === 'chart'" (click)="setView('chart')">Chart</button>
+    <button type="button" [class.active]="view === 'table'" (click)="setView('table')">Table</button>
+  </div>
+
+  <div class="fund-list" *ngIf="visibleInvestments.length">
+    <label class="fund-row" *ngFor="let investment of visibleInvestments">
+      <input type="checkbox" [checked]="selectedIds.has(investment.id)" (change)="toggleFund(investment.id)">
+      <span class="fund-name">{{ investment.mutual_fund_scheme_name || investment.sub_type_name }}<small>{{ investment.sub_type_name }} · {{ investment.sub_type_category || 'Uncategorized' }}</small></span>
+      <span class="fund-meta">{{ investment.units | number:'1.0-4' }} units · code {{ investment.mutual_fund_scheme_code }} · {{ investment.website_app_name }}</span>
+      <span class="fund-status" [class.saved]="investment.history_count">{{ investment.history_count ? 'History saved' : 'No history' }}</span>
+    </label>
+  </div>
+
+  <div class="notice success" *ngIf="message">{{ message }}</div>
+  <div class="notice error" *ngIf="error">{{ error }}</div>
+  <div class="empty" *ngIf="!investments.length && !error">No mutual funds with an MFAPI scheme code and units are available.</div>
+
+  <div class="aggregate-card" *ngIf="aggregateRows.length">
+    <h3>Portfolio NAV snapshots</h3>
+    <p>Combined value of selected funds. Units are shown for reference; NAV remains fund-specific below.</p>
+    <div class="chart-wrap" *ngIf="view === 'chart'">
+      <canvas baseChart [data]="chartData" [type]="'line'" [options]="{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true } }, scales: { value: { position: 'left', ticks: { callback: formatChartTick } }, nav: { position: 'right', display: selectedCount === 1, grid: { drawOnChartArea: false }, ticks: { callback: formatChartTick } } } }"></canvas>
+    </div>
+    <table *ngIf="view === 'table'">
+      <thead><tr><th>Date</th><th>Funds</th><th>Units</th><th>Total Value</th></tr></thead>
+      <tbody><tr *ngFor="let row of aggregateRows"><td>{{ row.date }}</td><td>{{ row.funds }}</td><td>{{ row.units | number:'1.0-4' }}</td><td>{{ format(row.value) }}</td></tr></tbody>
+    </table>
+  </div>
+
+  <table *ngIf="snapshots.length">
+    <thead>
+      <tr><th>Snapshot Date</th><th>AMC / Subtype</th><th>Full Scheme</th><th>Category / Subcategory</th><th>NAV Date</th><th>Units</th><th>NAV</th><th>Value</th><th>Source</th></tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let row of detailedSnapshots">
+        <td>{{ row.snapshot_date }}</td>
+        <td>{{ row.investment.sub_type_name || '—' }}</td>
+        <td>{{ row.investment.mutual_fund_scheme_name || '—' }}</td>
+        <td>{{ row.investment.sub_type_category || '—' }}</td>
+        <td>{{ row.nav_date }}</td>
+        <td>{{ row.units | number:'1.0-4' }}</td>
+        <td>{{ format(row.nav_price) }}</td>
+        <td>{{ format(row.value) }}</td>
+        <td><span class="api-badge">[API]</span> {{ row.source }}</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="empty" *ngIf="!loading && selectedCount && !snapshots.length">No saved snapshots for this range.</div>
+</div>

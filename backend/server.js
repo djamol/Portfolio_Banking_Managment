@@ -12,6 +12,7 @@ const portfolioRoutes = require('./routes/portfolio');
 const configRoutes = require('./routes/config');
 const bankingRoutes = require('./routes/banking');
 const authRoutes = require('./routes/auth');
+const mutualFundRoutes = require('./routes/mutual-funds');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -101,6 +102,7 @@ app.get('/api/health', async (req, res) => {
 
 app.use('/api', authGate);
 app.use('/api/auth', authRoutes);
+app.use('/api/mutual-funds', mutualFundRoutes);
 app.use('/api/investments', investmentRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/categories', categoriesRoutes);

@@ -23,6 +23,7 @@ import { BankingInterestComponent } from './components/banking/interest/banking-
 import { BankingInsightsComponent } from './components/banking/insights/banking-insights.component';
 import { BankingBudgetsComponent } from './components/banking/budgets/banking-budgets.component';
 import { CashflowsComponent } from './components/cashflows/cashflows.component';
+import { MutualFundHistoryComponent } from './components/mutual-fund-history/mutual-fund-history.component';
 import { authGuard } from './guards/auth.guard';
 
 export const routes: Routes = [
@@ -32,6 +33,7 @@ export const routes: Routes = [
   { path: 'investments', component: InvestmentListComponent, canActivate: [authGuard] },
   { path: 'investments/new', component: InvestmentFormComponent, canActivate: [authGuard] },
   { path: 'investments/edit/:id', component: InvestmentFormComponent, canActivate: [authGuard] },
+  { path: 'mutual-fund-history', component: MutualFundHistoryComponent, canActivate: [authGuard] },
   { path: 'cashflows', component: CashflowsComponent, canActivate: [authGuard] },
   { path: 'analytics', component: AnalyticsComponent, canActivate: [authGuard] },
   { path: 'asset-tracker', component: AssetTrackerComponent, canActivate: [authGuard] },

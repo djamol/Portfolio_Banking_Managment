@@ -90,6 +90,28 @@
       </div>
     </div>
 
+    <div class="form-group" *ngIf="investment.investment_type === 'Mutual Fund'">
+      <label for="mutual_fund_search">Mutual Fund Search *</label>
+      <input
+        type="text"
+        id="mutual_fund_search"
+        name="mutual_fund_search"
+        [(ngModel)]="mutualFundSearch"
+        (ngModelChange)="searchMutualFunds()"
+        class="form-control"
+        required
+        autocomplete="off"
+        placeholder="Search scheme name">
+      <div class="mutual-fund-results" *ngIf="mutualFundResults.length">
+        <button type="button" *ngFor="let scheme of mutualFundResults" (click)="selectMutualFund(scheme)">
+          {{ scheme.schemeName }}
+        </button>
+      </div>
+      <small class="field-hint" *ngIf="investment.mutual_fund_scheme_code">
+        Scheme code: {{ investment.mutual_fund_scheme_code }}. NAV is loaded for the investment date, with latest NAV fallback.
+      </small>
+    </div>
+
     <div class="form-group" *ngIf="investmentCategories.length > 0">
       <label for="sub_type_category">Sub Type Category *</label>
       <div class="input-with-add">
@@ -152,6 +174,28 @@
         placeholder="Enter amount">
     </div>
 
+    <div class="form-row" *ngIf="investment.investment_type === 'Mutual Fund' || investment.investment_type === 'ETF'">
+      <div class="form-group">
+        <label for="units">Units</label>
+        <input type="number" id="units" name="units" [(ngModel)]="investment.units" class="form-control" min="0" step="0.0001">
+      </div>
+      <div class="form-group">
+        <label for="nav_price">NAV/LTP (₹)</label>
+        <input type="number" id="nav_price" name="nav_price" [(ngModel)]="investment.nav_price" class="form-control" min="0" step="0.0001">
+      </div>
+    </div>
+
+    <div class="form-row" *ngIf="investment.investment_type === 'Mutual Fund' || investment.investment_type === 'ETF'">
+      <div class="form-group">
+        <label for="invested_amount">Invested Amount (₹)</label>
+        <input type="number" id="invested_amount" name="invested_amount" [(ngModel)]="investment.invested_amount" class="form-control" min="0" step="0.01">
+      </div>
+      <div class="form-group">
+        <label for="profit_loss">P&amp;L (₹)</label>
+        <input type="number" id="profit_loss" name="profit_loss" [(ngModel)]="investment.profit_loss" class="form-control" step="0.01">
+      </div>
+    </div>
+
     <div class="form-group">
       <label for="investment_date">Investment Date *</label>
       <input
@@ -195,7 +239,7 @@
     </div>
 
     <div class="form-actions">
-      <button type="submit" class="btn btn-primary" [disabled]="!investmentForm.form.valid || loading">
+      <button type="submit" class="btn btn-primary" [disabled]="!investmentForm.form.valid || loading || (investment.investment_type === 'Mutual Fund' && !investment.mutual_fund_scheme_code)">
         {{ isEditing ? 'Update Investment' : 'Add Investment' }}
       </button>
       <button type="button" class="btn btn-secondary" (click)="onCancel()" [disabled]="loading">

@@ -402,6 +402,12 @@ export class InvestmentListComponent implements OnInit {
       sub_type_name: '',
       sub_type_category: '',
       amount: 0,
+      units: null,
+      nav_price: null,
+      nav_source: null,
+      avg_buy_price: null,
+      invested_amount: null,
+      profit_loss: null,
       investment_date: this.todayYmd(),
       notes: ''
     };
@@ -879,6 +885,55 @@ export class InvestmentListComponent implements OnInit {
     return (Number(amount) || 0) / this.filteredTotalAmount * 100;
   }
 
+  isFundHolding(investment: any): boolean {
+    return investment?.investment_type === 'Mutual Fund' || investment?.investment_type === 'ETF';
+  }
+
+  /** Current holding value from stored units * NAV, falling back to the tracked amount. */
+  holdingCurrentValue(investment: any): number {
+    const units = Number(investment?.units ?? investment?.unitsHeld);
+    const nav = Number(investment?.nav_price ?? investment?.navPrice);
+    if (units > 0 && nav > 0) {
+      return units * nav;
+    }
+    return Number(investment?.amount) || 0;
+  }
+
+  isApiNav(investment: any): boolean {
+    const source = String(investment?.nav_source || '').toLowerCase();
+    return source.startsWith('mfapi') || (!source && Boolean(investment?.mutual_fund_scheme_code));
+  }
+
+  navSourceLabel(investment: any): string {
+    const source = String(investment?.nav_source || '').toLowerCase();
+    if (source === 'mfapi-history') return 'NAV from MFAPI historical data';
+    if (source === 'mfapi-latest') return 'NAV from MFAPI latest value';
+    if (!source && investment?.mutual_fund_scheme_code) return 'NAV from MFAPI';
+    return 'NAV source: ' + (investment?.nav_source || 'unknown');
+  }
+
+  holdingInvestedAmount(investment: any): number | null {
+    const invested = Number(investment?.invested_amount ?? investment?.investedAmount);
+    return invested > 0 ? invested : null;
+  }
+
+  holdingPl(investment: any): number | null {
+    const storedPl = investment?.profit_loss ?? investment?.profitLoss;
+    if (storedPl != null && storedPl !== '' && Number.isFinite(Number(storedPl))) {
+      return Number(storedPl);
+    }
+    const invested = this.holdingInvestedAmount(investment);
+    if (invested == null) return null;
+    return this.holdingCurrentValue(investment) - invested;
+  }
+
+  holdingPlPercent(investment: any): number | null {
+    const invested = this.holdingInvestedAmount(investment);
+    const pl = this.holdingPl(investment);
+    if (invested == null || !invested || pl == null) return null;
+    return (pl / invested) * 100;
+  }
+
   get typeSummaries(): { type: string; count: number; total: number }[] {
     const map = new Map<string, { count: number; total: number }>();
     for (const item of this.investments) {
@@ -1113,6 +1168,12 @@ export class InvestmentListComponent implements OnInit {
       sub_type_name: investment.sub_type_name || '',
       sub_type_category: investment.sub_type_category || '',
       amount: investment.amount,
+      units: investment.units ?? null,
+      nav_price: investment.nav_price ?? null,
+      nav_source: investment.nav_source ?? null,
+      avg_buy_price: investment.avg_buy_price ?? null,
+      invested_amount: investment.invested_amount ?? null,
+      profit_loss: investment.profit_loss ?? null,
       investment_date: this.todayYmd(),
       notes: investment.notes || ''
     };
@@ -1158,7 +1219,12 @@ export class InvestmentListComponent implements OnInit {
       'Type',
       'Sub Type',
       'Category',
+      'Units',
+      'NAV/LTP',
+      'Invested Amount',
       'Amount',
+      'P&L',
+      'P&L %',
       'Percent of Filtered',
       'Investment Date',
       'Notes'
@@ -1168,7 +1234,12 @@ export class InvestmentListComponent implements OnInit {
       this.csvEscape(item.investment_type || ''),
       this.csvEscape(item.sub_type_name || ''),
       this.csvEscape(item.sub_type_category || ''),
+      item.units != null ? Number(item.units).toFixed(4) : '',
+      item.nav_price != null ? Number(item.nav_price).toFixed(4) : '',
+      item.invested_amount != null ? Number(item.invested_amount).toFixed(2) : '',
       Number(item.amount || 0).toFixed(2),
+      this.holdingPl(item) != null ? this.holdingPl(item)!.toFixed(2) : '',
+      this.holdingPlPercent(item) != null ? this.holdingPlPercent(item)!.toFixed(2) : '',
       this.amountShare(item.amount).toFixed(2),
       this.toLocalYmd(item.investment_date),
       this.csvEscape(item.notes || '')
