@@ -264,6 +264,9 @@ const createTables = async () => {
         id INT AUTO_INCREMENT PRIMARY KEY,
         investment_id INT NOT NULL,
         amount DECIMAL(15, 2) NOT NULL,
+        units DECIMAL(20, 4) NULL,
+        nav_price DECIMAL(20, 4) NULL,
+        invested_amount DECIMAL(15, 2) NULL,
         change_date DATE NOT NULL,
         change_type ENUM('added', 'removed', 'updated') NOT NULL,
         notes TEXT,
@@ -450,7 +453,10 @@ const createTables = async () => {
       'ALTER TABLE investments ADD COLUMN mutual_fund_scheme_name VARCHAR(255) NULL',
       'ALTER TABLE investments ADD COLUMN profit_loss DECIMAL(20, 4) NULL',
       'ALTER TABLE investments ADD COLUMN avg_buy_price DECIMAL(20, 4) NULL',
-      'ALTER TABLE investments ADD COLUMN invested_amount DECIMAL(15, 2) NULL'
+      'ALTER TABLE investments ADD COLUMN invested_amount DECIMAL(15, 2) NULL',
+      'ALTER TABLE investment_history ADD COLUMN units DECIMAL(20, 4) NULL',
+      'ALTER TABLE investment_history ADD COLUMN nav_price DECIMAL(20, 4) NULL',
+      'ALTER TABLE investment_history ADD COLUMN invested_amount DECIMAL(15, 2) NULL'
     ];
     for (const sql of alterStatements) {
       try {

@@ -764,6 +764,9 @@ router.get('/investment-history/:id', async (req, res) => {
         investment_id,
         change_type,
         amount,
+        units,
+        nav_price,
+        invested_amount,
         change_date,
         notes
       FROM investment_history

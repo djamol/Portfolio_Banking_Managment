@@ -102,6 +102,7 @@ export class InvestmentListComponent implements OnInit {
   showHistoryModal = false;
   historyData: any[] = [];
   currentInvestmentName = '';
+  historyInvestment: any = null;
   historyLoading = false;
 
   constructor(
@@ -702,6 +703,7 @@ export class InvestmentListComponent implements OnInit {
   viewHistory(investment: any) {
     this.historyLoading = true;
     this.currentInvestmentName = `${investment.website_app_name} - ${investment.investment_type}`;
+    this.historyInvestment = investment;
     
     // Call the API to get the actual history
     this.analyticsService.getInvestmentHistory(investment.id).subscribe({
@@ -725,10 +727,25 @@ export class InvestmentListComponent implements OnInit {
               difference = currentAmount - previousAmount;
             }
             
+            // Older rows created before per-record snapshots were tracked don't have
+            // units/nav_price/invested_amount; derive best-effort values from the
+            // investment's current units so the modal isn't left blank.
+            const currentUnits = Number(investment?.units);
+            const units = record.units != null ? Number(record.units) : (currentUnits > 0 ? currentUnits : null);
+            const navPrice = record.nav_price != null
+              ? Number(record.nav_price)
+              : (units && units > 0 ? currentAmount / units : null);
+            const investedAmount = record.invested_amount != null
+              ? Number(record.invested_amount)
+              : (Number(investment?.invested_amount) || null);
+
             return {
               ...record,
               change_date: new Date(record.change_date),
               amount: currentAmount,
+              units,
+              nav_price: navPrice,
+              invested_amount: investedAmount,
               difference: difference,
               differencePercentage: previousAmount !== 0 ? ((Math.abs(difference) / previousAmount) * 100) : 0,
               isIncrease: difference > 0,
@@ -778,6 +795,7 @@ export class InvestmentListComponent implements OnInit {
     this.showHistoryModal = false;
     this.historyData = [];
     this.currentInvestmentName = '';
+    this.historyInvestment = null;
     this.historyLoading = false;
   }
 

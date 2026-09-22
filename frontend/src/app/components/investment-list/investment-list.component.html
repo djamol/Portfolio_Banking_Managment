@@ -684,6 +684,39 @@
       </div>
       
       <div class="modal-body">
+        <div *ngIf="historyInvestment?.investment_type === 'Mutual Fund'" class="mf-details">
+          <h4>Fund Details</h4>
+          <dl class="mf-details-grid">
+            <div><dt>Scheme Name</dt><dd>{{ historyInvestment.mutual_fund_scheme_name || '—' }}</dd></div>
+            <div><dt>Scheme Code</dt><dd>{{ historyInvestment.mutual_fund_scheme_code || '—' }}</dd></div>
+            <div><dt>AMC / Fund House</dt><dd>{{ historyInvestment.sub_type_name || '—' }}</dd></div>
+            <div><dt>Category</dt><dd>{{ historyInvestment.sub_type_category || '—' }}</dd></div>
+            <div><dt>Platform</dt><dd>{{ historyInvestment.website_app_name || '—' }}</dd></div>
+            <div><dt>Units Held</dt><dd>{{ historyInvestment.units != null ? (historyInvestment.units | number:'1.0-4') : '—' }}</dd></div>
+            <div>
+              <dt>NAV</dt>
+              <dd>
+                {{ historyInvestment.nav_price != null ? formatInr(historyInvestment.nav_price) : '—' }}
+                <span *ngIf="isApiNav(historyInvestment)" class="nav-api-badge" [title]="navSourceLabel(historyInvestment)">[API]</span>
+              </dd>
+            </div>
+            <div><dt>Avg Buy Price</dt><dd>{{ historyInvestment.avg_buy_price != null ? formatInr(historyInvestment.avg_buy_price) : '—' }}</dd></div>
+            <div><dt>Invested Amount</dt><dd>{{ holdingInvestedAmount(historyInvestment) != null ? formatInr(holdingInvestedAmount(historyInvestment)!) : '—' }}</dd></div>
+            <div><dt>Current Value</dt><dd>{{ formatInr(historyInvestment.amount) }}</dd></div>
+            <div>
+              <dt>Profit / Loss</dt>
+              <dd [class.pl-positive]="(holdingPl(historyInvestment) || 0) >= 0" [class.pl-negative]="(holdingPl(historyInvestment) || 0) < 0">
+                <ng-container *ngIf="holdingPl(historyInvestment) != null; else noPlDetail">
+                  {{ formatInr(holdingPl(historyInvestment)!) }} ({{ holdingPlPercent(historyInvestment) | number:'1.1-1' }}%)
+                </ng-container>
+                <ng-template #noPlDetail>—</ng-template>
+              </dd>
+            </div>
+            <div><dt>Investment Date</dt><dd>{{ formatDate(historyInvestment.investment_date) }}</dd></div>
+            <div class="mf-notes" *ngIf="historyInvestment.notes"><dt>Notes</dt><dd>{{ historyInvestment.notes }}</dd></div>
+          </dl>
+        </div>
+
         <div *ngIf="historyLoading" class="loading-history">
           <p>Loading history...</p>
         </div>
@@ -701,6 +734,11 @@
                 {{ record.isIncrease ? '▲' : '▼' }} {{ formatInr(record.isIncrease ? record.difference : -record.difference) }} ({{ record.differencePercentage | number:'1.2-2' }}%)
               </span>
               <span *ngIf="record.notes" class="history-notes">{{ record.notes }}</span>
+            </div>
+            <div class="history-mf-meta" *ngIf="historyInvestment?.investment_type === 'Mutual Fund' && (record.units != null || record.nav_price != null || record.invested_amount != null)">
+              <span *ngIf="record.units != null">Units: {{ record.units | number:'1.0-4' }}</span>
+              <span *ngIf="record.nav_price != null">NAV: {{ formatInr(record.nav_price) }}</span>
+              <span *ngIf="record.invested_amount != null">Invested: {{ formatInr(record.invested_amount) }}</span>
             </div>
           </div>
         </div>

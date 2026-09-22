@@ -132,6 +132,9 @@ async function createInvestment(data) {
   await addHistory({
     investment_id: id,
     amount: doc.amount,
+    units: doc.units,
+    nav_price: doc.nav_price,
+    invested_amount: doc.invested_amount,
     change_date: doc.investment_date,
     change_type: 'added',
     notes: doc.notes
@@ -171,6 +174,9 @@ async function updateInvestment(id, data) {
     await addHistory({
       investment_id: numId,
       amount: Number(data.amount),
+      units: update.units,
+      nav_price: update.nav_price,
+      invested_amount: update.invested_amount,
       change_date: toDateString(data.investment_date) || toDateString(new Date()),
       change_type: 'updated',
       notes: data.notes || null
@@ -188,6 +194,9 @@ async function deleteInvestment(id) {
   await addHistory({
     investment_id: numId,
     amount: Number(existing.amount),
+    units: existing.units,
+    nav_price: existing.nav_price,
+    invested_amount: existing.invested_amount,
     change_date: toDateString(new Date()),
     change_type: 'removed',
     notes: existing.notes || null
@@ -205,6 +214,9 @@ async function addHistory(entry) {
     id,
     investment_id: entry.investment_id,
     amount: Number(entry.amount),
+    units: entry.units != null ? Number(entry.units) : null,
+    nav_price: entry.nav_price != null ? Number(entry.nav_price) : null,
+    invested_amount: entry.invested_amount != null ? Number(entry.invested_amount) : null,
     change_date: toDateString(entry.change_date),
     change_type: entry.change_type,
     notes: entry.notes || null,

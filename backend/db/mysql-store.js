@@ -63,9 +63,17 @@ async function createInvestment(data) {
   );
 
   await pool.query(
-    `INSERT INTO investment_history (investment_id, amount, change_date, change_type, notes)
-     VALUES (?, ?, ?, 'added', ?)`,
-    [result.insertId, data.amount, data.investment_date, data.notes || null]
+    `INSERT INTO investment_history (investment_id, amount, units, nav_price, invested_amount, change_date, change_type, notes)
+     VALUES (?, ?, ?, ?, ?, ?, 'added', ?)`,
+    [
+      result.insertId,
+      data.amount,
+      data.units != null && data.units !== '' ? Number(data.units) : null,
+      data.nav_price != null && data.nav_price !== '' ? Number(data.nav_price) : null,
+      data.invested_amount != null && data.invested_amount !== '' ? Number(data.invested_amount) : null,
+      data.investment_date,
+      data.notes || null
+    ]
   );
 
   return getInvestmentById(result.insertId);
@@ -104,9 +112,17 @@ async function updateInvestment(id, data) {
 
   if (Number(oldInvestment[0].amount) !== Number(data.amount)) {
     await pool.query(
-      `INSERT INTO investment_history (investment_id, amount, change_date, change_type, notes)
-       VALUES (?, ?, ?, 'updated', ?)`,
-      [id, data.amount, data.investment_date || new Date().toISOString().split('T')[0], data.notes || null]
+      `INSERT INTO investment_history (investment_id, amount, units, nav_price, invested_amount, change_date, change_type, notes)
+       VALUES (?, ?, ?, ?, ?, ?, 'updated', ?)`,
+      [
+        id,
+        data.amount,
+        data.units != null && data.units !== '' ? Number(data.units) : null,
+        data.nav_price != null && data.nav_price !== '' ? Number(data.nav_price) : null,
+        data.invested_amount != null && data.invested_amount !== '' ? Number(data.invested_amount) : null,
+        data.investment_date || new Date().toISOString().split('T')[0],
+        data.notes || null
+      ]
     );
   }
 
@@ -119,9 +135,17 @@ async function deleteInvestment(id) {
   if (!investment.length) return false;
 
   await pool.query(
-    `INSERT INTO investment_history (investment_id, amount, change_date, change_type, notes)
-     VALUES (?, ?, ?, 'removed', ?)`,
-    [id, investment[0].amount, new Date().toISOString().split('T')[0], investment[0].notes || null]
+    `INSERT INTO investment_history (investment_id, amount, units, nav_price, invested_amount, change_date, change_type, notes)
+     VALUES (?, ?, ?, ?, ?, ?, 'removed', ?)`,
+    [
+      id,
+      investment[0].amount,
+      investment[0].units,
+      investment[0].nav_price,
+      investment[0].invested_amount,
+      new Date().toISOString().split('T')[0],
+      investment[0].notes || null
+    ]
   );
 
   await pool.query('DELETE FROM investments WHERE id = ?', [id]);
@@ -230,9 +254,17 @@ async function upsertImportedInvestment(investment) {
       [investment.amount, investment.investment_date, investment.notes || null, existing.id]
     );
     await pool.query(
-      `INSERT INTO investment_history (investment_id, amount, change_date, change_type, notes)
-       VALUES (?, ?, ?, 'updated', ?)`,
-      [existing.id, investment.amount, investment.investment_date, investment.notes || null]
+      `INSERT INTO investment_history (investment_id, amount, units, nav_price, invested_amount, change_date, change_type, notes)
+       VALUES (?, ?, ?, ?, ?, ?, 'updated', ?)`,
+      [
+        existing.id,
+        investment.amount,
+        investment.units != null && investment.units !== '' ? Number(investment.units) : null,
+        investment.nav_price != null && investment.nav_price !== '' ? Number(investment.nav_price) : null,
+        investment.invested_amount != null && investment.invested_amount !== '' ? Number(investment.invested_amount) : null,
+        investment.investment_date,
+        investment.notes || null
+      ]
     );
     return { action: 'updated', id: existing.id };
   }
@@ -251,9 +283,17 @@ async function upsertImportedInvestment(investment) {
     ]
   );
   await pool.query(
-    `INSERT INTO investment_history (investment_id, amount, change_date, change_type, notes)
-     VALUES (?, ?, ?, 'added', ?)`,
-    [result.insertId, investment.amount, investment.investment_date, investment.notes || null]
+    `INSERT INTO investment_history (investment_id, amount, units, nav_price, invested_amount, change_date, change_type, notes)
+     VALUES (?, ?, ?, ?, ?, ?, 'added', ?)`,
+    [
+      result.insertId,
+      investment.amount,
+      investment.units != null && investment.units !== '' ? Number(investment.units) : null,
+      investment.nav_price != null && investment.nav_price !== '' ? Number(investment.nav_price) : null,
+      investment.invested_amount != null && investment.invested_amount !== '' ? Number(investment.invested_amount) : null,
+      investment.investment_date,
+      investment.notes || null
+    ]
   );
   return { action: 'imported', id: result.insertId };
 }

@@ -723,7 +723,52 @@ textarea.form-control {
 
 /* History Modal Specific Styles */
 .history-modal {
-  max-width: 500px;
+  max-width: 640px;
+}
+
+.mf-details {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #eee;
+}
+
+.mf-details h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #333;
+}
+
+.mf-details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.mf-details-grid .mf-notes {
+  grid-column: 1 / -1;
+}
+
+.mf-details-grid dt {
+  font-size: 11px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+}
+
+.mf-details-grid dd {
+  margin: 0;
+  font-size: 13px;
+  color: #333;
+  font-weight: 600;
+}
+
+.mf-details-grid dd.pl-positive {
+  color: #155724;
+}
+
+.mf-details-grid dd.pl-negative {
+  color: #721c24;
 }
 
 .history-list {
@@ -782,6 +827,14 @@ textarea.form-control {
   font-style: italic;
   color: #666;
   font-size: 13px;
+}
+
+.history-mf-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: #555;
 }
 
 .no-history {
