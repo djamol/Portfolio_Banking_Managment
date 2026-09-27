@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Portfolio — deep map
 
-Full-stack **portfolio + banking** app. Angular 17 FE + Express BE. DB via `DB_TYPE`: `mysql` (default) | `mongodb`. Hash routing (`useHash: true`). Auth = localStorage flag + API domain (no JWT).
+Full-stack **portfolio + banking** app. Angular 17 FE (NgModules, lazy feature modules) + Express BE (Node 20). DB via `DB_TYPE`: `mysql` (default) | `mongodb`. Hash routing (`useHash: true`). Auth = server session cookie `pfm_session` (`APP_USER` / `APP_PASSWORD[_HASH]`), FE `withCredentials` + optional encrypted remember-me.
 
 ## Top-level
 
@@ -23,14 +23,21 @@ Dockerfile        Multi-stage: ng build → serve from backend/public
 
 | Path | Job |
 |------|-----|
-| `server.js` | CORS, JSON 50mb, HTTP log, `/api/health`, mount routes, static `/public` |
+| `server.js` | CORS, JSON 50mb, HTTP log, `/api/health`, `authGate` on `/api`, mount routes, static `/public` |
+| `middleware/auth.js` | In-memory sessions, `pfm_session` cookie (12h / 365d remember-me), public paths, `BASE_PATH`-aware |
 | `config/index.js` | `DB_TYPE` switch; `getPool()` / `getMongoDb()` / `initializeDatabase()` |
 | `config/database.js` | MySQL pool + CREATE TABLE migrations |
 | `config/mongodb.js` | Mongo client + collections bootstrap |
 | `db/index.js` | Re-exports `mysql-store` or `mongo-store` |
 | `db/mysql-store.js` / `mongo-store.js` | Investment + lookup CRUD + import upsert |
 | `db/banking.js` | Bank accounts/txns/analytics (mysql+mongo dual impl) |
-| `db/banking-advanced.js` | Rules, budgets, recurring, transfers, forecast, continuity |
+| `db/banking-advanced.js` | Rules, budgets, recurring, transfers, forecast, continuity, duplicates |
+| `db/investment-flows.js` | MF/ETF bank flows + holdings + SIP + XIRR (mysql+mongo) → `/banking/investment-flows` |
+| `db/mutual-fund-nav-store.js` | Mongo NAV snapshots (MySQL twin in `mysql-store.js`) |
+| `utils/mf-api.js` | mfapi.in client: search, latest/as-of NAV (`resolveNav`) |
+| `utils/office-file.js` | Decrypt password Excel (`officecrypto-tool`) |
+| `utils/bank-txn-io.js` | Txn/statement export (xlsx/csv/pdf) + backup upload parse |
+| `utils/bank-duplicate.js` | Near-duplicate txn scan/clean |
 | `routes/*.js` | Thin HTTP; business in db/utils |
 | `utils/snapshot-queries.js` | MySQL as-of amount / series / filters for analytics |
 | `utils/mongo-analytics.js` | Mongo twin of analytics aggregations |
@@ -40,18 +47,24 @@ Dockerfile        Multi-stage: ng build → serve from backend/public
 | `utils/bank-parsers/` | Statement detect+parse by bank |
 | `utils/logger.js` | Structured levels via `LOG_LEVEL` |
 | `utils/sync-lookup-tables.js` | Rebuild sub_type_* from investments |
-| `DirectAdmin_run.js` | Hosting helper (not main app) |
+| `DirectAdmin_run.js` | Shared-hosting entry (mounts app under `BASE_PATH`) |
 
 ## Frontend layout
 
 | Path | Job |
 |------|-----|
-| `app.routes.ts` | Routes + `authGuard` |
-| `app.module.ts` | NgModule + NgCharts + hash router |
-| `components/<feature>/` | Page UI (ts/html/css) |
-| `components/multi-select-filter/` | Shared multi-select |
-| `services/*.service.ts` | HTTP → `/api/...` |
+| `app.routes.ts` | `loadChildren` per feature module + `authGuard` (login, import-export = standalone `loadComponent`) |
+| `app.module.ts` | Root NgModule + hash router + `auth.interceptor` |
+| `shared/shared.module.ts` | Common/Forms/Router + `MultiSelectFilterComponent` |
+| `shared/charts.module.ts` + `chart-setup.ts` | `AppChartsModule`; registers only line/bar/doughnut/pie |
+| `components/<feature>/` | Page UI (ts/html/css) + `<feature>.module.ts` |
+| `components/banking/` | Shell + child routes (`banking.routes.ts`) — see banking rule |
+| `components/multi-select-filter/`, `hierarchical-category-picker/` | Shared inputs |
+| `services/*.service.ts` | HTTP → `/api/...`; banking in `services/banking/*` |
 | `utils/api-url.util.ts` | `getApiBaseUrl()` from localStorage `apiDomain` |
+| `utils/storage-crypto.util.ts`, `cookie.util.ts` | AES-GCM storage (dbCustomConfig, remember-me cookie) |
+| `utils/category-tree.util.ts`, `category-rollup.util.ts` | Hierarchical `A_B_C` category labels / rollups |
+| `utils/net-worth.util.ts`, `maturity-notes.util.ts` | Dashboard buckets, FD maturity parsing |
 | `utils/ignore-platform.util.ts` | Client-side platform exclude |
 | `utils/advanced-filter.util.ts` | List/filter helpers |
 | `utils/indian-number.util.ts` | INR formatting |
@@ -60,17 +73,19 @@ Dockerfile        Multi-stage: ng build → serve from backend/public
 
 ## Domain model (core fields)
 
-**Investment** (`investments`): `website_app_name`, `investment_type`, `sub_type_name`, `sub_type_category`, `amount`, `investment_date`, `notes`. Required create: platform, type, amount, date.
+**Investment** (`investments`): `website_app_name` (platform), `investment_type`, `sub_type_name`, `sub_type_category`, `amount` (current value), `investment_date`, `notes`. MF/ETF extras: `units`, `nav_price`, `nav_source`, `mutual_fund_scheme_code` (mfapi), `mutual_fund_scheme_name`, `avg_buy_price`, `invested_amount`, `profit_loss`. Required create: platform, type, amount, date.
 
-**Types (ENUM)**: FD, Stock, ETF, Bond, Mutual Fund, Crypto, PPF, EPF, Saving Bank Balance. FE constants omit EPF — DB allows EPF.
+**Types (ENUM, FE+BE in sync)**: FD, Stock, ETF, Bond, Mutual Fund, Crypto, PPF, EPF, Saving Bank Balance, Real Estate.
 
-**History** (`investment_history`): amount changes (`added|removed|updated`).
+**History** (`investment_history`): amount/units/nav/invested per `change_date` (`added|removed|updated`). Current value = latest history row else `investments.amount` (`currentAmountSubquery`).
+
+**NAV snapshots** (`mutual_fund_nav_history`): investment_id + snapshot_date unique; units, nav_price, value, source.
 
 **Cashflows** (`investment_transactions`): buy/sell/dividend/interest/fee/deposit/withdrawal/transfer_*.
 
 **Lookups**: `sub_type_names`, `sub_type_categories` (sync via `/api/categories/sync-from-investments`).
 
-**Bank**: `bank_accounts` → `bank_transactions` (fingerprint dedupe, category_source auto|manual, import_batch_id) → `bank_category_rules`, `bank_budgets`.
+**Bank**: `bank_accounts` (is_active, account_type incl. Credit Card) → `bank_transactions` (fingerprint dedupe, category_source auto|manual|rule, payee, txn_type, import_batch_id, linked_transfer_id) → `bank_category_rules`, `bank_budgets`. Categories are hierarchical `Parent_Sub_Leaf` (e.g. `Investment_MutualFund_Purchase`).
 
 ## Dual-DB rule
 
@@ -81,7 +96,7 @@ Dockerfile        Multi-stage: ng build → serve from backend/public
 
 ## Env (root `.env` / `.env.example`)
 
-`DB_TYPE`, `DB_HOST/PORT/USER/PASSWORD/NAME`, `MONGODB_URI/DB`, `PORT`, `DB_CONNECT_RETRIES/DELAY_MS`, `LOG_LEVEL`, `IGNORE_PLATFORM` (comma list; case/space-insensitive).
+`DB_TYPE`, `DB_HOST/PORT/USER/PASSWORD/NAME`, `DB_HOST_LOCALHOST/DOCKER`, `DB_PORT_LOCALHOST/DOCKER`, `MONGODB_URI/DB`, `PORT`, `APP_PORT`, `DB_CONNECT_RETRIES/DELAY_MS`, `EMBEDDED_MYSQL[_PORT]`, `MYSQL_PUBLISH_PORT`, `LOG_LEVEL`, `APP_USER`, `APP_PASSWORD` / `APP_PASSWORD_HASH` (`scrypt$salt$hash`), `SESSION_SECRET`, `COOKIE_SECURE`, `BASE_PATH` (DirectAdmin host only, default `/v8`), `IGNORE_PLATFORM` (comma list; case/space-insensitive).
 
 ## Run
 
@@ -89,3 +104,4 @@ Dockerfile        Multi-stage: ng build → serve from backend/public
 - Dev FE: `cd frontend && npm start` → `:4200`
 - Prod Docker: compose or single `Dockerfile` (FE baked into `public/`)
 - Sync lookups: `cd backend && npm run sync-lookups`
+- FE typecheck/build: `cd frontend && npx ng build --configuration development`

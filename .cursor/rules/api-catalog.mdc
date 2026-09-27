@@ -7,13 +7,16 @@ alwaysApply: true
 
 Base: `{apiDomain}/api`. Response shape usually `{ success, data, error? }`. Banking list meta: `{ total, limit, offset, total_debit, total_credit, net_cashflow }`.
 
+**Auth gate**: everything under `/api` needs session cookie except `GET /health`, `POST /auth/login`, `POST /auth/logout`, `GET /config`.
+
 ## Health / config
 
 | Method | Path | File |
 |--------|------|------|
-| GET | `/health` | `server.js` (includes DB ping) |
-| GET | `/config` | `routes/config.js` → ignorePlatforms |
-| POST | `/auth/login` | `routes/auth.js` — session cookie |
+| GET | `/health` | `server.js` (dbType, dbOk, uptime) |
+| GET | `/config` | `routes/config.js` → ignorePlatforms, dbType, database presets, embeddedMysql |
+| POST | `/config/database` | switch MySQL host at runtime (preset localhost/docker/custom) |
+| POST | `/auth/login` | `{ username, password, rememberMe }` → `pfm_session` cookie |
 | POST | `/auth/logout` | `routes/auth.js` |
 | GET | `/auth/me` | `routes/auth.js` — requires session |
 
@@ -24,7 +27,19 @@ Base: `{apiDomain}/api`. Response shape usually `{ success, data, error? }`. Ban
 | GET | `/investments` | all |
 | GET | `/investments/search?website_app_name&sub_type_name&sub_type_category` | |
 | GET/PUT/DELETE | `/investments/:id` | |
-| POST | `/investments` | body fields as domain model |
+| POST | `/investments` | MF with `mutual_fund_scheme_code` auto-resolves NAV via `mf-api.resolveNav` |
+| GET/POST | `/investments/transactions` | investment_transactions (buy/sell/dividend/interest/fee/deposit/withdrawal/transfer_*); sign from type |
+| PUT/DELETE | `/investments/transactions/:txnId` | |
+
+## Mutual funds — `routes/mutual-funds.js` + `utils/mf-api.js`
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/mutual-funds/search?q=` | mfapi.in search (min 2 chars) |
+| GET | `/mutual-funds/:schemeCode/latest` | |
+| GET | `/mutual-funds/:schemeCode/history?startDate&endDate` | |
+| POST | `/mutual-funds/snapshots` | `{ investmentId, dates[] }` → `mutual_fund_nav_history` |
+| GET | `/mutual-funds/snapshots/:investmentId?from&to` | |
 
 ## Analytics — `routes/analytics.js`
 
@@ -77,14 +92,18 @@ MySQL path uses pool + `ignore-platform` + often `snapshot-queries`. Mongo → `
 | Accounts | CRUD `/banking/accounts`, `/banking/accounts/:id` |
 | Continuity | GET `/banking/accounts/:id/continuity` |
 | Txns | CRUD `/banking/transactions`; POST `bulk-categorize`, `bulk-delete` |
-| Recat | POST `/banking/recategorize` |
+| Recat | POST `/banking/recategorize` (`account_id`, `mode` auto_only\|uncategorized\|all) |
 | Categories | GET `/banking/categories` |
-| Rules | CRUD `/banking/rules` |
-| Analytics | GET `/banking/analytics` |
-| Budgets | `/banking/budgets`, `/budgets/status`, DELETE `/budgets/:id` |
+| Rules | CRUD `/banking/rules`; POST `/banking/rules/test` |
+| Analytics | GET `/banking/analytics` (summary, byCategory/Month, interestTax, interestByMonth, mom/yoy, insights…), `/analytics/by-payee` |
+| MF / ETF | GET `/banking/investment-flows?account_id&from&to` → `db/investment-flows.js` (`bank`, `holdings`, `reconciliation`, `insights`) |
+| Cash | GET `/banking/cash-summary` (cash vs credit-card totals, stale accounts) |
+| Duplicates | GET `/banking/duplicates/scan`, POST `/duplicates/clean` |
+| Budgets | CRUD `/banking/budgets`, GET `/budgets/status`, POST `/budgets/copy` |
 | Recurring | GET `/banking/recurring` |
-| Transfers | POST `/banking/transfers/match` |
+| Transfers | POST `/transfers/match`, GET `/transfers/matched`, POST `/transfers/unmatch` |
 | Forecast | GET `/banking/forecast` |
-| Import | POST `/banking/import` (multer file), `/import/preview`; DELETE `/import/batches/:batchId` |
+| Import | POST `/banking/import` (multer `file`, `account_id`, `bank_hint`, `pdf_password`|`password`), `/import/preview`; DELETE `/import/batches/:batchId` |
+| Export / backup | GET `/banking/export/transactions` (xlsx\|csv\|pdf, statement\|raw layout); POST `/banking/import/transactions` (raw backup restore) |
 
-Parsers: `utils/bank-parsers/index.js` — HDFC/ICICI/DCB/SBI/Axis/Kotak + generic CSV/XLS; **PDF**: HDFC credit-card PDF only (savings/current PDFs rejected).
+Parsers: `utils/bank-parsers/index.js` — HDFC/ICICI/ICICI-CC CSV/DCB/SBI/Axis/Kotak + generic CSV/XLS; password Excel via `office-file.js`. **PDF**: HDFC / ICICI / SBI credit-card PDFs (password OK); savings/current PDFs rejected.

@@ -17,25 +17,35 @@ Trust project-map + api-catalog. Open mapped files first. Prefer Grep with path 
 |------|------------|
 | Investment list/CRUD UI | `components/investment-list/`, `investment-form/`, `services/investment.service.ts` |
 | Investment API/DB | `routes/investments.js`, `db/mysql-store.js` **and** `mongo-store.js` if dual-DB |
-| Dashboard | `components/dashboard/`, analytics + investment services |
+| MF NAV / scheme lookup | `routes/mutual-funds.js`, `utils/mf-api.js`, `db/mutual-fund-nav-store.js`, `services/mutual-fund.service.ts`, `components/mutual-fund-history/` |
+| Investment cashflows (buy/sell/dividend) | `components/cashflows/`, `services/cashflow.service.ts`, `/investments/transactions` in `routes/investments.js` |
+| Dashboard | `components/dashboard/`, analytics + bank-analytics services, `utils/net-worth.util.ts` |
 | Charts / allocation / insights | `components/analytics/`, `analytics.service.ts`, `routes/analytics.js`, `utils/snapshot-queries.js` or `mongo-analytics.js` |
 | Asset tracker | `components/asset-tracker/` |
 | Summary table UI | `components/investment-summary/` |
-| JSON import UI | `components/import-data/` |
+| JSON / CSV holdings import UI | `components/import-data/` |
 | SQL/Mongo backup UI | `components/import-export/`, `routes/portfolio.js`, `utils/sql-*` / `mongo-*` |
-| Banking UI | `components/banking/`, `banking.service.ts` |
+| Banking UI | `components/banking/<page>/`, `components/banking/shared/*`, `services/banking/*` |
+| Banking MF & ETF page | `components/banking/mf-etf/`, `db/investment-flows.js`, `bank-analytics.service.ts#getInvestmentFlows` |
+| Interest / FD | `components/banking/interest/`, `sqlInterestCase`/`sqlFdBookCase` in `db/banking.js` |
+| Bank auto-categorize / payee | `utils/bank-parsers/common.js` (`suggestCategory`, `CATEGORY_RULES`, `PAYEE_ALIASES`) |
 | Bank statement parse | `utils/bank-parsers/index.js` + bank file; import route in `routes/banking.js` |
-| Bank rules/budgets/forecast | `db/banking-advanced.js` |
+| Bank export / backup | `utils/bank-txn-io.js`, `/banking/export/transactions`, shell export panel |
+| Bank rules/budgets/forecast/duplicates | `db/banking-advanced.js`, `utils/bank-duplicate.js` |
 | Ignore platforms | `.env` `IGNORE_PLATFORM`, `utils/ignore-platform.js`, FE `ignore-platform.util.ts`, `config.service.ts` |
-| Login / API host | `components/login/`, `auth.service.ts`, `api-url.util.ts`, `guards/auth.guard.ts` |
-| Investment type enums | FE `constants/investment-types.constants.ts`; BE ENUM in `config/database.js` |
+| Login / session | `middleware/auth.js`, `routes/auth.js`, `components/login/`, `auth.service.ts`, `auth.interceptor.ts`, `storage-crypto.util.ts` |
+| API host / DB switch | `api-url.util.ts`, `routes/config.js` (`/config/database`) |
+| Investment type enums | FE `constants/investment-types.constants.ts`; BE ENUM in `config/database.js` (+ ALTER migration) |
+| Charts registration | `shared/chart-setup.ts`, `shared/charts.module.ts` |
 | Lookup sync | `routes/categories.js`, `utils/sync-lookup-tables.js`, `scripts/sync-lookup-from-investments.js` |
-| Docker/deploy | `Dockerfile`, `docker-compose.yml`, `frontend/nginx.conf` |
+| Docker/deploy | `Dockerfile`, `docker-compose.yml`, `docker-entrypoint.sh`, `frontend/nginx.conf`, `backend/DirectAdmin_run.js` (shared hosting, `BASE_PATH`) |
 | Migrations (offline) | `scripts/*.py` only |
 
 ## Dual-DB edit checklist
 
-If changing investment persistence or analytics: update **both** MySQL and Mongo paths (store pair, or analytics.js branch + mongo-analytics, or banking dual functions).
+If changing investment persistence or analytics: update **both** MySQL and Mongo paths (store pair, or analytics.js branch + mongo-analytics, or banking `mysqlX`/`mongoX` pair + `impl()` export).
+
+If adding a new bank category: add to `DEFAULT_BANK_CATEGORIES` (`banking.models.ts`) and, if auto-detected, `CATEGORY_RULES`/`suggestCategory` in `common.js`.
 
 ## Reply style
 

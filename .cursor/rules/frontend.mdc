@@ -8,46 +8,51 @@ alwaysApply: false
 
 ## App shell
 
-- NgModule app (`app.module.ts`); charts via `NgChartsModule`.
+- Root NgModule (`app.module.ts`) + **lazy feature NgModules** (`<feature>.module.ts`, `standalone: false` components) via `loadChildren` in `app.routes.ts`; `login` + `import-export` are standalone `loadComponent`.
+- Feature modules import `SharedModule` (Common/Forms/Router + multi-select) and `AppChartsModule` (`shared/charts.module.ts`; `chart-setup.ts` registers only line/bar/doughnut/pie — register more there if a new chart type is needed).
 - Router: `RouterModule.forRoot(routes, { useHash: true })` — URLs like `/#/dashboard`.
 - Most routes `canActivate: [authGuard]` except `/login`.
+- Nav (`app.component.html`): Portfolio (Dashboard, Investments, Mutual Fund NAV History, Summary) · Insights (Analytics, Asset Tracker) · Bank · Data (Import statements, Backup & restore) · Logout.
 
 ## Auth / API host
 
-- Login stores `isLoggedIn=true`, `apiDomain`, `loginTime` in localStorage (`auth.service.ts`).
+- `auth.service.ts` `loginRemote()` → `POST /auth/login` (server session cookie); `auth.interceptor.ts` sets `withCredentials: true`, on 401 tries `silentRelogin()` if remember-me else logout.
+- Remember-me creds stored AES-GCM encrypted in a cookie (`storage-crypto.util.ts`, `cookie.util.ts`); `dbCustomConfig` in localStorage is encrypted the same way — never store secrets in plaintext.
 - All HTTP uses `getApiBaseUrl()` → `{apiDomain}/api` (`api-url.util.ts`).
-- No real password auth — domain picker only.
 
 ## UI → service map
 
 | Component | Primary service(s) |
 |-----------|-------------------|
-| `dashboard/` | analytics, investment, config |
-| `investment-list/` | investment, category |
-| `investment-form/` | investment, category |
+| `dashboard/` | analytics (value-series, delta, insights), bank-analytics (cash summary); `net-worth.util`, `maturity-notes.util` |
+| `investment-list/` | investment, category (totals, quick filters, bulk actions) |
+| `investment-form/` | investment, category, mutual-fund (scheme search, units/NAV/invested) |
 | `analytics/` | analytics (+ filters) |
 | `asset-tracker/` | investment / analytics |
 | `investment-summary/` | analytics |
-| `import-data/` | portfolio endpoints via investment/portfolio calls in component |
+| `mutual-fund-history/` | investment, mutual-fund (NAV snapshots, value chart) |
+| `cashflows/` | cashflow + investment (investment_transactions CRUD) |
+| `import-data/` | investment/category; MF/ETF CSV preview (compare, skip rows), scheme code lookup |
 | `import-export/` | `/api/portfolio/export|import/*` |
-| `banking/` | `banking.service.ts` |
+| `banking/` | `services/banking/*` (see banking rule) |
 | `login/` | `auth.service.ts` |
-| `multi-select-filter/` | shared input; used by list/analytics |
+| `multi-select-filter/`, `hierarchical-category-picker/` | shared inputs |
 
 ## Services (files)
 
-`investment`, `analytics`, `banking`, `category`, `config`, `auth` under `services/`.
+`investment`, `analytics`, `category`, `config`, `auth` (+ `auth.interceptor`), `mutual-fund`, `cashflow` under `services/`; banking split into `services/banking/*` (`banking.service.ts` = deprecated re-export).
 
 Analytics filters type lives in `analytics.service.ts` (`AnalyticsFilters`, series/allocation/delta/insights types).
 
 ## Constants / utils
 
-- Types list: `constants/investment-types.constants.ts` (keep in sync with DB ENUM when adding types; note DB has **EPF**).
+- Types list: `constants/investment-types.constants.ts` (keep in sync with DB ENUM; includes EPF + Real Estate).
 - Platform ignore: `ignore-platform.util.ts` + `config.service.ts` loads `/api/config`.
-- Filters: `advanced-filter.util.ts`. Numbers: `indian-number.util.ts`.
+- Filters: `advanced-filter.util.ts`. Numbers: `indian-number.util.ts`. Categories: `category-tree.util.ts` (`formatCategoryLabel`), `category-rollup.util.ts`.
 
 ## Edit rules
 
-- Colocate `*.ts` / `*.html` / `*.css` per component.
+- Colocate `*.ts` / `*.html` / `*.css` per component; declare new components in their feature module.
 - Don't touch `frontend/.angular/` or generated `dist`.
 - Prefer existing FormsModule patterns (template-driven) unless file already differs.
+- Verify with `npx ng build --configuration development` (catches strict template errors).

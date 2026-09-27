@@ -1,6 +1,6 @@
 ---
 description: Banking domain — parsers, tables, advanced features
-globs: "{backend/routes/banking.js,backend/db/banking*.js,backend/utils/bank-parsers/**,frontend/src/app/components/banking/**,frontend/src/app/services/banking.service.ts}"
+globs: "{backend/routes/banking.js,backend/db/banking*.js,backend/db/investment-flows.js,backend/utils/bank-*.js,backend/utils/bank-parsers/**,frontend/src/app/components/banking/**,frontend/src/app/services/banking/**}"
 alwaysApply: false
 ---
 
@@ -8,36 +8,56 @@ alwaysApply: false
 
 ## Flow
 
-UI `banking/` → `banking.service.ts` → `/api/banking/*` → `routes/banking.js` → `db/banking.js` (+ `banking-advanced.js`). Statement upload → `parseBankStatement` → fingerprint dedupe → `importTransactions`.
+UI `components/banking/<page>` → `services/banking/*.service.ts` (`bankApiUrl()`) → `/api/banking/*` → `routes/banking.js` → `db/banking.js` (+ `banking-advanced.js`, `investment-flows.js`). Statement upload → `parseBankStatement` → fingerprint dedupe → `importTransactions`.
 
 ## Parsers (`utils/bank-parsers/`)
 
 | File | Bank |
 |------|------|
-| `hdfc-csv.js` | HDFC CSV |
+| `hdfc-csv.js` | HDFC savings CSV/XLS |
 | `icici-xls.js` | ICICI Excel |
+| `icici-cc-csv.js` | ICICI credit-card CSV |
 | `dcb-xls.js` | DCB Excel |
 | `sbi.js` | SBI |
 | `axis.js` | Axis |
 | `kotak.js` | Kotak |
 | `cotak-csv.js` | Kotak CSV variant |
+| `hdfc-cc-pdf.js` / `icici-cc-pdf.js` / `sbi-cc-pdf.js` | Credit-card PDFs (password OK) |
+| `pdf-text.js` | pdf.js text extract + minimal `DOMMatrix` polyfill for hosts without `@napi-rs/canvas` |
 | `generic.js` | Fallback CSV/XLS |
-| `common.js` | `finalizeParsedTxn`, shared categorize |
-| `index.js` | detect order; savings PDF reject; HDFC CC PDF allowed |
+| `common.js` | `suggestCategory`, `resolvePayee`, `CATEGORY_RULES`, payee aliases, `finalizeParsedTxn` |
+| `index.js` | detect order; PDF → CC parsers only (savings/current PDF rejected); encrypted Excel → `office-file.js` |
 
-Hints: `bankHint` HDFC|ICICI|DCB|SBI|AXIS|KOTAK. Custom rules re-applied after parse.
+Hints (`bank_hint`): HDFC|HDFC_CC|ICICI|ICICI_CC|SBI|SBI_CC|DCB|AXIS|KOTAK. Custom rules re-applied after parse.
+
+## Categories
+
+Hierarchical `Parent_Sub_Leaf` strings (`DEFAULT_BANK_CATEGORIES` in `banking.models.ts`), e.g. `Income_Interest_Bank`, `Expense_Tax_TDS`, `Investment_MutualFund_Purchase|Redemption`, `Investment_Broker_Trading`, `Investment_FD_Book|Close`, `Transfer_*`. Legacy flat names (`Interest Income`, `Fixed Deposit`, `Transfer In/Out`) still honored. `category_source`: auto|manual|rule (manual never overwritten by recategorize `auto_only`). Transfers excluded from analytics by default (`exclude_transfers=1`).
 
 ## Data
 
-- Account: bank_name, account_name, account_number, ifsc, account_type, currency, opening_balance.
-- Txn: txn_date, narration, ref_no, withdrawal/deposit, balance, category, category_source, payee, fingerprint, import_batch_id, linked_transfer_id.
-- Rules: pattern, match_field (default narration), category, priority, optional account_id.
+- Account: bank_name, account_name, account_number, branch, ifsc, account_type (Savings/Current/Credit Card…), currency, opening_balance, is_active.
+- Txn: txn_date, value_date, narration, ref_no, withdrawal/deposit, balance, category, category_source, payee, txn_type (interest/tax/fd_book/fd_maturity/upi/neft…), fingerprint, import_batch_id, linked_transfer_id, tags, notes.
+- Same-day ordering uses closing-balance chain (`reorderRowsByDateBalance`).
+- Rules: pattern (regex or substring), match_field narration|payee, category, priority, optional account_id, is_active.
 - Budgets: category, amount, period_month `YYYY-MM`.
 
 ## Advanced (`banking-advanced.js`)
 
-Category rules CRUD, bulk delete, undo import batch, manual create txn, balance continuity, budgets/status, recurring detection, transfer matching (windowDays), cash forecast.
+Category rules CRUD/test, bulk delete, undo import batch, manual create txn, balance continuity, budgets/status/copy, recurring detection, transfer match/unmatch, cash forecast, duplicate scan/clean (`utils/bank-duplicate.js`).
 
-## FE service methods
+## MF & ETF (`db/investment-flows.js`)
 
-Accounts/txns CRUD, bulk categorize, analytics, categories, rules, budget status, recurring, forecast, continuity — mirror route names in `banking.service.ts`.
+- Bank side: `Investment_*` (non-FD) debits = purchase, credits = redemption; `DIV`/`DIVIDEND` credits = dividend. Platform from narration (Zerodha/Groww/Dhan/BSE StAR MF/ICCL/CAMS/KFintech/`<AMC> MF`). Month, FY (Apr–Mar), platform, SIP detection (same platform+amount in 3+ months).
+- Holdings side: `investments` of type `Mutual Fund` / `ETF` + `investment_history` → value vs cost, allocation, stale (>45d), value series.
+- Reconciliation by platform + approx XIRR (only with no account/date filter).
+
+## FE structure (`components/banking/`)
+
+- `banking-shell` = header, tabs, shared filter bar, export panel; child routes in `banking.routes.ts`: overview, accounts, import, transactions, rules, budgets, analytics (+ charts, cashflow, income, expense sub-tabs), interest, mf-etf, insights.
+- `shared/`: `BankingFilterState` (filters, date presets, `buildSharedFilters()`, `applyQuickFilter(kind)`, `BankingRouteId`, `showFilterBar`), `BankingAnalyticsState` (loads `/analytics`, builds chart data), `BankingContextService` (accounts, categories, `flash()`), `banking-chart.util` (colors/options), `banking-format.util` (`formatMoney`, `formatPct`, `formatCat`), `flow-highlights.util` (peak/quiet month for Income/Expense), `banking-shared.css` (stat-grid, card, chart-box, data-table…).
+- **Add a banking page**: component in `components/banking/<page>/` → declare in `banking.module.ts` → route in `banking.routes.ts` → tab in `banking-shell.component.html` → add id to `BankingRouteId`, `showFilterBar`, and `syncActiveRoute` list in `banking-shell.component.ts`. Subscribe to `filtersChanged$` + `refreshRequested$` to reload.
+
+## FE services (`services/banking/`)
+
+`bank-accounts`, `bank-transactions`, `bank-analytics` (analytics, by-payee, investment-flows, cash-summary, recurring, transfers), `bank-rules`, `bank-import` (upload/preview/export), `bank-api.util` (`bankApiUrl`), `banking.models`. `services/banking.service.ts` is a deprecated type re-export — don't add to it.

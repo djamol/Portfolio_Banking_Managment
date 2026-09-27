@@ -12,13 +12,17 @@ alwaysApply: false
 
 ## Config
 
-`require('../config/index')`: `isMongoDb()`, `getPool()` (mysql only), `getMongoDb()` (mongo only), `initializeDatabase()` on boot (`server.js`).
+`require('../config/index')`: `isMongoDb()`, `getPool()` (mysql only), `getMongoDb()` (mongo only), `initializeDatabase()` on boot (`server.js`). MySQL pool uses `dateStrings: true` (DATE cols come back as `YYYY-MM-DD` strings); Mongo stores dates as strings too.
+
+## Auth
+
+`middleware/auth.js` `authGate` on `/api` (public: health, auth/login, auth/logout, config). Sessions in-memory Map → restart logs users out. Creds from `APP_USER` + `APP_PASSWORD` or `APP_PASSWORD_HASH` (scrypt, timing-safe compare). Cookie `pfm_session` HttpOnly SameSite=Lax (`COOKIE_SECURE=true` for HTTPS).
 
 ## Schema (MySQL — source of truth in `config/database.js`)
 
-Tables: `investments`, `investment_history`, `sub_type_names`, `sub_type_categories`, `investment_transactions`, `bank_accounts`, `bank_transactions`, `bank_category_rules`, `bank_budgets`.
+Tables: `investments`, `investment_history`, `sub_type_names`, `sub_type_categories`, `investment_transactions`, `mutual_fund_nav_history`, `bank_accounts`, `bank_transactions`, `bank_category_rules`, `bank_budgets`. New columns are added via guarded `ALTER TABLE` migrations in `database.js` — follow that pattern (and mirror in `config/mongodb.js` bootstrap when relevant).
 
-Investment key fields: `website_app_name`, `investment_type`, `sub_type_name`, `sub_type_category`, `amount`, `investment_date`, `notes`.
+Investment key fields: `website_app_name`, `investment_type`, `sub_type_name`, `sub_type_category`, `amount`, `investment_date`, `notes`; MF/ETF: `units`, `nav_price`, `nav_source`, `mutual_fund_scheme_code`, `mutual_fund_scheme_name`, `avg_buy_price`, `invested_amount`, `profit_loss`. `investment_history` also carries units/nav_price/invested_amount. `investment_type` ENUM includes `Real Estate` + `EPF`.
 
 Bank txn uniqueness: `(account_id, fingerprint)`. Import undo via `import_batch_id`.
 
@@ -26,9 +30,13 @@ Mongo: parallel collections + counters in `mongo-store` / banking mongo_* funcs;
 
 ## Store API (`db/*-store.js`)
 
-`getAllInvestments`, `searchInvestments`, `getInvestmentById`, `createInvestment`, `updateInvestment`, `deleteInvestment`, lookup CRUD, `upsertImportedInvestment`, `findInvestmentByKey`.
+`getAllInvestments`, `searchInvestments`, `getInvestmentById`, `createInvestment`, `updateInvestment`, `deleteInvestment`, lookup CRUD, `upsertImportedInvestment`, `findInvestmentByKey`, investment txns (`listTransactions`, `create/update/deleteTransaction`), `syncAmountsFromLatestHistory`, NAV snapshots (`saveMutualFundNavSnapshot`, `listMutualFundNavSnapshots`; Mongo via `db/mutual-fund-nav-store.js`).
 
-History written on amount changes (create/update/delete patterns in store).
+History written on amount changes (create/update/delete patterns in store). Deleting an investment cascades its history (MySQL FK).
+
+## Mutual funds
+
+`utils/mf-api.js` wraps `https://api.mfapi.in/mf` (search, latest, history, `resolveNav(schemeCode, date)`). Scheme code = numeric string (`isSchemeCode`).
 
 ## Analytics
 
@@ -38,9 +46,11 @@ History written on amount changes (create/update/delete patterns in store).
 
 ## Banking
 
-- Core: `db/banking.js` (accounts, txns, import, analytics, fingerprints).
-- Advanced: `db/banking-advanced.js` spread into banking exports (rules, budgets, recurring, transfers, forecast, continuity, bulk-delete, undo batch).
-- Parse entry: `parseBankStatement` from `utils/bank-parsers` (hint or auto-detect; savings PDF rejected; HDFC CC PDF allowed).
+- Core: `db/banking.js` (accounts, txns, import, analytics, cash summary, fingerprints). Each fn has `mysqlX` + `mongoX`; public export dispatches via `impl()`.
+- Advanced: `db/banking-advanced.js` spread into banking exports (rules, budgets, recurring, transfers, forecast, continuity, bulk-delete, undo batch, duplicates).
+- MF/ETF analytics: `db/investment-flows.js` (own dual-DB fetch, JS aggregation, `xirr()` bisection).
+- Parse entry: `parseBankStatement` from `utils/bank-parsers` (hint or auto-detect; savings PDF rejected; HDFC/ICICI/SBI CC PDF allowed; encrypted Excel via `utils/office-file.js`).
+- Export/backup: `utils/bank-txn-io.js`.
 - Upload: multer memory, 40MB, field `file`.
 
 ## Logging
