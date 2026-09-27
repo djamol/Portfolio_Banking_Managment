@@ -2,10 +2,35 @@ const express = require('express');
 const router = express.Router();
 const store = require('../db');
 const { resolveNav } = require('../utils/mf-api');
+const { xirr } = require('../db/investment-flows');
 
 const VALID_TXN_TYPES = store.VALID_TXN_TYPES || new Set([
   'buy', 'sell', 'dividend', 'interest', 'fee', 'deposit', 'withdrawal', 'transfer_in', 'transfer_out'
 ]);
+
+const INVESTMENT_FIELDS = [
+  'website_app_name', 'investment_type', 'sub_type_name', 'sub_type_category', 'amount', 'units',
+  'nav_price', 'nav_source', 'avg_buy_price', 'invested_amount', 'profit_loss', 'investment_date',
+  'notes', 'mutual_fund_scheme_code', 'mutual_fund_scheme_name'
+];
+const BULK_MAX_IDS = 1000;
+
+function mergeInvestment(existing, changes) {
+  const merged = {};
+  for (const key of INVESTMENT_FIELDS) {
+    merged[key] = changes[key] !== undefined ? changes[key] : existing[key];
+  }
+  return merged;
+}
+
+function todayYmd() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
 
 async function resolveMutualFundNav(schemeCode, investmentDate, savedNav) {
   if (!schemeCode) return { nav: savedNav, source: savedNav != null ? 'imported' : null };
@@ -14,6 +39,7 @@ async function resolveMutualFundNav(schemeCode, investmentDate, savedNav) {
     return { nav: resolved.nav, source: `mfapi-${resolved.source}` };
   } catch (error) {
     if (savedNav != null && savedNav !== '' && Number(savedNav) > 0) {
+      console.warn(`MFAPI NAV lookup failed for scheme ${schemeCode}; keeping saved NAV:`, error.message);
       return { nav: savedNav, source: 'imported' };
     }
     throw error;
@@ -130,6 +156,144 @@ router.delete('/transactions/:txnId', async (req, res) => {
   }
 });
 
+router.get('/returns', async (req, res) => {
+  try {
+    const [investments, txns] = await Promise.all([store.getAllInvestments(), store.getAllTransactions()]);
+    const today = todayYmd();
+    const flowsById = new Map();
+    for (const t of txns) {
+      const id = Number(t.investment_id);
+      if (!flowsById.has(id)) flowsById.set(id, []);
+      flowsById.get(id).push({ date: String(t.txn_date).slice(0, 10), amount: Number(t.cashflow_amount) });
+    }
+
+    const portfolioFlows = [];
+    let portfolioTxnValue = 0;
+    const summary = { invested: 0, received: 0, current_value: 0, gain: 0 };
+    const items = [];
+
+    for (const inv of investments) {
+      const id = Number(inv.id);
+      const current = Number(inv.amount) || 0;
+      const flows = flowsById.get(id) || [];
+      let basis = 'none';
+      let invested = 0;
+      let received = 0;
+      let itemXirr = null;
+
+      if (flows.length) {
+        basis = 'transactions';
+        for (const f of flows) {
+          if (f.amount < 0) invested += -f.amount;
+          else received += f.amount;
+        }
+        const terminal = current > 0 ? [{ date: today, amount: current }] : [];
+        itemXirr = xirr([...flows, ...terminal]);
+        portfolioFlows.push(...flows);
+        portfolioTxnValue += current;
+      } else if (Number(inv.invested_amount) > 0) {
+        basis = 'invested_amount';
+        invested = Number(inv.invested_amount);
+      }
+
+      if (basis === 'none') {
+        items.push({ investment_id: id, basis, current_value: current });
+        continue;
+      }
+      const gain = current + received - invested;
+      summary.invested += invested;
+      summary.received += received;
+      summary.current_value += current;
+      summary.gain += gain;
+      items.push({
+        investment_id: id,
+        basis,
+        invested: round2(invested),
+        received: round2(received),
+        current_value: round2(current),
+        gain: round2(gain),
+        gain_pct: invested > 0 ? round2((gain / invested) * 100) : null,
+        xirr: itemXirr != null ? round2(itemXirr) : null,
+        txn_count: flows.length,
+        first_txn_date: flows.length ? flows[0].date : null
+      });
+    }
+
+    const portfolioXirr = portfolioFlows.length
+      ? xirr([...portfolioFlows, ...(portfolioTxnValue > 0 ? [{ date: today, amount: portfolioTxnValue }] : [])])
+      : null;
+
+    res.json({
+      success: true,
+      data: {
+        as_of: today,
+        items,
+        summary: {
+          invested: round2(summary.invested),
+          received: round2(summary.received),
+          current_value: round2(summary.current_value),
+          gain: round2(summary.gain),
+          gain_pct: summary.invested > 0 ? round2((summary.gain / summary.invested) * 100) : null,
+          xirr: portfolioXirr != null ? round2(portfolioXirr) : null,
+          xirr_value_covered: round2(portfolioTxnValue)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error computing investment returns:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/bulk', async (req, res) => {
+  const { action, ids, changes = {} } = req.body || {};
+  if (!['delete', 'update'].includes(action)) {
+    return res.status(400).json({ success: false, error: 'action must be "delete" or "update"' });
+  }
+  const uniqueIds = [...new Set((Array.isArray(ids) ? ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  if (!uniqueIds.length || uniqueIds.length > BULK_MAX_IDS) {
+    return res.status(400).json({ success: false, error: `ids must contain 1-${BULK_MAX_IDS} investment ids` });
+  }
+
+  const results = [];
+  for (const id of uniqueIds) {
+    try {
+      if (action === 'delete') {
+        const ok = await store.deleteInvestment(id);
+        results.push({ id, ok, error: ok ? undefined : 'Investment not found' });
+        continue;
+      }
+      const existing = await store.getInvestmentById(id);
+      if (!existing) {
+        results.push({ id, ok: false, error: 'Investment not found' });
+        continue;
+      }
+      const patch = {};
+      const text = (v) => (typeof v === 'string' ? v.trim() : '');
+      if (text(changes.website_app_name)) patch.website_app_name = text(changes.website_app_name);
+      if (text(changes.investment_type)) {
+        patch.investment_type = text(changes.investment_type);
+        if (patch.investment_type !== existing.investment_type) {
+          patch.sub_type_name = null;
+          patch.sub_type_category = null;
+        }
+      }
+      if (text(changes.sub_type_name)) patch.sub_type_name = text(changes.sub_type_name);
+      if (text(changes.sub_type_category)) patch.sub_type_category = text(changes.sub_type_category);
+      if (text(changes.notes_append)) {
+        patch.notes = existing.notes ? `${existing.notes}\n${text(changes.notes_append)}` : text(changes.notes_append);
+      }
+      const updated = await store.updateInvestment(id, mergeInvestment(existing, patch));
+      results.push({ id, ok: !!updated });
+    } catch (error) {
+      results.push({ id, ok: false, error: error.message });
+    }
+  }
+
+  const succeeded = results.filter((r) => r.ok).length;
+  res.json({ success: true, data: { succeeded, failed: results.length - succeeded, results } });
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const row = await store.getInvestmentById(req.params.id);
@@ -189,30 +353,28 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
-    const { website_app_name, investment_type, sub_type_name, sub_type_category, amount, units, nav_price, nav_source, avg_buy_price, invested_amount, profit_loss, investment_date, notes, mutual_fund_scheme_code, mutual_fund_scheme_name } = req.body;
+    const existing = await store.getInvestmentById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Investment not found' });
+    }
+    // Fields omitted from the body keep their stored value.
+    const merged = mergeInvestment(existing, req.body || {});
+    const { investment_type, investment_date, nav_price, nav_source, mutual_fund_scheme_code } = merged;
     let resolvedNav = nav_price;
     let resolvedNavSource = nav_source || (nav_price != null ? 'imported' : null);
-    if (investment_type === 'Mutual Fund' && mutual_fund_scheme_code) {
+    const navInputsChanged = String(mutual_fund_scheme_code || '') !== String(existing.mutual_fund_scheme_code || '')
+      || String(investment_date || '').slice(0, 10) !== String(existing.investment_date || '').slice(0, 10)
+      || req.body?.nav_price !== undefined
+      || nav_price == null;
+    if (investment_type === 'Mutual Fund' && mutual_fund_scheme_code && navInputsChanged) {
       const resolved = await resolveMutualFundNav(mutual_fund_scheme_code, investment_date, nav_price);
       resolvedNav = resolved.nav;
       resolvedNavSource = resolved.source;
     }
     const updatedInvestment = await store.updateInvestment(req.params.id, {
-      website_app_name,
-      investment_type,
-      sub_type_name,
-      sub_type_category,
-      amount,
-      units,
+      ...merged,
       nav_price: resolvedNav,
-      nav_source: resolvedNavSource,
-      mutual_fund_scheme_code,
-      mutual_fund_scheme_name,
-      avg_buy_price,
-      invested_amount,
-      profit_loss,
-      investment_date,
-      notes
+      nav_source: resolvedNavSource
     });
 
     if (!updatedInvestment) {

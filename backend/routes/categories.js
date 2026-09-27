@@ -48,6 +48,16 @@ router.get('/sub-type-names/:investmentType', async (req, res) => {
   }
 });
 
+router.get('/categories', async (req, res) => {
+  try {
+    const rows = await store.getAllCategories();
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Error fetching categories:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.post('/categories', async (req, res) => {
   try {
     const { category, sub_type_name_id, investment_type } = req.body;

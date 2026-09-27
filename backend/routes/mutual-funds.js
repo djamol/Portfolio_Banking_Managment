@@ -1,5 +1,5 @@
 const express = require('express');
-const { fetchMfApi, isSchemeCode, selectNavAsOf } = require('../utils/mf-api');
+const { fetchMfApi, isSchemeCode, selectNavAsOf, mfDateToIso } = require('../utils/mf-api');
 const store = require('../db');
 
 const router = express.Router();
@@ -100,6 +100,63 @@ router.post('/snapshots', async (req, res) => {
   } catch (error) {
     console.error('Error saving mutual fund NAV snapshots:', error);
     res.status(502).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/refresh-latest', async (req, res) => {
+  try {
+    const all = await store.getAllInvestments();
+    const funds = all.filter(inv => inv.investment_type === 'Mutual Fund'
+      && isSchemeCode(inv.mutual_fund_scheme_code) && Number(inv.units) > 0);
+    const now = new Date();
+    const snapshotDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const navCache = new Map();
+    const results = [];
+
+    for (const inv of funds) {
+      const code = String(inv.mutual_fund_scheme_code);
+      try {
+        if (!navCache.has(code)) {
+          const latest = await fetchMfApi(`/${code}/latest`);
+          const entry = latest?.data?.find(e => Number(e.nav) > 0);
+          if (!entry) throw new Error('MFAPI returned no usable NAV');
+          navCache.set(code, { nav: Number(entry.nav), navDate: mfDateToIso(entry.date) });
+        }
+        const { nav, navDate } = navCache.get(code);
+        const units = Number(inv.units);
+        const value = Math.round(units * nav * 100) / 100;
+        await store.saveMutualFundNavSnapshot({
+          investment_id: inv.id,
+          snapshot_date: snapshotDate,
+          nav_date: navDate,
+          units,
+          nav_price: nav,
+          value,
+          source: 'mfapi-latest'
+        });
+        await store.setInvestmentValuation(inv.id, { amount: value, nav_price: nav, nav_source: 'mfapi-latest' });
+        results.push({ id: inv.id, ok: true, previous: Number(inv.amount), value, nav, nav_date: navDate });
+      } catch (error) {
+        results.push({ id: inv.id, ok: false, error: error.message });
+      }
+    }
+
+    const succeeded = results.filter(r => r.ok);
+    const change = succeeded.reduce((s, r) => s + (r.value - r.previous), 0);
+    res.json({
+      success: true,
+      data: {
+        snapshot_date: snapshotDate,
+        total: funds.length,
+        succeeded: succeeded.length,
+        failed: results.length - succeeded.length,
+        value_change: Math.round(change * 100) / 100,
+        results
+      }
+    });
+  } catch (error) {
+    console.error('Error refreshing mutual fund NAVs:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

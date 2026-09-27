@@ -1,6 +1,7 @@
 import { Component, ElementRef, HostListener, OnInit, ViewChild } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { InvestmentService } from '../../services/investment.service';
+import { InvestmentService, InvestmentReturn, InvestmentReturnsResponse } from '../../services/investment.service';
+import { MutualFundService } from '../../services/mutual-fund.service';
 import { AnalyticsService } from '../../services/analytics.service';
 import { CategoryService, SubTypeName, Category } from '../../services/category.service';
 import { ConfigService } from '../../services/config.service';
@@ -56,6 +57,9 @@ export class InvestmentListComponent implements OnInit {
   bulkForm = this.emptyBulkForm();
   bulkSubTypes: string[] = [];
   bulkCategories: string[] = [];
+  returnsById = new Map<number, InvestmentReturn>();
+  returnsSummary: InvestmentReturnsResponse['summary'] | null = null;
+  navRefreshing = false;
 
   // Pagination properties
   currentPage: number = 1;
@@ -109,7 +113,8 @@ export class InvestmentListComponent implements OnInit {
     private investmentService: InvestmentService,
     private categoryService: CategoryService,
     private analyticsService: AnalyticsService,
-    private configService: ConfigService
+    private configService: ConfigService,
+    private mutualFundService: MutualFundService
   ) {}
 
   ngOnInit() {
@@ -148,6 +153,7 @@ export class InvestmentListComponent implements OnInit {
   loadInvestments() {
     this.loading = true;
     this.errorMessage = '';
+    this.loadReturns();
 
     // Use the summary table API which includes history counts
     this.analyticsService.getSummaryTable().subscribe({
@@ -171,6 +177,60 @@ export class InvestmentListComponent implements OnInit {
         this.loading = false;
       }
     });
+  }
+
+  loadReturns() {
+    this.investmentService.getReturns().subscribe({
+      next: (data) => {
+        this.returnsById = new Map((data?.items || []).map(item => [item.investment_id, item]));
+        this.returnsSummary = data?.summary || null;
+      },
+      error: (error) => console.error('Error loading returns:', error)
+    });
+  }
+
+  refreshMutualFundNavs() {
+    if (this.navRefreshing) return;
+    this.navRefreshing = true;
+    this.mutualFundService.refreshLatest().subscribe({
+      next: (result) => {
+        this.navRefreshing = false;
+        const change = result.value_change >= 0 ? `+${this.formatInr(result.value_change)}` : this.formatInr(result.value_change);
+        const msg = `Refreshed ${result.succeeded}/${result.total} funds (${change}).`
+          + (result.failed ? ` ${result.failed} failed.` : '');
+        this.showFlash(msg, result.failed ? 'error' : 'success');
+        this.loadInvestments();
+      },
+      error: (error) => {
+        this.navRefreshing = false;
+        this.showFlash('NAV refresh failed. ' + (error?.error?.error || error?.message || ''), 'error');
+      }
+    });
+  }
+
+  returnFor(investment: any): InvestmentReturn | undefined {
+    const r = this.returnsById.get(investment?.id);
+    return r && r.basis === 'transactions' ? r : undefined;
+  }
+
+  displayInvested(investment: any): number | null {
+    return this.returnFor(investment)?.invested ?? this.holdingInvestedAmount(investment);
+  }
+
+  displayPl(investment: any): number | null {
+    const r = this.returnFor(investment);
+    if (r?.gain != null) return r.gain;
+    return this.holdingInvestedAmount(investment) != null || this.isFundHolding(investment) ? this.holdingPl(investment) : null;
+  }
+
+  displayPlPercent(investment: any): number | null {
+    const r = this.returnFor(investment);
+    if (r) return r.gain_pct ?? null;
+    return this.holdingPlPercent(investment);
+  }
+
+  displayXirr(investment: any): number | null {
+    return this.returnFor(investment)?.xirr ?? null;
   }
 
   extractFilterOptions() {
@@ -1034,23 +1094,29 @@ export class InvestmentListComponent implements OnInit {
       return;
     }
     this.bulkWorking = true;
-    const ids = [...this.selectedIds];
-    let deleted = 0;
     try {
-      for (const id of ids) {
-        await firstValueFrom(this.investmentService.delete(id));
-        deleted += 1;
-      }
-      this.showFlash(`Deleted ${deleted} investment${deleted === 1 ? '' : 's'}.`, 'success');
-      this.selectedIds = new Set();
+      const result = await firstValueFrom(this.investmentService.bulk('delete', [...this.selectedIds]));
+      this.reportBulkResult(result, 'Deleted');
       this.loadInvestments();
     } catch (error: any) {
       console.error('Error bulk deleting investments:', error);
-      this.errorMessage = 'Failed to delete some investments. ' + (error?.message || '');
+      this.errorMessage = 'Failed to delete investments. ' + (error?.error?.error || error?.message || '');
       this.loadInvestments();
     } finally {
       this.bulkWorking = false;
     }
+  }
+
+  private reportBulkResult(result: { succeeded: number; failed: number; results: { id: number; ok: boolean; error?: string }[] }, verb: string) {
+    const plural = (n: number) => `${n} investment${n === 1 ? '' : 's'}`;
+    this.selectedIds = new Set();
+    if (!result.failed) {
+      this.showFlash(`${verb} ${plural(result.succeeded)}.`, 'success');
+      return;
+    }
+    const failedIds = result.results.filter(r => !r.ok).map(r => r.id);
+    const firstError = result.results.find(r => !r.ok)?.error || 'unknown error';
+    this.showFlash(`${verb} ${plural(result.succeeded)}; ${result.failed} failed (ids ${failedIds.join(', ')}: ${firstError}).`, 'error');
   }
 
   emptyBulkForm() {
@@ -1108,41 +1174,23 @@ export class InvestmentListComponent implements OnInit {
       return;
     }
     this.bulkWorkingReclassify = true;
-    const ids = [...this.selectedIds];
-    const typeChanged = !!this.bulkForm.investment_type;
-    let updated = 0;
     try {
-      for (const id of ids) {
-        const row = this.investments.find(item => item.id === id);
-        if (!row) continue;
-        const notesBase = row.notes || '';
-        const notes = this.bulkForm.notes_append.trim()
-          ? (notesBase ? `${notesBase}\n${this.bulkForm.notes_append.trim()}` : this.bulkForm.notes_append.trim())
-          : notesBase;
-        const payload = {
-          website_app_name: this.bulkForm.website_app_name.trim() || row.website_app_name,
-          investment_type: this.bulkForm.investment_type || row.investment_type,
-          sub_type_name: typeChanged
-            ? (this.bulkForm.sub_type_name.trim() || null)
-            : (this.bulkForm.sub_type_name.trim() || row.sub_type_name || null),
-          sub_type_category: typeChanged
-            ? (this.bulkForm.sub_type_category.trim() || null)
-            : (this.bulkForm.sub_type_category.trim() || row.sub_type_category || null),
-          amount: row.amount,
-          investment_date: this.toLocalYmd(row.investment_date),
-          notes: notes || null
-        };
-        await firstValueFrom(this.investmentService.update(id, payload));
-        updated += 1;
+      const result = await firstValueFrom(this.investmentService.bulk('update', [...this.selectedIds], {
+        website_app_name: this.bulkForm.website_app_name.trim(),
+        investment_type: this.bulkForm.investment_type,
+        sub_type_name: this.bulkForm.sub_type_name.trim(),
+        sub_type_category: this.bulkForm.sub_type_category.trim(),
+        notes_append: this.bulkForm.notes_append.trim()
+      }));
+      this.reportBulkResult(result, 'Updated');
+      if (!result.failed) {
+        this.bulkForm = this.emptyBulkForm();
+        this.showBulkReclassify = false;
       }
-      this.showFlash(`Updated ${updated} investment${updated === 1 ? '' : 's'}.`, 'success');
-      this.bulkForm = this.emptyBulkForm();
-      this.showBulkReclassify = false;
-      this.selectedIds = new Set();
       this.loadInvestments();
     } catch (error: any) {
       console.error('Error bulk updating investments:', error);
-      this.errorMessage = 'Failed to update some investments. ' + (error?.message || '');
+      this.errorMessage = 'Failed to update investments. ' + (error?.error?.error || error?.message || '');
       this.loadInvestments();
     } finally {
       this.bulkWorkingReclassify = false;
@@ -1243,6 +1291,7 @@ export class InvestmentListComponent implements OnInit {
       'Amount',
       'P&L',
       'P&L %',
+      'XIRR %',
       'Percent of Filtered',
       'Investment Date',
       'Notes'
@@ -1254,10 +1303,11 @@ export class InvestmentListComponent implements OnInit {
       this.csvEscape(item.sub_type_category || ''),
       item.units != null ? Number(item.units).toFixed(4) : '',
       item.nav_price != null ? Number(item.nav_price).toFixed(4) : '',
-      item.invested_amount != null ? Number(item.invested_amount).toFixed(2) : '',
+      this.displayInvested(item) != null ? this.displayInvested(item)!.toFixed(2) : '',
       Number(item.amount || 0).toFixed(2),
-      this.holdingPl(item) != null ? this.holdingPl(item)!.toFixed(2) : '',
-      this.holdingPlPercent(item) != null ? this.holdingPlPercent(item)!.toFixed(2) : '',
+      this.displayPl(item) != null ? this.displayPl(item)!.toFixed(2) : '',
+      this.displayPlPercent(item) != null ? this.displayPlPercent(item)!.toFixed(2) : '',
+      this.displayXirr(item) != null ? this.displayXirr(item)!.toFixed(2) : '',
       this.amountShare(item.amount).toFixed(2),
       this.toLocalYmd(item.investment_date),
       this.csvEscape(item.notes || '')

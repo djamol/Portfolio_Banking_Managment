@@ -7,6 +7,10 @@
     </div>
     <div class="header-actions">
       <button type="button" class="btn btn-outline-secondary" (click)="loadInvestments()" [disabled]="loading">Refresh</button>
+      <button type="button" class="btn btn-outline-secondary" (click)="refreshMutualFundNavs()" [disabled]="navRefreshing || loading"
+        title="Fetch latest MFAPI NAV for every mutual fund with a scheme code and units, and save today's snapshot">
+        {{ navRefreshing ? 'Refreshing NAVs…' : 'Refresh MF NAVs' }}
+      </button>
       <button type="button" class="btn btn-outline-secondary" (click)="exportFilteredCsv()" [disabled]="!filteredInvestments.length">Export CSV</button>
       <a routerLink="/investments/new" class="btn btn-secondary">Full form</a>
       <button (click)="openAddModal()" class="btn btn-primary">Add Investment</button>
@@ -47,6 +51,22 @@
     <div class="summary-card" *ngIf="selectedIds.size">
       <span class="summary-label">Selected {{ selectedIds.size }}</span>
       <span class="summary-value">{{ formatInrCompact(selectedTotalAmount) }}</span>
+    </div>
+    <div class="summary-card" *ngIf="returnsSummary && returnsSummary.invested > 0"
+      title="Across holdings with cashflow transactions or an invested amount. Gain = current + received − invested.">
+      <span class="summary-label">Total gain</span>
+      <span class="summary-value" [class.pl-positive]="returnsSummary.gain >= 0" [class.pl-negative]="returnsSummary.gain < 0">
+        {{ formatInrCompact(returnsSummary.gain) }}
+      </span>
+      <span class="summary-sub">{{ returnsSummary.gain_pct | number:'1.1-1' }}% on {{ formatInrCompact(returnsSummary.invested) }}</span>
+    </div>
+    <div class="summary-card" *ngIf="returnsSummary?.xirr != null"
+      title="Money-weighted annual return from recorded cashflow transactions plus today's value of those holdings.">
+      <span class="summary-label">Portfolio XIRR</span>
+      <span class="summary-value" [class.pl-positive]="returnsSummary!.xirr! >= 0" [class.pl-negative]="returnsSummary!.xirr! < 0">
+        {{ returnsSummary!.xirr | number:'1.1-2' }}%
+      </span>
+      <span class="summary-sub">covers {{ formatInrCompact(returnsSummary!.xirr_value_covered) }}</span>
     </div>
   </div>
 
@@ -285,6 +305,7 @@
             Current Value <span class="sort-icon">{{ getSortIcon('amount') }}</span>
           </th>
           <th class="num">P&amp;L</th>
+          <th class="num" title="Annualised return from cashflow transactions">XIRR</th>
           <th (click)="onSort('investment_date')" class="sortable">
             Date <span class="sort-icon">{{ getSortIcon('investment_date') }}</span>
           </th>
@@ -312,17 +333,22 @@
             </ng-container>
             <ng-template #noNav>-</ng-template>
           </td>
-          <td class="num">{{ isFundHolding(investment) && holdingInvestedAmount(investment) != null ? formatInr(holdingInvestedAmount(investment)!) : '-' }}</td>
+          <td class="num" [title]="returnFor(investment) ? 'From ' + returnFor(investment)!.txn_count + ' cashflow transaction(s)' : ''">
+            {{ displayInvested(investment) != null ? formatInr(displayInvested(investment)!) : '-' }}
+          </td>
           <td class="num amount-cell">
             <span>{{ formatInr(investment.amount) }}</span>
             <small class="amount-share">{{ amountShare(investment.amount) | number:'1.1-1' }}%</small>
           </td>
-          <td class="num" [class.pl-positive]="(holdingPl(investment) || 0) >= 0" [class.pl-negative]="(holdingPl(investment) || 0) < 0">
-            <ng-container *ngIf="isFundHolding(investment) && holdingPl(investment) != null; else noPl">
-              {{ formatInr(holdingPl(investment)!) }}
-              <small>({{ holdingPlPercent(investment) | number:'1.1-1' }}%)</small>
+          <td class="num" [class.pl-positive]="(displayPl(investment) || 0) >= 0" [class.pl-negative]="(displayPl(investment) || 0) < 0">
+            <ng-container *ngIf="displayPl(investment) != null; else noPl">
+              {{ formatInr(displayPl(investment)!) }}
+              <small *ngIf="displayPlPercent(investment) != null">({{ displayPlPercent(investment) | number:'1.1-1' }}%)</small>
             </ng-container>
             <ng-template #noPl>-</ng-template>
+          </td>
+          <td class="num" [class.pl-positive]="(displayXirr(investment) || 0) >= 0" [class.pl-negative]="(displayXirr(investment) || 0) < 0">
+            {{ displayXirr(investment) != null ? (displayXirr(investment) | number:'1.1-2') + '%' : '-' }}
           </td>
           <td>{{ formatDate(investment.investment_date) }}</td>
           <td class="notes-cell" [title]="investment.notes || ''">{{ investment.notes || '—' }}</td>
@@ -346,7 +372,7 @@
         <tr>
           <td colspan="8" class="totals-label">Filtered total</td>
           <td class="num">{{ formatInr(filteredTotalAmount) }}</td>
-          <td colspan="4"></td>
+          <td colspan="5"></td>
         </tr>
       </tfoot>
     </table>

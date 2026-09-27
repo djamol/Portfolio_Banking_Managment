@@ -343,7 +343,8 @@ const createTables = async () => {
         FOREIGN KEY (investment_id) REFERENCES investments(id) ON DELETE CASCADE,
         INDEX idx_txn_investment_id (investment_id),
         INDEX idx_txn_date (txn_date),
-        INDEX idx_txn_type (txn_type)
+        INDEX idx_txn_type (txn_type),
+        INDEX idx_txn_investment_date (investment_id, txn_date)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
 
@@ -456,7 +457,8 @@ const createTables = async () => {
       'ALTER TABLE investments ADD COLUMN invested_amount DECIMAL(15, 2) NULL',
       'ALTER TABLE investment_history ADD COLUMN units DECIMAL(20, 4) NULL',
       'ALTER TABLE investment_history ADD COLUMN nav_price DECIMAL(20, 4) NULL',
-      'ALTER TABLE investment_history ADD COLUMN invested_amount DECIMAL(15, 2) NULL'
+      'ALTER TABLE investment_history ADD COLUMN invested_amount DECIMAL(15, 2) NULL',
+      'ALTER TABLE investment_transactions ADD INDEX idx_txn_investment_date (investment_id, txn_date)'
     ];
     for (const sql of alterStatements) {
       try {

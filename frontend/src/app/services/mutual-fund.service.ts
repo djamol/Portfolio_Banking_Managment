@@ -48,4 +48,18 @@ export class MutualFundService {
     return this.http.get<ApiResponse<MutualFundNavSnapshot[]>>(`${getApiBaseUrl()}/mutual-funds/snapshots/${investmentId}`, { params })
       .pipe(map(response => response.success ? response.data : []));
   }
+
+  refreshLatest(): Observable<NavRefreshResult> {
+    return this.http.post<ApiResponse<NavRefreshResult>>(`${getApiBaseUrl()}/mutual-funds/refresh-latest`, {})
+      .pipe(map(response => response.data));
+  }
+}
+
+export interface NavRefreshResult {
+  snapshot_date: string;
+  total: number;
+  succeeded: number;
+  failed: number;
+  value_change: number;
+  results: { id: number; ok: boolean; error?: string; previous?: number; value?: number; nav?: number; nav_date?: string }[];
 }

@@ -81,7 +81,7 @@ async function createInvestment(data) {
 
 async function updateInvestment(id, data) {
   const pool = getPool();
-  const [oldInvestment] = await pool.query('SELECT amount FROM investments WHERE id = ?', [id]);
+  const [oldInvestment] = await pool.query('SELECT amount, units, nav_price, invested_amount FROM investments WHERE id = ?', [id]);
   if (!oldInvestment.length) return null;
 
   await pool.query(
@@ -110,23 +110,41 @@ async function updateInvestment(id, data) {
     ]
   );
 
-  if (Number(oldInvestment[0].amount) !== Number(data.amount)) {
+  const amountChanged = Number(oldInvestment[0].amount) !== Number(data.amount);
+  const valuationChanged = ['units', 'nav_price', 'invested_amount'].some(
+    (key) => numOrNull(oldInvestment[0][key]) !== numOrNull(data[key])
+  );
+  if (amountChanged || valuationChanged) {
+    let changeDate = data.investment_date || new Date().toISOString().split('T')[0];
+    if (!amountChanged) {
+      // Never date a same-amount row before the latest snapshot, or past as-of values shift.
+      const [latest] = await pool.query(
+        'SELECT MAX(change_date) AS d FROM investment_history WHERE investment_id = ?',
+        [id]
+      );
+      const latestDate = latest[0]?.d ? String(latest[0].d).slice(0, 10) : null;
+      if (latestDate && latestDate > changeDate) changeDate = latestDate;
+    }
     await pool.query(
       `INSERT INTO investment_history (investment_id, amount, units, nav_price, invested_amount, change_date, change_type, notes)
        VALUES (?, ?, ?, ?, ?, ?, 'updated', ?)`,
       [
         id,
         data.amount,
-        data.units != null && data.units !== '' ? Number(data.units) : null,
-        data.nav_price != null && data.nav_price !== '' ? Number(data.nav_price) : null,
-        data.invested_amount != null && data.invested_amount !== '' ? Number(data.invested_amount) : null,
-        data.investment_date || new Date().toISOString().split('T')[0],
+        numOrNull(data.units),
+        numOrNull(data.nav_price),
+        numOrNull(data.invested_amount),
+        changeDate,
         data.notes || null
       ]
     );
   }
 
   return getInvestmentById(id);
+}
+
+function numOrNull(value) {
+  return value != null && value !== '' ? Number(value) : null;
 }
 
 async function deleteInvestment(id) {
@@ -537,6 +555,24 @@ async function listMutualFundNavSnapshots(investmentId, from, to) {
   return rows;
 }
 
+async function getAllTransactions() {
+  const pool = getPool();
+  const [rows] = await pool.query(
+    'SELECT investment_id, txn_date, txn_type, cashflow_amount FROM investment_transactions ORDER BY txn_date ASC, id ASC'
+  );
+  return rows;
+}
+
+/** Update live valuation without touching investment_date or writing history. */
+async function setInvestmentValuation(id, { amount, nav_price, nav_source }) {
+  const pool = getPool();
+  await pool.query(
+    'UPDATE investments SET amount = ?, nav_price = ?, nav_source = ? WHERE id = ?',
+    [amount, nav_price, nav_source, id]
+  );
+  return getInvestmentById(id);
+}
+
 module.exports = {
   getAllInvestments,
   searchInvestments,
@@ -562,5 +598,7 @@ module.exports = {
   syncAmountsFromLatestHistory,
   saveMutualFundNavSnapshot,
   listMutualFundNavSnapshots,
+  getAllTransactions,
+  setInvestmentValuation,
   VALID_TXN_TYPES
 };

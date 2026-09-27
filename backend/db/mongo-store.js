@@ -170,14 +170,27 @@ async function updateInvestment(id, data) {
 
   await getDb().collection('investments').updateOne({ id: numId }, { $set: update });
 
-  if (Number(existing.amount) !== Number(data.amount)) {
+  const numOrNull = (v) => (v != null && v !== '' ? Number(v) : null);
+  const amountChanged = Number(existing.amount) !== Number(data.amount);
+  const valuationChanged = ['units', 'nav_price', 'invested_amount'].some(
+    (key) => numOrNull(existing[key]) !== update[key]
+  );
+  if (amountChanged || valuationChanged) {
+    let changeDate = toDateString(data.investment_date) || toDateString(new Date());
+    if (!amountChanged) {
+      // Never date a same-amount row before the latest snapshot, or past as-of values shift.
+      const latest = await getDb().collection('investment_history')
+        .find({ investment_id: numId }).sort({ change_date: -1 }).limit(1).next();
+      const latestDate = latest ? toDateString(latest.change_date) : null;
+      if (latestDate && latestDate > changeDate) changeDate = latestDate;
+    }
     await addHistory({
       investment_id: numId,
       amount: Number(data.amount),
       units: update.units,
       nav_price: update.nav_price,
       invested_amount: update.invested_amount,
-      change_date: toDateString(data.investment_date) || toDateString(new Date()),
+      change_date: changeDate,
       change_type: 'updated',
       notes: data.notes || null
     });
@@ -662,6 +675,29 @@ async function syncAmountsFromLatestHistory() {
   return updated;
 }
 
+async function getAllTransactions() {
+  const rows = await getDb().collection('investment_transactions')
+    .find({}, { projection: { investment_id: 1, txn_date: 1, txn_type: 1, cashflow_amount: 1 } })
+    .sort({ txn_date: 1, id: 1 })
+    .toArray();
+  return rows.map((r) => ({
+    investment_id: r.investment_id,
+    txn_date: toDateString(r.txn_date),
+    txn_type: r.txn_type,
+    cashflow_amount: Number(r.cashflow_amount)
+  }));
+}
+
+/** Update live valuation without touching investment_date or writing history. */
+async function setInvestmentValuation(id, { amount, nav_price, nav_source }) {
+  const numId = Number(id);
+  await getDb().collection('investments').updateOne(
+    { id: numId },
+    { $set: { amount: Number(amount), nav_price: Number(nav_price), nav_source, updated_at: new Date() } }
+  );
+  return getInvestmentById(numId);
+}
+
 module.exports = {
   INVESTMENT_TYPES,
   formatDoc,
@@ -712,5 +748,7 @@ module.exports = {
     return saved;
   },
   listMutualFundNavSnapshots: mutualFundNavStore.listSnapshots,
+  getAllTransactions,
+  setInvestmentValuation,
   VALID_TXN_TYPES
 };

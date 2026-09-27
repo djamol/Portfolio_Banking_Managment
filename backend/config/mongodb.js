@@ -53,6 +53,7 @@ async function ensureIndexes(database) {
     { collection: 'investments', spec: { investment_type: 1 } },
     { collection: 'investments', spec: { website_app_name: 1 } },
     { collection: 'investment_history', spec: { investment_id: 1, change_date: -1 } },
+    { collection: 'investment_transactions', spec: { investment_id: 1, txn_date: -1 } },
     { collection: 'sub_type_names', spec: { name: 1 }, options: { unique: true } },
     {
       collection: 'sub_type_categories',
