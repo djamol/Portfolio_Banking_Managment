@@ -92,13 +92,34 @@ router.get('/transactions', async (req, res) => {
 router.post('/transactions', async (req, res) => {
   try {
     const { account_id, txn_date } = req.body;
-    if (!account_id || !txn_date) {
+    const accountId = Number(account_id);
+    if (!Number.isInteger(accountId) || accountId <= 0 || !txn_date) {
       return res.status(400).json({ success: false, error: 'account_id and txn_date are required' });
     }
-    if (!req.body.withdrawal && !req.body.deposit) {
-      return res.status(400).json({ success: false, error: 'withdrawal or deposit is required' });
+    const dateText = String(txn_date);
+    const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateText);
+    const date = dateMatch ? new Date(`${dateText}T00:00:00Z`) : null;
+    if (
+      !dateMatch ||
+      Number.isNaN(date.getTime()) ||
+      date.getUTCFullYear() !== Number(dateMatch[1]) ||
+      date.getUTCMonth() + 1 !== Number(dateMatch[2]) ||
+      date.getUTCDate() !== Number(dateMatch[3])
+    ) {
+      return res.status(400).json({ success: false, error: 'txn_date must be YYYY-MM-DD' });
     }
-    const row = await banking.createTransaction(req.body);
+    const withdrawal = Number(req.body.withdrawal || 0);
+    const deposit = Number(req.body.deposit || 0);
+    if (!Number.isFinite(withdrawal) || !Number.isFinite(deposit) || withdrawal < 0 || deposit < 0) {
+      return res.status(400).json({ success: false, error: 'withdrawal and deposit must be non-negative numbers' });
+    }
+    if ((withdrawal > 0) === (deposit > 0)) {
+      return res.status(400).json({ success: false, error: 'Provide exactly one positive withdrawal or deposit' });
+    }
+    if (!(await banking.getAccountById(accountId))) {
+      return res.status(404).json({ success: false, error: 'Account not found' });
+    }
+    const row = await banking.createTransaction({ ...req.body, account_id: accountId, txn_date: dateText });
     res.status(201).json({ success: true, data: row });
   } catch (error) {
     console.error('Error creating transaction:', error);
