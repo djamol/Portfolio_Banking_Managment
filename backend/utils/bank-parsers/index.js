@@ -1,4 +1,6 @@
 const path = require('path');
+const XLSX = require('xlsx');
+const { decryptOfficeFile } = require('../office-file');
 const { parseHdfcCsv, parseHdfcXls, parseHdfcStatement, detectHdfc } = require('./hdfc-csv');
 const { parseIciciXls, detectIcici } = require('./icici-xls');
 const { detectIciciCreditCard, parseIciciCreditCardCsv } = require('./icici-cc-csv');
@@ -149,6 +151,19 @@ async function parseBankStatement({
   const options = { accountNumber, customRules };
   const isExcel = ext === '.xls' || ext === '.xlsx';
 
+  let parseBuffer = buffer;
+  if (isExcel) {
+    try {
+      XLSX.read(buffer, { type: 'buffer', bookSheets: true });
+    } catch (error) {
+      if (/password|encrypt|encrypted|file is corrupt|invalid/i.test(String(error.message || error))) {
+        parseBuffer = await decryptOfficeFile(buffer, password);
+      } else {
+        throw error;
+      }
+    }
+  }
+
   if (ext === '.pdf') {
     const result = await parsePdfStatement(buffer, accountId, {
       password,
@@ -167,23 +182,23 @@ async function parseBankStatement({
     return applyCustomRules(result, accountId, customRules);
   }
 
-  let result = hint === 'HDFC_CC' ? null : parseByHint(hint, buffer, accountId, ext, options);
+  let result = hint === 'HDFC_CC' ? null : parseByHint(hint, parseBuffer, accountId, ext, { ...options, password });
 
   if (!result) {
     if (ext === '.csv' && detectIciciCreditCard(textPreview)) {
       result = parseIciciCreditCardCsv(buffer, accountId, options);
     } else if (ext === '.csv' && detectHdfc(textPreview)) {
       result = parseHdfcCsv(buffer, accountId);
-    } else if (isExcel && detectHdfc(buffer)) {
-      result = parseHdfcXls(buffer, accountId);
-    } else if (isExcel && detectDcb(buffer)) {
-      result = parseDcbXls(buffer, accountId, options);
-    } else if (isExcel && detectAxis(buffer)) {
-      result = parseAxisStatement(buffer, accountId, ext);
-    } else if (isExcel && detectIcici(buffer)) {
-      result = parseIciciXls(buffer, accountId);
-    } else if (detectSbi(ext === '.csv' ? textPreview : buffer)) {
-      result = parseSbiStatement(buffer, accountId, ext);
+    } else if (isExcel && detectHdfc(parseBuffer)) {
+      result = parseHdfcXls(parseBuffer, accountId);
+    } else if (isExcel && detectDcb(parseBuffer)) {
+      result = parseDcbXls(parseBuffer, accountId, options);
+    } else if (isExcel && detectAxis(parseBuffer)) {
+      result = parseAxisStatement(parseBuffer, accountId, ext);
+    } else if (isExcel && detectIcici(parseBuffer)) {
+      result = parseIciciXls(parseBuffer, accountId);
+    } else if (detectSbi(ext === '.csv' ? textPreview : parseBuffer)) {
+      result = parseSbiStatement(parseBuffer, accountId, ext);
     } else if (detectAxis(ext === '.csv' ? textPreview : buffer)) {
       result = parseAxisStatement(buffer, accountId, ext);
     } else if (detectKotak(ext === '.csv' ? textPreview : buffer)) {
@@ -192,7 +207,7 @@ async function parseBankStatement({
       if (detectHdfc(textPreview)) result = parseHdfcCsv(buffer, accountId);
       else result = parseGenericCsv(buffer, accountId);
     } else if (isExcel) {
-      result = parseGenericXls(buffer, accountId);
+      result = parseGenericXls(parseBuffer, accountId);
     } else {
       try {
         if (detectIciciCreditCard(textPreview)) result = parseIciciCreditCardCsv(buffer, accountId, options);

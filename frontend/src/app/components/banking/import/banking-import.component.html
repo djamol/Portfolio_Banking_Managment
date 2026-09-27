@@ -96,7 +96,7 @@
           </ul>
         </div>
         <div class="form-group" *ngIf="showPdfPassword">
-          <label>PDF password (applied to all selected PDFs)</label>
+          <label>Statement password (applied to all selected PDFs and Excel files)</label>
           <input
             type="password"
             [(ngModel)]="importPdfPassword"
@@ -108,7 +108,7 @@
           />
           <p class="field-error" *ngIf="pdfPasswordError" role="alert">{{ pdfPasswordError }}</p>
           <p class="hint" *ngIf="!pdfPasswordError">
-            Usually DOB (DDMMYYYY), card last 4 digits, or bank netbanking password — case-sensitive.
+            Required for password-protected statements; it is usually case-sensitive.
           </p>
         </div>
       </div>

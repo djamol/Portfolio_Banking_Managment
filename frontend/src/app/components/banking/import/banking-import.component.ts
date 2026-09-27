@@ -94,7 +94,7 @@ export class BankingImportComponent implements OnInit, OnDestroy {
   }
 
   private refreshPdfPasswordVisibility() {
-    this.showPdfPassword = this.importFiles.some((f) => /\.pdf$/i.test(f.name));
+    this.showPdfPassword = this.importFiles.some((f) => /\.(pdf|xls|xlsx)$/i.test(f.name));
     if (!this.showPdfPassword) {
       this.importPdfPassword = '';
       this.pdfPasswordError = '';
@@ -160,7 +160,7 @@ export class BankingImportComponent implements OnInit, OnDestroy {
     return (
       code === 'PDF_PASSWORD_INCORRECT' ||
       code === 'PDF_PASSWORD_REQUIRED' ||
-      /incorrect\s*pdf\s*password/i.test(message) ||
+      /incorrect\s*(pdf|excel|statement)\s*password/i.test(message) ||
       /password-protected/i.test(message)
     );
   }
@@ -168,8 +168,8 @@ export class BankingImportComponent implements OnInit, OnDestroy {
   private applyPdfPasswordError(message: string, code?: string) {
     this.pdfPasswordError =
       code === 'PDF_PASSWORD_REQUIRED' || /password-protected/i.test(message)
-        ? 'This PDF is password-protected. Enter the statement password and try again.'
-        : 'Incorrect PDF password. Check the password and try again.';
+        ? 'This statement is password-protected. Enter the statement password and try again.'
+        : 'Incorrect statement password. Check the password and try again.';
     this.ctx.flash('error', this.pdfPasswordError);
   }
 
@@ -224,7 +224,7 @@ export class BankingImportComponent implements OnInit, OnDestroy {
     this.pdfPasswordError = '';
     if (this.showPdfPassword && !this.importPdfPassword.trim()) {
       this.pdfPasswordError =
-        'Enter the PDF password (credit card statements are usually locked)';
+        'Enter the statement password (password-protected Excel and PDF statements require it)';
       this.ctx.flash('error', this.pdfPasswordError);
       return false;
     }
