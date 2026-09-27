@@ -17,6 +17,7 @@ import { BankingCashflowComponent } from './cashflow/banking-cashflow.component'
 import { BankingIncomeComponent } from './income/banking-income.component';
 import { BankingExpenseComponent } from './expense/banking-expense.component';
 import { BankingInterestComponent } from './interest/banking-interest.component';
+import { BankingMfEtfComponent } from './mf-etf/banking-mf-etf.component';
 import { BankingInsightsComponent } from './insights/banking-insights.component';
 
 @NgModule({
@@ -35,6 +36,7 @@ import { BankingInsightsComponent } from './insights/banking-insights.component'
     BankingIncomeComponent,
     BankingExpenseComponent,
     BankingInterestComponent,
+    BankingMfEtfComponent,
     BankingInsightsComponent
   ],
   imports: [SharedModule, AppChartsModule, RouterModule.forChild(BANKING_ROUTES)]

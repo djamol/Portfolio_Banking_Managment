@@ -83,6 +83,7 @@ export class BankingShellComponent implements OnInit, OnDestroy {
         'income',
         'expense',
         'interest',
+        'mf-etf',
         'insights'
       ] as BankingRouteId[]
     ).includes(segment as BankingRouteId)

@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const crypto = require('crypto');
 const banking = require('../db/banking');
+const { getInvestmentFlows } = require('../db/investment-flows');
 const { parseBankStatement } = require('../utils/bank-parsers');
 const {
   buildTransactionsWorkbook,
@@ -253,6 +254,17 @@ router.get('/analytics/by-payee', async (req, res) => {
     res.json({ success: true, data });
   } catch (error) {
     console.error('Error fetching payee analytics:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/investment-flows', async (req, res) => {
+  try {
+    const { account_id, from, to } = req.query;
+    const data = await getInvestmentFlows({ account_id, from, to });
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching investment flows:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

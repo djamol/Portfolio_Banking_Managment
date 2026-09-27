@@ -28,6 +28,16 @@ export class BankAnalyticsService {
     );
   }
 
+  getInvestmentFlows(filters: Record<string, any> = {}): Observable<any> {
+    let params = new HttpParams();
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== null && v !== undefined && v !== '') params = params.set(k, String(v));
+    });
+    return this.http.get<ApiResponse<any>>(bankApiUrl('investment-flows'), { params }).pipe(
+      map((r) => (r.success ? r.data : null))
+    );
+  }
+
   getCashSummary(): Observable<{
     accounts: Array<{
       id: number;

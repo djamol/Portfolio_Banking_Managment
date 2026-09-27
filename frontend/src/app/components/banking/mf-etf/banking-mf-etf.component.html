@@ -1,0 +1,450 @@
+<div class="loading-overlay" *ngIf="loading && !data">Loading MF &amp; ETF data…</div>
+
+<ng-container *ngIf="data">
+  <!-- Holdings snapshot -->
+  <div class="section-head">
+    <div>
+      <h3>Portfolio snapshot</h3>
+      <p>Current MF / ETF holdings from your Investments data (latest imported value per holding)</p>
+    </div>
+    <div class="seg">
+      <button type="button" [class.active]="holdingType === 'all'" (click)="setHoldingType('all')">All</button>
+      <button type="button" [class.active]="holdingType === 'Mutual Fund'" (click)="setHoldingType('Mutual Fund')">
+        Mutual Funds ({{ holdings.summary.mf.count }})
+      </button>
+      <button type="button" [class.active]="holdingType === 'ETF'" (click)="setHoldingType('ETF')">
+        ETFs ({{ holdings.summary.etf.count }})
+      </button>
+    </div>
+  </div>
+
+  <div class="stat-grid" *ngIf="typeSummary as s">
+    <div class="stat-card">
+      <div class="stat-label">Current value</div>
+      <div class="stat-value">₹{{ formatMoney(s.current) }}</div>
+      <div class="stat-sub">{{ s.count }} holding{{ s.count === 1 ? '' : 's' }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Invested (cost)</div>
+      <div class="stat-value">₹{{ formatMoney(s.invested) }}</div>
+      <div class="stat-sub" *ngIf="s.missing_cost">{{ s.missing_cost }} without cost</div>
+    </div>
+    <div class="stat-card" [class.credit]="s.gain >= 0" [class.debit]="s.gain < 0">
+      <div class="stat-label">Unrealised gain / loss</div>
+      <div class="stat-value">₹{{ formatMoney(s.gain) }}</div>
+      <div class="stat-sub">{{ formatPct(s.gain_pct) }} absolute</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Gainers / losers</div>
+      <div class="stat-value"><span class="credit">{{ s.gainers }}</span> / <span class="debit">{{ s.losers }}</span></div>
+    </div>
+    <div class="stat-card" *ngIf="holdingType === 'all'">
+      <div class="stat-label">Bank-flow XIRR (approx.)</div>
+      <div class="stat-value" [class.credit]="(data.reconciliation.bank_xirr || 0) >= 0" [class.debit]="(data.reconciliation.bank_xirr || 0) < 0">
+        {{ data.reconciliation.bank_xirr != null ? formatPct(data.reconciliation.bank_xirr) : '—' }}
+      </div>
+      <div class="stat-sub">{{ data.reconciliation.full_range ? 'Bank flows + current value' : 'Clear account / date filters' }}</div>
+    </div>
+    <div class="stat-card" *ngIf="holdingType === 'all'">
+      <div class="stat-label">Concentration</div>
+      <div class="stat-value">{{ holdings.summary.top_weight_pct | number: '1.1-1' }}%</div>
+      <div class="stat-sub">Top 1 · top 5 = {{ holdings.summary.top5_weight_pct | number: '1.1-1' }}%</div>
+    </div>
+  </div>
+
+  <!-- Bank cashflow summary -->
+  <div class="section-head">
+    <div>
+      <h3>Money moved via bank</h3>
+      <p>Purchases, redemptions and dividends detected in bank statements (respects account &amp; date filters)</p>
+    </div>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat-card debit">
+      <div class="stat-label">Invested</div>
+      <div class="stat-value">₹{{ formatMoney(bank.summary.invested) }}</div>
+      <div class="stat-sub">{{ bank.summary.purchase_count }} debits</div>
+    </div>
+    <div class="stat-card credit">
+      <div class="stat-label">Redeemed</div>
+      <div class="stat-value">₹{{ formatMoney(bank.summary.redeemed) }}</div>
+      <div class="stat-sub">{{ bank.summary.redemption_count }} credits</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Net invested</div>
+      <div class="stat-value">₹{{ formatMoney(bank.summary.net_invested) }}</div>
+      <div class="stat-sub">MF ₹{{ formatMoney(bank.summary.mf_invested) }} · Broker ₹{{ formatMoney(bank.summary.broker_invested) }}</div>
+    </div>
+    <div class="stat-card credit">
+      <div class="stat-label">Dividends received</div>
+      <div class="stat-value">₹{{ formatMoney(bank.summary.dividends) }}</div>
+      <div class="stat-sub" *ngIf="dividendYieldPct != null">≈ {{ dividendYieldPct | number: '1.2-2' }}% of current value</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Avg / active month</div>
+      <div class="stat-value">₹{{ formatMoney(bank.summary.avg_monthly_invested) }}</div>
+      <div class="stat-sub">{{ bank.summary.active_months }} months with buys</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Active SIPs</div>
+      <div class="stat-value">{{ activeSips.length }}</div>
+      <div class="stat-sub">₹{{ formatMoney(activeSipMonthly) }} / month</div>
+    </div>
+  </div>
+
+  <div class="card" *ngIf="data.insights?.length">
+    <h3>Insights</h3>
+    <ul class="mf-insights">
+      <li *ngFor="let i of data.insights" [class.warn]="i.level === 'warn'">{{ i.text }}</li>
+    </ul>
+  </div>
+
+  <!-- Flow charts -->
+  <div class="card">
+    <div class="section-head">
+      <div>
+        <h3>Invested, redeemed &amp; dividends over time</h3>
+        <p class="hint">From bank narrations categorised as Investment_* (FD excluded) and dividend credits</p>
+      </div>
+      <div class="seg">
+        <button type="button" [class.active]="flowGrain === 'month'" (click)="setFlowGrain('month')">Monthly</button>
+        <button type="button" [class.active]="flowGrain === 'fy'" (click)="setFlowGrain('fy')">Financial year</button>
+      </div>
+    </div>
+    <div class="chart-box x-tall" *ngIf="flowRows.length; else noFlows">
+      <canvas baseChart [data]="flowChartData" [options]="barOptions" type="bar"></canvas>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="card">
+      <h3>Capital deployed (cumulative net invested)</h3>
+      <div class="chart-box" *ngIf="bank.byMonth.length; else noFlows">
+        <canvas baseChart [data]="cumulativeChartData" [options]="lineOptions" type="line"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Holdings value vs cost over time</h3>
+      <div class="chart-box" *ngIf="holdings.history.length > 1; else noHistory">
+        <canvas baseChart [data]="valueChartData" [options]="lineOptions" type="line"></canvas>
+      </div>
+      <ng-template #noHistory>
+        <p class="empty">Need 2+ import snapshots to plot value history. Re-import MF / ETF statements periodically.</p>
+      </ng-template>
+    </div>
+  </div>
+
+  <!-- Allocation -->
+  <div class="two-col">
+    <div class="card">
+      <div class="section-head">
+        <h3>Allocation (current value)</h3>
+        <select [ngModel]="allocationDim" (ngModelChange)="setAllocationDim($event)">
+          <option value="byCategory">By category</option>
+          <option value="byGroup">By asset group</option>
+          <option value="byPlatform">By platform</option>
+          <option value="byType">MF vs ETF</option>
+        </select>
+      </div>
+      <div class="chart-box" *ngIf="allocationRows.length; else noHoldings">
+        <canvas baseChart [data]="allocationChartData" [options]="doughnutOptions" type="doughnut"></canvas>
+      </div>
+      <table class="data-table compact" *ngIf="allocationRows.length">
+        <thead>
+          <tr>
+            <th>{{ allocationDim === 'byType' ? 'Type' : allocationDim === 'byPlatform' ? 'Platform' : 'Group' }}</th>
+            <th class="num">Value</th>
+            <th class="num">Weight</th>
+            <th class="num">Return</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let r of allocationRows">
+            <td>{{ r.key }} <span class="muted">({{ r.count }})</span></td>
+            <td class="num">₹{{ formatMoney(r.current) }}</td>
+            <td class="num">
+              <div class="share-bar-wrap">
+                <div class="share-bar" [style.width.px]="r.weight_pct * 0.8"></div>
+                {{ r.weight_pct | number: '1.1-1' }}%
+              </div>
+            </td>
+            <td class="num" [class.credit]="r.gain_pct > 0" [class.debit]="r.gain_pct < 0">{{ formatPct(r.gain_pct) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Invested by platform (bank)</h3>
+      <div class="chart-box" *ngIf="platformChartData.labels?.length; else noFlows">
+        <canvas baseChart [data]="platformChartData" [options]="doughnutOptions" type="doughnut"></canvas>
+      </div>
+      <table class="data-table compact" *ngIf="bank.byPlatform.length">
+        <thead>
+          <tr>
+            <th>Platform</th>
+            <th class="num">Invested</th>
+            <th class="num">Redeemed</th>
+            <th class="num">Dividends</th>
+            <th class="num">Net</th>
+            <th>Last</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let p of bank.byPlatform">
+            <td>{{ p.platform }} <span class="badge">{{ p.channel }}</span></td>
+            <td class="num debit">₹{{ formatMoney(p.invested) }}</td>
+            <td class="num credit">₹{{ formatMoney(p.redeemed) }}</td>
+            <td class="num credit">₹{{ formatMoney(p.dividends) }}</td>
+            <td class="num">₹{{ formatMoney(p.net) }}</td>
+            <td class="nowrap">{{ p.last_date }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Holdings table -->
+  <div class="card">
+    <div class="section-head">
+      <div>
+        <h3>Holdings</h3>
+        <p class="hint">Values older than {{ staleDays }} days are flagged — re-import or refresh NAV</p>
+      </div>
+      <div class="holding-tools">
+        <input type="search" placeholder="Search fund / platform / category" [(ngModel)]="holdingSearch" />
+        <button class="btn btn-secondary btn-sm" (click)="openHoldings()">Edit holdings</button>
+        <button class="btn btn-secondary btn-sm" (click)="openNavHistory()">NAV history</button>
+      </div>
+    </div>
+    <div class="table-scroll" *ngIf="visibleHoldings.length; else noHoldings">
+      <table class="data-table compact sticky-head">
+        <thead>
+          <tr>
+            <th class="sortable" (click)="sortHoldings('name')">Holding {{ sortIcon('name') }}</th>
+            <th>Platform</th>
+            <th>Category</th>
+            <th class="num">Units</th>
+            <th class="num">NAV / price</th>
+            <th class="num">Invested</th>
+            <th class="num sortable" (click)="sortHoldings('current')">Current {{ sortIcon('current') }}</th>
+            <th class="num sortable" (click)="sortHoldings('gain')">Gain {{ sortIcon('gain') }}</th>
+            <th class="num sortable" (click)="sortHoldings('gain_pct')">Return {{ sortIcon('gain_pct') }}</th>
+            <th class="num sortable" (click)="sortHoldings('weight_pct')">Weight {{ sortIcon('weight_pct') }}</th>
+            <th class="sortable" (click)="sortHoldings('stale_days')">As of {{ sortIcon('stale_days') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let h of visibleHoldings">
+            <td>
+              {{ h.name }}
+              <span class="badge">{{ h.type === 'ETF' ? 'ETF' : 'MF' }}</span>
+            </td>
+            <td>{{ h.platform }}</td>
+            <td>{{ h.category }}<div class="muted small" *ngIf="h.group !== '—'">{{ h.group }}</div></td>
+            <td class="num">{{ h.units != null ? (h.units | number: '1.0-3') : '—' }}</td>
+            <td class="num">
+              {{ h.nav != null ? '₹' + (h.nav | number: '1.2-4') : '—' }}
+              <div class="muted small" *ngIf="h.avg_cost">avg ₹{{ h.avg_cost | number: '1.2-4' }}</div>
+            </td>
+            <td class="num">{{ h.invested != null ? '₹' + formatMoney(h.invested) : '—' }}</td>
+            <td class="num">₹{{ formatMoney(h.current) }}</td>
+            <td class="num" [class.credit]="h.gain > 0" [class.debit]="h.gain < 0">
+              {{ h.gain != null ? '₹' + formatMoney(h.gain) : '—' }}
+            </td>
+            <td class="num" [class.credit]="h.gain_pct > 0" [class.debit]="h.gain_pct < 0">{{ formatPct(h.gain_pct) }}</td>
+            <td class="num">{{ h.weight_pct | number: '1.1-1' }}%</td>
+            <td class="nowrap" [class.stale]="h.stale_days > staleDays">
+              {{ h.as_of || '—' }}
+              <div class="muted small" *ngIf="h.stale_days != null">{{ h.stale_days }}d ago</div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="two-col" *ngIf="topGainers.length || topLosers.length">
+    <div class="card">
+      <h3>Top gainers</h3>
+      <table class="data-table compact">
+        <tbody>
+          <tr *ngFor="let h of topGainers">
+            <td>{{ h.name }} <span class="badge">{{ h.type === 'ETF' ? 'ETF' : 'MF' }}</span></td>
+            <td class="num credit">₹{{ formatMoney(h.gain) }}</td>
+            <td class="num credit">{{ formatPct(h.gain_pct) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Top losers</h3>
+      <table class="data-table compact" *ngIf="topLosers.length; else noLosers">
+        <tbody>
+          <tr *ngFor="let h of topLosers">
+            <td>{{ h.name }} <span class="badge">{{ h.type === 'ETF' ? 'ETF' : 'MF' }}</span></td>
+            <td class="num debit">₹{{ formatMoney(h.gain) }}</td>
+            <td class="num debit">{{ formatPct(h.gain_pct) }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <ng-template #noLosers><p class="empty">No holdings in loss.</p></ng-template>
+    </div>
+  </div>
+
+  <!-- SIPs -->
+  <div class="card">
+    <h3>SIP tracker</h3>
+    <p class="hint">Detected when the same amount goes to the same platform in 3+ different months</p>
+    <table class="data-table compact" *ngIf="bank.sips.length; else noSips">
+      <thead>
+        <tr>
+          <th>Platform</th>
+          <th class="num">Amount</th>
+          <th class="num">Day</th>
+          <th class="num">Installments</th>
+          <th class="num">Consistency</th>
+          <th class="num">Total paid</th>
+          <th>First → last</th>
+          <th>Next expected</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let s of bank.sips" [class.inactive-row]="!s.active">
+          <td>{{ s.platform }} <span class="badge">{{ s.channel }}</span></td>
+          <td class="num">₹{{ formatMoney(s.amount) }}</td>
+          <td class="num">{{ s.typical_day }}</td>
+          <td class="num">{{ s.installments }}</td>
+          <td class="num" [class.debit]="s.consistency_pct < 80">
+            {{ s.months_paid }}/{{ s.months_span }} ({{ s.consistency_pct | number: '1.0-0' }}%)
+          </td>
+          <td class="num">₹{{ formatMoney(s.total) }}</td>
+          <td class="nowrap">{{ s.first_date }} → {{ s.last_date }}</td>
+          <td class="nowrap">{{ s.active ? s.next_expected : '—' }}</td>
+          <td>
+            <span class="pill" [class.on]="s.active">{{ s.active ? 'Active' : 'Stopped' }}</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <ng-template #noSips><p class="empty">No recurring SIP pattern found in the selected range.</p></ng-template>
+  </div>
+
+  <!-- Reconciliation -->
+  <div class="card" *ngIf="data.reconciliation.rows.length">
+    <h3>Bank vs holdings reconciliation</h3>
+    <p class="hint">
+      Net money sent to each platform (bank) compared with the cost recorded in holdings.
+      <ng-container *ngIf="!data.reconciliation.full_range">Filters are active, so bank side covers only part of your history.</ng-container>
+    </p>
+    <table class="data-table compact">
+      <thead>
+        <tr>
+          <th>Platform</th>
+          <th class="num">Bank net invested</th>
+          <th class="num">Holdings cost</th>
+          <th class="num">Holdings value</th>
+          <th class="num">Gap (bank − cost)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let r of data.reconciliation.rows">
+          <td>{{ r.platform }}</td>
+          <td class="num">₹{{ formatMoney(r.bank_net) }}</td>
+          <td class="num">₹{{ formatMoney(r.holdings_invested) }}</td>
+          <td class="num">₹{{ formatMoney(r.holdings_current) }}</td>
+          <td class="num" [class.debit]="r.gap < 0">₹{{ formatMoney(r.gap) }}</td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <th>Total</th>
+          <th class="num">₹{{ formatMoney(data.reconciliation.bank_net_invested) }}</th>
+          <th class="num">₹{{ formatMoney(data.reconciliation.holdings_invested) }}</th>
+          <th class="num">₹{{ formatMoney(holdings.summary.current) }}</th>
+          <th class="num">₹{{ formatMoney(data.reconciliation.gap) }}</th>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <!-- Flow table -->
+  <div class="card" *ngIf="flowRows.length">
+    <h3>{{ flowGrain === 'fy' ? 'Financial-year' : 'Monthly' }} investment table</h3>
+    <div class="table-scroll">
+      <table class="data-table compact">
+        <thead>
+          <tr>
+            <th>{{ flowGrain === 'fy' ? 'FY' : 'Month' }}</th>
+            <th class="num">Invested</th>
+            <th class="num">Redeemed</th>
+            <th class="num">Dividends</th>
+            <th class="num">Net invested</th>
+            <th class="num" *ngIf="flowGrain === 'month'">Cumulative</th>
+            <th class="num">Txns</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let r of flowRows">
+            <td>{{ r.month || r.fy }}</td>
+            <td class="num debit">₹{{ formatMoney(r.invested) }}</td>
+            <td class="num credit">₹{{ formatMoney(r.redeemed) }}</td>
+            <td class="num credit">₹{{ formatMoney(r.dividends) }}</td>
+            <td class="num">₹{{ formatMoney(r.net) }}</td>
+            <td class="num" *ngIf="flowGrain === 'month'">₹{{ formatMoney(r.cumulative_net) }}</td>
+            <td class="num">{{ r.txn_count }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Recent -->
+  <div class="card" *ngIf="bank.recent.length">
+    <h3>Recent MF / ETF bank transactions</h3>
+    <div class="table-scroll">
+      <table class="data-table compact">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Type</th>
+            <th>Platform</th>
+            <th>Account</th>
+            <th>Narration</th>
+            <th class="num">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let t of bank.recent">
+            <td class="nowrap">{{ t.date }}</td>
+            <td><span class="pill" [ngClass]="t.kind">{{ t.kind }}</span></td>
+            <td>{{ t.platform }}</td>
+            <td class="muted">{{ t.account }}</td>
+            <td class="narration">{{ t.narration }}</td>
+            <td class="num" [class.debit]="t.kind === 'purchase'" [class.credit]="t.kind !== 'purchase'">
+              ₹{{ formatMoney(t.amount) }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-actions">
+    <button class="btn btn-secondary" (click)="viewTransactions()">View investment transactions</button>
+    <button class="btn btn-secondary" (click)="load()" [disabled]="loading">Reload</button>
+  </div>
+</ng-container>
+
+<ng-template #noFlows>
+  <p class="empty">No MF / ETF bank activity in the selected range. Import statements or widen the date filter.</p>
+</ng-template>
+<ng-template #noHoldings>
+  <p class="empty">No Mutual Fund / ETF holdings found. Import them from Data → Import statements.</p>
+</ng-template>
+
+<div class="card" *ngIf="!loading && !data && error">
+  <p class="empty">{{ error }}</p>
+</div>

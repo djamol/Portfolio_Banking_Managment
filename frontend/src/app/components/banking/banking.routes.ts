@@ -12,6 +12,7 @@ import { BankingCashflowComponent } from './cashflow/banking-cashflow.component'
 import { BankingIncomeComponent } from './income/banking-income.component';
 import { BankingExpenseComponent } from './expense/banking-expense.component';
 import { BankingInterestComponent } from './interest/banking-interest.component';
+import { BankingMfEtfComponent } from './mf-etf/banking-mf-etf.component';
 import { BankingInsightsComponent } from './insights/banking-insights.component';
 
 export const BANKING_ROUTES: Routes = [
@@ -32,6 +33,7 @@ export const BANKING_ROUTES: Routes = [
       { path: 'income', component: BankingIncomeComponent },
       { path: 'expense', component: BankingExpenseComponent },
       { path: 'interest', component: BankingInterestComponent },
+      { path: 'mf-etf', component: BankingMfEtfComponent },
       { path: 'insights', component: BankingInsightsComponent }
     ]
   }

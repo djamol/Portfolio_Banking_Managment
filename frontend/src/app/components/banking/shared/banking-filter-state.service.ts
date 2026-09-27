@@ -15,6 +15,7 @@ export type BankingRouteId =
   | 'income'
   | 'expense'
   | 'interest'
+  | 'mf-etf'
   | 'insights';
 
 @Injectable({ providedIn: 'root' })
@@ -151,6 +152,7 @@ export class BankingFilterState {
       r === 'income' ||
       r === 'expense' ||
       r === 'interest' ||
+      r === 'mf-etf' ||
       r === 'insights'
     );
   }
@@ -266,7 +268,7 @@ export class BankingFilterState {
   }
 
   applyQuickFilter(
-    kind: 'uncategorized' | 'interest' | 'debit' | 'credit' | 'clear' | 'transfers' | 'manual' | 'auto',
+    kind: 'uncategorized' | 'interest' | 'investment' | 'debit' | 'credit' | 'clear' | 'transfers' | 'manual' | 'auto',
     interestCategories: string[] = []
   ) {
     const wasTransfers = this.filterTransfersOnly;
@@ -292,6 +294,15 @@ export class BankingFilterState {
       this.filterCategories = cats.length
         ? cats
         : ['Income_Interest_Bank', 'Income_Interest_Bond', 'Interest Income'];
+      this.filterCategory = '';
+      this.filterFlow = '';
+    } else if (kind === 'investment') {
+      const cats = (interestCategories || []).filter(
+        (c) => c.startsWith('Investment_') && !c.startsWith('Investment_FD')
+      );
+      this.filterCategories = cats.length
+        ? cats
+        : ['Investment_MutualFund_Purchase', 'Investment_MutualFund_Redemption', 'Investment_Broker_Trading'];
       this.filterCategory = '';
       this.filterFlow = '';
     } else if (kind === 'debit') {
