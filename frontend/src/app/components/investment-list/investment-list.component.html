@@ -811,9 +811,26 @@
                   <strong>{{ row.fund_name }}</strong>
                   <span>Type: {{ row.sub_type_name || row.investment_type || 'Mutual Fund' }}</span>
                   <span>Category: {{ row.sub_type_category || '—' }}</span>
-                  <span>{{ row.platform || '—' }} · Scheme {{ row.scheme_code || 'not set' }}</span>
+                  <span>{{ row.platform || '—' }} · Scheme {{ row.schemeCode || row.scheme_code || 'not set' }}</span>
                   <div *ngIf="row.can_edit_scheme_code" class="nav-review-scheme-editor">
-                    <label [for]="'scheme-code-' + row.id">MFAPI scheme code</label>
+                    <label [for]="'scheme-search-' + row.id">Search MFAPI schemes</label>
+                    <div class="nav-review-scheme-search">
+                      <input [id]="'scheme-search-' + row.id" type="search" [(ngModel)]="row.schemeSearchQuery"
+                        [name]="'scheme-search-' + row.id" [disabled]="navApplying || row.schemeSearchLoading"
+                        placeholder="Search by full fund name" (keyup.enter)="searchNavScheme(row)">
+                      <button type="button" class="btn btn-outline-secondary" (click)="searchNavScheme(row)"
+                        [disabled]="navApplying || row.schemeSearchLoading || row.schemeSearchQuery.trim().length < 2">
+                        {{ row.schemeSearchLoading ? 'Searching…' : 'Search' }}
+                      </button>
+                    </div>
+                    <div *ngIf="row.schemeSearchResults.length" class="nav-review-scheme-results" role="listbox">
+                      <button type="button" *ngFor="let scheme of row.schemeSearchResults"
+                        (click)="selectNavScheme(row, scheme)" [disabled]="navApplying" role="option">
+                        <strong>{{ scheme.schemeName }}</strong><small>Code {{ scheme.schemeCode }}</small>
+                      </button>
+                    </div>
+                    <small *ngIf="row.schemeSearchError" class="nav-review-scheme-error">{{ row.schemeSearchError }}</small>
+                    <label [for]="'scheme-code-' + row.id">Selected MFAPI scheme code</label>
                     <input [id]="'scheme-code-' + row.id" type="text" inputmode="numeric" pattern="[0-9]+"
                       [(ngModel)]="row.schemeCode" [name]="'scheme-code-' + row.id" [disabled]="navApplying"
                       placeholder="Enter scheme code">

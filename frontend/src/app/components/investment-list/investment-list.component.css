@@ -809,6 +809,72 @@ textarea.form-control {
   border-radius: 4px;
 }
 
+.nav-review-scheme-search {
+  display: flex;
+  gap: 5px;
+  margin: 4px 0 8px;
+}
+
+.nav-review-scheme-search input {
+  min-width: 0;
+  margin: 0;
+}
+
+.nav-review-scheme-search button {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  font-size: 12px;
+}
+
+.nav-review-scheme-results {
+  max-height: 180px;
+  margin: 4px 0 8px;
+  overflow-y: auto;
+  border: 1px solid #d7dde2;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.nav-review-scheme-results button {
+  display: block;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-bottom: 1px solid #e6e9ec;
+  background: #fff;
+  color: #25313a;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nav-review-scheme-results button:last-child {
+  border-bottom: 0;
+}
+
+.nav-review-scheme-results button:hover:not(:disabled) {
+  background: #f3f6f7;
+}
+
+.nav-review-scheme-results strong,
+.nav-review-scheme-results small {
+  display: block;
+}
+
+.nav-review-scheme-results strong {
+  white-space: normal;
+}
+
+.nav-review-scheme-results small,
+.nav-review-scheme-error {
+  margin-top: 3px;
+  color: #68727c;
+  font-size: 11px;
+}
+
+.nav-review-scheme-error {
+  color: #b42318 !important;
+}
+
 .nav-diff-up {
   color: #16724a;
   font-weight: 600;

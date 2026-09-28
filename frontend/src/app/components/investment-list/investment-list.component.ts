@@ -1,7 +1,7 @@
 import { Component, ElementRef, HostListener, OnInit, ViewChild } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { InvestmentService, InvestmentReturn, InvestmentReturnsResponse } from '../../services/investment.service';
-import { MutualFundService, NavRefreshCandidate, NavRefreshChoice } from '../../services/mutual-fund.service';
+import { MutualFundScheme, MutualFundService, NavRefreshCandidate, NavRefreshChoice } from '../../services/mutual-fund.service';
 import { AnalyticsService } from '../../services/analytics.service';
 import { CategoryService, SubTypeName, Category } from '../../services/category.service';
 import { ConfigService } from '../../services/config.service';
@@ -22,6 +22,10 @@ interface NavReviewRow extends NavRefreshCandidate {
   choice: NavReviewChoice;
   manualNav: number | null;
   schemeCode: string;
+  schemeSearchQuery: string;
+  schemeSearchResults: MutualFundScheme[];
+  schemeSearchLoading: boolean;
+  schemeSearchError: string;
 }
 
 @Component({
@@ -217,7 +221,11 @@ export class InvestmentListComponent implements OnInit {
               sub_type_category: candidate.sub_type_category || investment?.sub_type_category || '',
               choice: candidate.ok && candidate.changed ? 'api' : 'reject',
               manualNav: candidate.nav ?? null,
-              schemeCode: candidate.scheme_code || ''
+              schemeCode: candidate.scheme_code || '',
+              schemeSearchQuery: candidate.fund_name || '',
+              schemeSearchResults: [],
+              schemeSearchLoading: false,
+              schemeSearchError: ''
             };
           });
         this.showMatchingNavs = false;
@@ -242,6 +250,32 @@ export class InvestmentListComponent implements OnInit {
     return this.navReviewRows.filter(row => row.ok && !row.changed).length;
   }
 
+  searchNavScheme(row: NavReviewRow) {
+    const query = row.schemeSearchQuery.trim();
+    if (query.length < 2 || row.schemeSearchLoading) return;
+    row.schemeSearchLoading = true;
+    row.schemeSearchError = '';
+    row.schemeSearchResults = [];
+    this.mutualFundService.search(query).subscribe({
+      next: results => {
+        row.schemeSearchResults = results;
+        row.schemeSearchLoading = false;
+        if (!results.length) row.schemeSearchError = 'No matching schemes found';
+      },
+      error: error => {
+        row.schemeSearchLoading = false;
+        row.schemeSearchError = error?.error?.error || 'Scheme search failed';
+      }
+    });
+  }
+
+  selectNavScheme(row: NavReviewRow, scheme: MutualFundScheme) {
+    row.schemeCode = String(scheme.schemeCode);
+    row.schemeSearchQuery = scheme.schemeName;
+    row.schemeSearchResults = [];
+    row.schemeSearchError = '';
+  }
+
   applyNavReview() {
     if (this.navApplying) return;
     const rows = this.visibleNavReviewRows;
@@ -255,7 +289,7 @@ export class InvestmentListComponent implements OnInit {
     }
 
     const updates: NavRefreshChoice[] = [];
-  for (const row of rows) {
+    for (const row of rows) {
       const schemeCode = row.can_edit_scheme_code ? row.schemeCode.trim() : '';
       if (row.choice === 'reject') {
         updates.push({ id: row.id, choice: 'reject', scheme_code: schemeCode || undefined });
