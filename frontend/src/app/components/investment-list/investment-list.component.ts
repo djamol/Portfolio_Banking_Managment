@@ -206,7 +206,6 @@ export class InvestmentListComponent implements OnInit {
       next: (result) => {
         this.navRefreshing = false;
         this.navReviewRows = result.results
-          .filter(candidate => !candidate.ok || candidate.changed)
           .map(candidate => {
             const investment = this.investments.find(item => Number(item.id) === Number(candidate.id));
             return {

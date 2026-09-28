@@ -106,15 +106,31 @@ router.post('/snapshots', async (req, res) => {
 router.post('/refresh-latest', async (req, res) => {
   try {
     const all = await store.getAllInvestments();
-    const funds = all.filter(inv => inv.investment_type === 'Mutual Fund'
-      && isSchemeCode(inv.mutual_fund_scheme_code) && Number(inv.units) > 0);
+    const funds = all.filter(inv => inv.investment_type === 'Mutual Fund');
     const now = new Date();
     const snapshotDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const navCache = new Map();
     const results = [];
 
     for (const inv of funds) {
-      const code = String(inv.mutual_fund_scheme_code);
+      const code = isSchemeCode(inv.mutual_fund_scheme_code) ? String(inv.mutual_fund_scheme_code) : '';
+      if (!code || !(Number(inv.units) > 0)) {
+        results.push({
+          id: inv.id,
+          ok: false,
+          fund_name: inv.mutual_fund_scheme_name || inv.sub_type_name || `Mutual fund #${inv.id}`,
+          investment_type: inv.investment_type || 'Mutual Fund',
+          sub_type_name: inv.sub_type_name || '',
+          sub_type_category: inv.sub_type_category || '',
+          scheme_code: code,
+          platform: inv.website_app_name || '',
+          units: Number(inv.units) || null,
+          current_nav: Number(inv.nav_price) || null,
+          current_value: Number(inv.amount) || 0,
+          error: !code ? 'Missing or invalid MFAPI scheme code' : 'Units must be greater than zero'
+        });
+        continue;
+      }
       try {
         if (!navCache.has(code)) {
           const latest = await fetchMfApi(`/${code}/latest`);

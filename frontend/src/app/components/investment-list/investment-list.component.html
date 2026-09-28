@@ -806,7 +806,7 @@
                   <strong>{{ row.fund_name }}</strong>
                   <span>Type: {{ row.sub_type_name || row.investment_type || 'Mutual Fund' }}</span>
                   <span>Category: {{ row.sub_type_category || '—' }}</span>
-                  <span>{{ row.platform || '—' }} · Scheme {{ row.scheme_code }}</span>
+                  <span>{{ row.platform || '—' }} · Scheme {{ row.scheme_code || 'not set' }}</span>
                   <small *ngIf="!row.ok" class="nav-review-error">{{ row.error || 'Could not fetch NAV' }}</small>
                 </td>
                 <td>{{ row.units != null ? (row.units | number:'1.0-4') : '—' }}</td>
@@ -835,8 +835,8 @@
                   <ng-template #noSavedNav>—</ng-template>
                 </td>
                 <td class="nav-review-choice">
-                  <select [(ngModel)]="row.choice" [name]="'nav-choice-' + row.id" [disabled]="!row.ok || navApplying" aria-label="NAV to use">
-                    <option value="api">API NAV</option>
+                  <select [(ngModel)]="row.choice" [name]="'nav-choice-' + row.id" [disabled]="navApplying" aria-label="NAV to use">
+                    <option value="api" [disabled]="!row.ok">API NAV</option>
                     <option *ngIf="row.saved_nav != null" value="saved">Saved NAV</option>
                     <option value="manual">Enter manually</option>
                     <option value="reject">Reject</option>
