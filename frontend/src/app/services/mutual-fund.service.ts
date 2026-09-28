@@ -53,6 +53,11 @@ export class MutualFundService {
     return this.http.post<ApiResponse<NavRefreshResult>>(`${getApiBaseUrl()}/mutual-funds/refresh-latest`, {})
       .pipe(map(response => response.data));
   }
+
+  applyLatestChoices(updates: NavRefreshChoice[]): Observable<NavRefreshApplyResult> {
+    return this.http.post<ApiResponse<NavRefreshApplyResult>>(`${getApiBaseUrl()}/mutual-funds/refresh-latest/apply`, { updates })
+      .pipe(map(response => response.data));
+  }
 }
 
 export interface NavRefreshResult {
@@ -60,6 +65,42 @@ export interface NavRefreshResult {
   total: number;
   succeeded: number;
   failed: number;
-  value_change: number;
-  results: { id: number; ok: boolean; error?: string; previous?: number; value?: number; nav?: number; nav_date?: string }[];
+  changed: number;
+  results: NavRefreshCandidate[];
+}
+
+export interface NavRefreshCandidate {
+  id: number;
+  ok: boolean;
+  fund_name: string;
+  investment_type?: string;
+  sub_type_name?: string;
+  sub_type_category?: string;
+  scheme_code: string;
+  platform: string;
+  units?: number;
+  current_nav?: number | null;
+  current_value?: number;
+  saved_nav?: number | null;
+  saved_nav_date?: string | null;
+  saved_nav_source?: string | null;
+  nav?: number;
+  nav_date?: string;
+  changed?: boolean;
+  error?: string;
+}
+
+export interface NavRefreshChoice {
+  id: number;
+  choice: 'api' | 'saved' | 'manual' | 'reject';
+  nav?: number;
+  nav_date?: string;
+}
+
+export interface NavRefreshApplyResult {
+  snapshot_date: string;
+  applied: number;
+  rejected: number;
+  failed: number;
+  results: { id: number; ok: boolean; rejected?: boolean; error?: string; value?: number; nav?: number; source?: string }[];
 }

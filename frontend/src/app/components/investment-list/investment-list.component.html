@@ -775,4 +775,91 @@
       </div>
     </div>
   </div>
+
+  <div *ngIf="showNavReviewModal" class="modal-overlay nav-review-overlay" (click)="closeNavReview()">
+    <div class="modal-content nav-review-modal" role="dialog" aria-modal="true" aria-labelledby="nav-review-title" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div>
+          <h3 id="nav-review-title">Review Mutual Fund NAVs</h3>
+          <p class="nav-review-subtitle">Choose which NAV to save for each fund. Nothing is updated until you apply.</p>
+        </div>
+        <button type="button" class="close-btn" aria-label="Close NAV review" (click)="closeNavReview()" [disabled]="navApplying">×</button>
+      </div>
+
+      <div class="modal-body nav-review-body">
+        <div class="nav-review-table-wrap">
+          <table class="nav-review-table">
+            <thead>
+              <tr>
+                <th>Fund</th>
+                <th>Units</th>
+                <th>Current NAV</th>
+                <th>API NAV</th>
+                <th>Difference</th>
+                <th>Saved NAV</th>
+                <th>Use</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of navReviewRows">
+                <td class="nav-review-fund">
+                  <strong>{{ row.fund_name }}</strong>
+                  <span>Type: {{ row.sub_type_name || row.investment_type || 'Mutual Fund' }}</span>
+                  <span>Category: {{ row.sub_type_category || '—' }}</span>
+                  <span>{{ row.platform || '—' }} · Scheme {{ row.scheme_code }}</span>
+                  <small *ngIf="!row.ok" class="nav-review-error">{{ row.error || 'Could not fetch NAV' }}</small>
+                </td>
+                <td>{{ row.units != null ? (row.units | number:'1.0-4') : '—' }}</td>
+                <td>{{ row.current_nav != null ? formatInr(row.current_nav) : '—' }}</td>
+                <td>
+                  <ng-container *ngIf="row.ok && row.nav != null; else apiUnavailable">
+                    {{ formatInr(row.nav) }}<small class="nav-review-date">{{ row.nav_date | date:'mediumDate' }}</small>
+                  </ng-container>
+                  <ng-template #apiUnavailable>Unavailable</ng-template>
+                </td>
+                <td>
+                  <ng-container *ngIf="navDifference(row) !== null; else noNavDifference">
+                    <span [class.nav-diff-up]="navDifference(row)! > 0" [class.nav-diff-down]="navDifference(row)! < 0">
+                      {{ navDifference(row)! > 0 ? '+' : '' }}{{ formatInr(navDifference(row)!) }}
+                    </span>
+                    <small class="nav-review-date" *ngIf="navDifferencePercent(row) !== null">
+                      {{ navDifferencePercent(row)! > 0 ? '+' : '' }}{{ navDifferencePercent(row)! | number:'1.2-2' }}%
+                    </small>
+                  </ng-container>
+                  <ng-template #noNavDifference>—</ng-template>
+                </td>
+                <td>
+                  <ng-container *ngIf="row.saved_nav != null; else noSavedNav">
+                    {{ formatInr(row.saved_nav) }}<small class="nav-review-date">{{ row.saved_nav_date || row.saved_nav_source || 'Imported' }}</small>
+                  </ng-container>
+                  <ng-template #noSavedNav>—</ng-template>
+                </td>
+                <td class="nav-review-choice">
+                  <select [(ngModel)]="row.choice" [name]="'nav-choice-' + row.id" [disabled]="!row.ok || navApplying" aria-label="NAV to use">
+                    <option value="api">API NAV</option>
+                    <option *ngIf="row.saved_nav != null" value="saved">Saved NAV</option>
+                    <option value="manual">Enter manually</option>
+                    <option value="reject">Reject</option>
+                  </select>
+                  <input *ngIf="row.choice === 'manual'" type="number" min="0.000001" step="any"
+                    [(ngModel)]="row.manualNav" [name]="'manual-nav-' + row.id" [disabled]="navApplying"
+                    aria-label="Manual NAV" placeholder="Enter NAV">
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer nav-review-footer">
+        <span>{{ navReviewRows.length }} fund{{ navReviewRows.length === 1 ? '' : 's' }} to review</span>
+        <div>
+          <button type="button" class="btn btn-secondary" (click)="closeNavReview()" [disabled]="navApplying">Cancel</button>
+          <button type="button" class="btn btn-primary" (click)="applyNavReview()" [disabled]="navApplying">
+            {{ navApplying ? 'Applying…' : 'Apply choices' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>

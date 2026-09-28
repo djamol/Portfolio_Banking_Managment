@@ -1,7 +1,7 @@
 import { Component, ElementRef, HostListener, OnInit, ViewChild } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { InvestmentService, InvestmentReturn, InvestmentReturnsResponse } from '../../services/investment.service';
-import { MutualFundService } from '../../services/mutual-fund.service';
+import { MutualFundService, NavRefreshCandidate, NavRefreshChoice } from '../../services/mutual-fund.service';
 import { AnalyticsService } from '../../services/analytics.service';
 import { CategoryService, SubTypeName, Category } from '../../services/category.service';
 import { ConfigService } from '../../services/config.service';
@@ -15,6 +15,13 @@ import {
   setMaturityDateInNotes,
   showsMaturityHelper
 } from '../../utils/maturity-notes.util';
+
+type NavReviewChoice = 'api' | 'saved' | 'manual' | 'reject';
+
+interface NavReviewRow extends NavRefreshCandidate {
+  choice: NavReviewChoice;
+  manualNav: number | null;
+}
 
 @Component({
   selector: 'app-investment-list',
@@ -60,6 +67,9 @@ export class InvestmentListComponent implements OnInit {
   returnsById = new Map<number, InvestmentReturn>();
   returnsSummary: InvestmentReturnsResponse['summary'] | null = null;
   navRefreshing = false;
+  navApplying = false;
+  showNavReviewModal = false;
+  navReviewRows: NavReviewRow[] = [];
 
   // Pagination properties
   currentPage: number = 1;
@@ -195,17 +205,98 @@ export class InvestmentListComponent implements OnInit {
     this.mutualFundService.refreshLatest().subscribe({
       next: (result) => {
         this.navRefreshing = false;
-        const change = result.value_change >= 0 ? `+${this.formatInr(result.value_change)}` : this.formatInr(result.value_change);
-        const msg = `Refreshed ${result.succeeded}/${result.total} funds (${change}).`
-          + (result.failed ? ` ${result.failed} failed.` : '');
-        this.showFlash(msg, result.failed ? 'error' : 'success');
-        this.loadInvestments();
+        this.navReviewRows = result.results
+          .filter(candidate => !candidate.ok || candidate.changed)
+          .map(candidate => {
+            const investment = this.investments.find(item => Number(item.id) === Number(candidate.id));
+            return {
+              ...candidate,
+              investment_type: candidate.investment_type || investment?.investment_type || 'Mutual Fund',
+              sub_type_name: candidate.sub_type_name || investment?.sub_type_name || '',
+              sub_type_category: candidate.sub_type_category || investment?.sub_type_category || '',
+              choice: candidate.ok ? 'api' : 'reject',
+              manualNav: candidate.nav ?? null
+            };
+          });
+        if (this.navReviewRows.length) {
+          this.showNavReviewModal = true;
+        } else {
+          this.showFlash(`All ${result.succeeded} mutual fund NAVs already match.`, 'info');
+        }
       },
       error: (error) => {
         this.navRefreshing = false;
         this.showFlash('NAV refresh failed. ' + (error?.error?.error || error?.message || ''), 'error');
       }
     });
+  }
+
+  applyNavReview() {
+    if (this.navApplying) return;
+    const invalidChoice = this.navReviewRows.some(row =>
+      row.choice === 'manual' && !(Number(row.manualNav) > 0)
+      || row.choice === 'saved' && !(Number(row.saved_nav) > 0)
+    );
+    if (invalidChoice) {
+      this.showFlash('Enter a positive NAV for each manual choice.', 'info');
+      return;
+    }
+
+    const updates: NavRefreshChoice[] = [];
+    for (const row of this.navReviewRows) {
+      if (row.choice === 'reject') {
+        updates.push({ id: row.id, choice: 'reject' });
+        continue;
+      }
+      const nav = row.choice === 'api' ? row.nav
+        : row.choice === 'saved' ? row.saved_nav
+          : Number(row.manualNav);
+      if (!(Number(nav) > 0)) continue;
+      updates.push({
+        id: row.id,
+        choice: row.choice,
+        nav: Number(nav),
+        nav_date: row.choice === 'api' ? row.nav_date : row.saved_nav_date || undefined
+      });
+    }
+
+    if (!updates.length) {
+      this.closeNavReview();
+      this.showFlash('No valid NAV choices to apply.', 'info');
+      return;
+    }
+
+    this.navApplying = true;
+    this.mutualFundService.applyLatestChoices(updates).subscribe({
+      next: result => {
+        this.navApplying = false;
+        this.closeNavReview();
+        this.showFlash(`Applied ${result.applied} NAV choice${result.applied === 1 ? '' : 's'}; rejected ${result.rejected}.${result.failed ? ` ${result.failed} failed.` : ''}`,
+          result.failed ? 'error' : 'success');
+        this.loadInvestments();
+      },
+      error: error => {
+        this.navApplying = false;
+        this.showFlash('Could not apply NAV choices. ' + (error?.error?.error || error?.message || ''), 'error');
+      }
+    });
+  }
+
+  closeNavReview() {
+    if (this.navApplying) return;
+    this.showNavReviewModal = false;
+    this.navReviewRows = [];
+  }
+
+  navDifference(row: NavReviewRow): number | null {
+    if (row.nav == null || row.current_nav == null) return null;
+    return row.nav - row.current_nav;
+  }
+
+  navDifferencePercent(row: NavReviewRow): number | null {
+    const difference = this.navDifference(row);
+    if (difference == null || !(row.current_nav! > 0)) return null;
+    return difference / row.current_nav! * 100;
   }
 
   returnFor(investment: any): InvestmentReturn | undefined {
@@ -895,7 +986,9 @@ export class InvestmentListComponent implements OnInit {
 
   @HostListener('document:keydown.escape')
   onEscape() {
-    if (this.showHistoryModal) {
+    if (this.showNavReviewModal) {
+      this.closeNavReview();
+    } else if (this.showHistoryModal) {
       this.closeHistoryModal();
     } else if (this.showModal) {
       this.closePopup();

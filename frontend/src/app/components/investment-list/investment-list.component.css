@@ -681,6 +681,133 @@ textarea.form-control {
   justify-content: flex-end;
 }
 
+.nav-review-overlay {
+  z-index: 1100;
+}
+
+.nav-review-modal {
+  width: min(96vw, 1180px);
+  max-width: 1180px;
+}
+
+.nav-review-modal .modal-header {
+  padding-bottom: 14px;
+}
+
+.nav-review-subtitle {
+  margin: 5px 0 0;
+  color: #68727c;
+  font-size: 13px;
+}
+
+.nav-review-body {
+  padding-top: 14px;
+}
+
+.nav-review-table-wrap {
+  overflow-x: auto;
+}
+
+.nav-review-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 850px;
+  font-size: 13px;
+}
+
+.nav-review-table th,
+.nav-review-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e6e9ec;
+  text-align: right;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.nav-review-table th {
+  background: #f5f7f8;
+  color: #53606b;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.nav-review-table th:first-child,
+.nav-review-table td:first-child {
+  text-align: left;
+}
+
+.nav-review-table tbody tr:hover {
+  background: #f8fafb;
+}
+
+.nav-review-fund {
+  min-width: 220px;
+  max-width: 310px;
+  white-space: normal !important;
+}
+
+.nav-review-fund strong,
+.nav-review-fund span,
+.nav-review-fund small,
+.nav-review-date {
+  display: block;
+}
+
+.nav-review-fund span,
+.nav-review-date {
+  margin-top: 3px;
+  color: #75808a;
+  font-size: 11px;
+}
+
+.nav-diff-up {
+  color: #16724a;
+  font-weight: 600;
+}
+
+.nav-diff-down {
+  color: #b42318;
+  font-weight: 600;
+}
+
+.nav-review-error {
+  margin-top: 5px;
+  color: #b42318;
+  white-space: normal;
+}
+
+.nav-review-choice {
+  min-width: 165px;
+  text-align: left !important;
+}
+
+.nav-review-choice select,
+.nav-review-choice input {
+  width: 100%;
+  min-height: 34px;
+  padding: 5px 8px;
+  border: 1px solid #cbd2d8;
+  border-radius: 4px;
+  background: #fff;
+  color: #25313a;
+}
+
+.nav-review-choice input {
+  margin-top: 6px;
+}
+
+.nav-review-footer {
+  align-items: center;
+  justify-content: space-between;
+  color: #68727c;
+  font-size: 13px;
+}
+
+.nav-review-footer > div {
+  display: flex;
+  gap: 8px;
+}
+
 .btn-secondary {
   background-color: #6c757d;
   color: white;
@@ -952,6 +1079,21 @@ textarea.form-control {
   .modal-content {
     width: 95%;
     margin: 20px;
+  }
+
+  .nav-review-modal {
+    width: 96vw;
+    margin: 8px;
+  }
+
+  .nav-review-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .nav-review-footer > div {
+    width: 100%;
+    justify-content: flex-end;
   }
   
   .history-details {

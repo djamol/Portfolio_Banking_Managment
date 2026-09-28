@@ -123,26 +123,47 @@ router.post('/refresh-latest', async (req, res) => {
           navCache.set(code, { nav: Number(entry.nav), navDate: mfDateToIso(entry.date) });
         }
         const { nav, navDate } = navCache.get(code);
-        const units = Number(inv.units);
-        const value = Math.round(units * nav * 100) / 100;
-        await store.saveMutualFundNavSnapshot({
-          investment_id: inv.id,
-          snapshot_date: snapshotDate,
+        const snapshots = await store.listMutualFundNavSnapshots(inv.id);
+        const savedSnapshot = snapshots
+          .filter(snapshot => snapshot.source !== 'mfapi-latest')
+          .sort((a, b) => String(b.snapshot_date).localeCompare(String(a.snapshot_date)))[0];
+        const savedNav = savedSnapshot?.nav_price
+          ?? (inv.nav_source !== 'mfapi-latest' && Number(inv.nav_price) > 0 ? Number(inv.nav_price) : null);
+        results.push({
+          id: inv.id,
+          ok: true,
+          fund_name: inv.mutual_fund_scheme_name || inv.sub_type_name || `Mutual fund #${inv.id}`,
+          investment_type: inv.investment_type || 'Mutual Fund',
+          sub_type_name: inv.sub_type_name || '',
+          sub_type_category: inv.sub_type_category || '',
+          scheme_code: code,
+          platform: inv.website_app_name || '',
+          units: Number(inv.units),
+          current_nav: Number(inv.nav_price) || null,
+          current_value: Number(inv.amount) || 0,
+          saved_nav: savedNav == null ? null : Number(savedNav),
+          saved_nav_date: savedSnapshot?.nav_date || null,
+          saved_nav_source: savedSnapshot?.source || (savedNav != null ? inv.nav_source || 'imported' : null),
+          nav,
           nav_date: navDate,
-          units,
-          nav_price: nav,
-          value,
-          source: 'mfapi-latest'
+          changed: Math.abs((Number(inv.nav_price) || 0) - nav) > 0.000001
         });
-        await store.setInvestmentValuation(inv.id, { amount: value, nav_price: nav, nav_source: 'mfapi-latest' });
-        results.push({ id: inv.id, ok: true, previous: Number(inv.amount), value, nav, nav_date: navDate });
       } catch (error) {
-        results.push({ id: inv.id, ok: false, error: error.message });
+        results.push({
+          id: inv.id,
+          ok: false,
+          fund_name: inv.mutual_fund_scheme_name || inv.sub_type_name || `Mutual fund #${inv.id}`,
+          investment_type: inv.investment_type || 'Mutual Fund',
+          sub_type_name: inv.sub_type_name || '',
+          sub_type_category: inv.sub_type_category || '',
+          scheme_code: code,
+          platform: inv.website_app_name || '',
+          error: error.message
+        });
       }
     }
 
     const succeeded = results.filter(r => r.ok);
-    const change = succeeded.reduce((s, r) => s + (r.value - r.previous), 0);
     res.json({
       success: true,
       data: {
@@ -150,12 +171,72 @@ router.post('/refresh-latest', async (req, res) => {
         total: funds.length,
         succeeded: succeeded.length,
         failed: results.length - succeeded.length,
-        value_change: Math.round(change * 100) / 100,
+        changed: succeeded.filter(r => r.changed).length,
         results
       }
     });
   } catch (error) {
     console.error('Error refreshing mutual fund NAVs:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/refresh-latest/apply', async (req, res) => {
+  const updates = req.body?.updates;
+  if (!Array.isArray(updates)) {
+    return res.status(400).json({ success: false, error: 'updates must be an array' });
+  }
+
+  const now = new Date();
+  const snapshotDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const results = [];
+  try {
+    for (const update of updates) {
+      const id = Number(update?.id);
+      if (!Number.isInteger(id) || !['api', 'saved', 'manual', 'reject'].includes(update?.choice)) {
+        results.push({ id: update?.id, ok: false, error: 'Invalid NAV choice' });
+        continue;
+      }
+      if (update.choice === 'reject') {
+        results.push({ id, ok: true, rejected: true });
+        continue;
+      }
+
+      const nav = Number(update.nav);
+      const investment = await store.getInvestmentById(id);
+      if (!investment || investment.investment_type !== 'Mutual Fund' || !(Number(investment.units) > 0) || !(nav > 0)) {
+        results.push({ id, ok: false, error: 'Invalid mutual fund or NAV value' });
+        continue;
+      }
+      const units = Number(investment.units);
+      const value = Math.round(units * nav * 100) / 100;
+      const source = update.choice === 'api' ? 'mfapi-latest'
+        : update.choice === 'manual' ? 'manual-review' : 'review-saved';
+      await store.saveMutualFundNavSnapshot({
+        investment_id: id,
+        snapshot_date: snapshotDate,
+        nav_date: validDate(update.nav_date) ? update.nav_date : snapshotDate,
+        units,
+        nav_price: nav,
+        value,
+        source
+      });
+      await store.setInvestmentValuation(id, { amount: value, nav_price: nav, nav_source: source });
+      results.push({ id, ok: true, value, nav, source });
+    }
+    const applied = results.filter(result => result.ok && !result.rejected);
+    res.json({
+      success: true,
+      data: {
+        snapshot_date: snapshotDate,
+        applied: applied.length,
+        rejected: results.filter(result => result.rejected).length,
+        failed: results.filter(result => !result.ok).length,
+        results
+      }
+    });
+  } catch (error) {
+    console.error('Error applying mutual fund NAV choices:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

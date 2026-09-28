@@ -14,6 +14,7 @@ const portfolioRoutes = require('./routes/portfolio');
 const configRoutes = require('./routes/config');
 const bankingRoutes = require('./routes/banking');
 const authRoutes = require('./routes/auth');
+const mutualFundRoutes = require('./routes/mutual-funds');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -100,6 +101,7 @@ router.get('/api/health', (req, res) => {
 
 router.use('/api', authGate);
 router.use('/api/auth', authRoutes);
+router.use('/api/mutual-funds', mutualFundRoutes);
 router.use('/api/investments', investmentRoutes);
 router.use('/api/analytics', analyticsRoutes);
 router.use('/api/categories', categoriesRoutes);
