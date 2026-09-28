@@ -75,6 +75,7 @@ export class InvestmentListComponent implements OnInit {
   navApplying = false;
   showNavReviewModal = false;
   showMatchingNavs = false;
+  ignoreZeroValueFunds = false;
   navReviewRows: NavReviewRow[] = [];
 
   // Pagination properties
@@ -229,6 +230,7 @@ export class InvestmentListComponent implements OnInit {
             };
           });
         this.showMatchingNavs = false;
+        this.ignoreZeroValueFunds = false;
         if (this.navReviewRows.length) {
           this.showNavReviewModal = true;
         } else {
@@ -243,11 +245,18 @@ export class InvestmentListComponent implements OnInit {
   }
 
   get visibleNavReviewRows(): NavReviewRow[] {
-    return this.navReviewRows.filter(row => this.showMatchingNavs || !row.ok || row.changed);
+    return this.navReviewRows.filter(row =>
+      (this.showMatchingNavs || !row.ok || row.changed)
+      && !(this.ignoreZeroValueFunds && row.current_value != null && Number(row.current_value) <= 0)
+    );
   }
 
   get matchingNavCount(): number {
     return this.navReviewRows.filter(row => row.ok && !row.changed).length;
+  }
+
+  get zeroValueNavCount(): number {
+    return this.navReviewRows.filter(row => row.current_value != null && Number(row.current_value) <= 0).length;
   }
 
   searchNavScheme(row: NavReviewRow) {
@@ -335,6 +344,7 @@ export class InvestmentListComponent implements OnInit {
     this.showNavReviewModal = false;
     this.navReviewRows = [];
     this.showMatchingNavs = false;
+    this.ignoreZeroValueFunds = false;
   }
 
   navDifference(row: NavReviewRow): number | null {

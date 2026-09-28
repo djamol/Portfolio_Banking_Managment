@@ -792,6 +792,11 @@
           <span>Show matching NAVs</span>
           <small>{{ matchingNavCount }} matching</small>
         </label>
+        <label class="nav-review-matched-toggle nav-review-zero-toggle">
+          <input type="checkbox" [(ngModel)]="ignoreZeroValueFunds">
+          <span>Ignore zero-value funds</span>
+          <small>{{ zeroValueNavCount }} zero value</small>
+        </label>
         <div class="nav-review-table-wrap">
           <table class="nav-review-table">
             <thead>
@@ -882,7 +887,7 @@
       </div>
 
       <div class="modal-footer nav-review-footer">
-        <span>{{ visibleNavReviewRows.length }} fund{{ visibleNavReviewRows.length === 1 ? '' : 's' }} shown · hidden matched NAVs are not applied</span>
+        <span>{{ visibleNavReviewRows.length }} fund{{ visibleNavReviewRows.length === 1 ? '' : 's' }} shown · hidden funds are not applied</span>
         <div>
           <button type="button" class="btn btn-secondary" (click)="closeNavReview()" [disabled]="navApplying">Cancel</button>
           <button type="button" class="btn btn-primary" (click)="applyNavReview()" [disabled]="navApplying">
