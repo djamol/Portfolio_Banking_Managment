@@ -787,6 +787,11 @@
       </div>
 
       <div class="modal-body nav-review-body">
+        <label class="nav-review-matched-toggle">
+          <input type="checkbox" [(ngModel)]="showMatchingNavs">
+          <span>Show matching NAVs</span>
+          <small>{{ matchingNavCount }} matching</small>
+        </label>
         <div class="nav-review-table-wrap">
           <table class="nav-review-table">
             <thead>
@@ -801,12 +806,19 @@
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let row of navReviewRows">
+              <tr *ngFor="let row of visibleNavReviewRows">
                 <td class="nav-review-fund">
                   <strong>{{ row.fund_name }}</strong>
                   <span>Type: {{ row.sub_type_name || row.investment_type || 'Mutual Fund' }}</span>
                   <span>Category: {{ row.sub_type_category || '—' }}</span>
                   <span>{{ row.platform || '—' }} · Scheme {{ row.scheme_code || 'not set' }}</span>
+                  <div *ngIf="row.can_edit_scheme_code" class="nav-review-scheme-editor">
+                    <label [for]="'scheme-code-' + row.id">MFAPI scheme code</label>
+                    <input [id]="'scheme-code-' + row.id" type="text" inputmode="numeric" pattern="[0-9]+"
+                      [(ngModel)]="row.schemeCode" [name]="'scheme-code-' + row.id" [disabled]="navApplying"
+                      placeholder="Enter scheme code">
+                    <small>Save the code, then refresh again to fetch its NAV.</small>
+                  </div>
                   <small *ngIf="!row.ok" class="nav-review-error">{{ row.error || 'Could not fetch NAV' }}</small>
                 </td>
                 <td>{{ row.units != null ? (row.units | number:'1.0-4') : '—' }}</td>
@@ -848,11 +860,12 @@
               </tr>
             </tbody>
           </table>
+          <p *ngIf="!visibleNavReviewRows.length" class="nav-review-empty">No funds to review with this filter.</p>
         </div>
       </div>
 
       <div class="modal-footer nav-review-footer">
-        <span>{{ navReviewRows.length }} fund{{ navReviewRows.length === 1 ? '' : 's' }} to review</span>
+        <span>{{ visibleNavReviewRows.length }} fund{{ visibleNavReviewRows.length === 1 ? '' : 's' }} shown · hidden matched NAVs are not applied</span>
         <div>
           <button type="button" class="btn btn-secondary" (click)="closeNavReview()" [disabled]="navApplying">Cancel</button>
           <button type="button" class="btn btn-primary" (click)="applyNavReview()" [disabled]="navApplying">

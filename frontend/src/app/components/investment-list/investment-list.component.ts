@@ -21,6 +21,7 @@ type NavReviewChoice = 'api' | 'saved' | 'manual' | 'reject';
 interface NavReviewRow extends NavRefreshCandidate {
   choice: NavReviewChoice;
   manualNav: number | null;
+  schemeCode: string;
 }
 
 @Component({
@@ -69,6 +70,7 @@ export class InvestmentListComponent implements OnInit {
   navRefreshing = false;
   navApplying = false;
   showNavReviewModal = false;
+  showMatchingNavs = false;
   navReviewRows: NavReviewRow[] = [];
 
   // Pagination properties
@@ -213,10 +215,12 @@ export class InvestmentListComponent implements OnInit {
               investment_type: candidate.investment_type || investment?.investment_type || 'Mutual Fund',
               sub_type_name: candidate.sub_type_name || investment?.sub_type_name || '',
               sub_type_category: candidate.sub_type_category || investment?.sub_type_category || '',
-              choice: candidate.ok ? 'api' : 'reject',
-              manualNav: candidate.nav ?? null
+              choice: candidate.ok && candidate.changed ? 'api' : 'reject',
+              manualNav: candidate.nav ?? null,
+              schemeCode: candidate.scheme_code || ''
             };
           });
+        this.showMatchingNavs = false;
         if (this.navReviewRows.length) {
           this.showNavReviewModal = true;
         } else {
@@ -230,9 +234,18 @@ export class InvestmentListComponent implements OnInit {
     });
   }
 
+  get visibleNavReviewRows(): NavReviewRow[] {
+    return this.navReviewRows.filter(row => this.showMatchingNavs || !row.ok || row.changed);
+  }
+
+  get matchingNavCount(): number {
+    return this.navReviewRows.filter(row => row.ok && !row.changed).length;
+  }
+
   applyNavReview() {
     if (this.navApplying) return;
-    const invalidChoice = this.navReviewRows.some(row =>
+    const rows = this.visibleNavReviewRows;
+    const invalidChoice = rows.some(row =>
       row.choice === 'manual' && !(Number(row.manualNav) > 0)
       || row.choice === 'saved' && !(Number(row.saved_nav) > 0)
     );
@@ -242,9 +255,10 @@ export class InvestmentListComponent implements OnInit {
     }
 
     const updates: NavRefreshChoice[] = [];
-    for (const row of this.navReviewRows) {
+  for (const row of rows) {
+      const schemeCode = row.can_edit_scheme_code ? row.schemeCode.trim() : '';
       if (row.choice === 'reject') {
-        updates.push({ id: row.id, choice: 'reject' });
+        updates.push({ id: row.id, choice: 'reject', scheme_code: schemeCode || undefined });
         continue;
       }
       const nav = row.choice === 'api' ? row.nav
@@ -255,7 +269,8 @@ export class InvestmentListComponent implements OnInit {
         id: row.id,
         choice: row.choice,
         nav: Number(nav),
-        nav_date: row.choice === 'api' ? row.nav_date : row.saved_nav_date || undefined
+        nav_date: row.choice === 'api' ? row.nav_date : row.saved_nav_date || undefined,
+        scheme_code: schemeCode || undefined
       });
     }
 
@@ -285,6 +300,7 @@ export class InvestmentListComponent implements OnInit {
     if (this.navApplying) return;
     this.showNavReviewModal = false;
     this.navReviewRows = [];
+    this.showMatchingNavs = false;
   }
 
   navDifference(row: NavReviewRow): number | null {

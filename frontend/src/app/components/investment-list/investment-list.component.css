@@ -704,8 +704,37 @@ textarea.form-control {
   padding-top: 14px;
 }
 
+.nav-review-matched-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  color: #34414b;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.nav-review-matched-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--app-accent, #16724a);
+}
+
+.nav-review-matched-toggle small {
+  color: #75808a;
+}
+
 .nav-review-table-wrap {
   overflow-x: auto;
+}
+
+.nav-review-empty {
+  margin: 0;
+  padding: 18px 12px;
+  color: #68727c;
+  text-align: center;
+  font-size: 13px;
 }
 
 .nav-review-table {
@@ -758,6 +787,26 @@ textarea.form-control {
   margin-top: 3px;
   color: #75808a;
   font-size: 11px;
+}
+
+.nav-review-scheme-editor {
+  margin-top: 8px;
+}
+
+.nav-review-scheme-editor label,
+.nav-review-scheme-editor small {
+  display: block;
+  color: #68727c;
+  font-size: 11px;
+}
+
+.nav-review-scheme-editor input {
+  width: 100%;
+  min-height: 32px;
+  margin: 4px 0;
+  padding: 5px 8px;
+  border: 1px solid #cbd2d8;
+  border-radius: 4px;
 }
 
 .nav-diff-up {

@@ -77,6 +77,7 @@ export interface NavRefreshCandidate {
   sub_type_name?: string;
   sub_type_category?: string;
   scheme_code: string;
+  can_edit_scheme_code?: boolean;
   platform: string;
   units?: number;
   current_nav?: number | null;
@@ -95,6 +96,7 @@ export interface NavRefreshChoice {
   choice: 'api' | 'saved' | 'manual' | 'reject';
   nav?: number;
   nav_date?: string;
+  scheme_code?: string;
 }
 
 export interface NavRefreshApplyResult {

@@ -8,6 +8,13 @@ function validDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) && !Number.isNaN(Date.parse(value));
 }
 
+function mutualFundName(investment, apiName = '') {
+  return investment.mutual_fund_scheme_name
+    || apiName
+    || [investment.sub_type_name, investment.sub_type_category].filter(Boolean).join(' - ')
+    || `Mutual fund #${investment.id}`;
+}
+
 router.get('/search', async (req, res) => {
   const query = String(req.query.q || '').trim();
   if (query.length < 2) {
@@ -118,15 +125,16 @@ router.post('/refresh-latest', async (req, res) => {
         results.push({
           id: inv.id,
           ok: false,
-          fund_name: inv.mutual_fund_scheme_name || inv.sub_type_name || `Mutual fund #${inv.id}`,
+          fund_name: mutualFundName(inv),
           investment_type: inv.investment_type || 'Mutual Fund',
           sub_type_name: inv.sub_type_name || '',
           sub_type_category: inv.sub_type_category || '',
-          scheme_code: code,
+          scheme_code: inv.mutual_fund_scheme_code || '',
           platform: inv.website_app_name || '',
           units: Number(inv.units) || null,
           current_nav: Number(inv.nav_price) || null,
           current_value: Number(inv.amount) || 0,
+          can_edit_scheme_code: !code,
           error: !code ? 'Missing or invalid MFAPI scheme code' : 'Units must be greater than zero'
         });
         continue;
@@ -136,9 +144,13 @@ router.post('/refresh-latest', async (req, res) => {
           const latest = await fetchMfApi(`/${code}/latest`);
           const entry = latest?.data?.find(e => Number(e.nav) > 0);
           if (!entry) throw new Error('MFAPI returned no usable NAV');
-          navCache.set(code, { nav: Number(entry.nav), navDate: mfDateToIso(entry.date) });
+          navCache.set(code, {
+            nav: Number(entry.nav),
+            navDate: mfDateToIso(entry.date),
+            schemeName: latest?.meta?.scheme_name || latest?.meta?.schemeName || ''
+          });
         }
-        const { nav, navDate } = navCache.get(code);
+        const { nav, navDate, schemeName } = navCache.get(code);
         const snapshots = await store.listMutualFundNavSnapshots(inv.id);
         const savedSnapshot = snapshots
           .filter(snapshot => snapshot.source !== 'mfapi-latest')
@@ -148,7 +160,7 @@ router.post('/refresh-latest', async (req, res) => {
         results.push({
           id: inv.id,
           ok: true,
-          fund_name: inv.mutual_fund_scheme_name || inv.sub_type_name || `Mutual fund #${inv.id}`,
+          fund_name: mutualFundName(inv, schemeName),
           investment_type: inv.investment_type || 'Mutual Fund',
           sub_type_name: inv.sub_type_name || '',
           sub_type_category: inv.sub_type_category || '',
@@ -168,7 +180,7 @@ router.post('/refresh-latest', async (req, res) => {
         results.push({
           id: inv.id,
           ok: false,
-          fund_name: inv.mutual_fund_scheme_name || inv.sub_type_name || `Mutual fund #${inv.id}`,
+          fund_name: mutualFundName(inv),
           investment_type: inv.investment_type || 'Mutual Fund',
           sub_type_name: inv.sub_type_name || '',
           sub_type_category: inv.sub_type_category || '',
@@ -213,14 +225,30 @@ router.post('/refresh-latest/apply', async (req, res) => {
         results.push({ id: update?.id, ok: false, error: 'Invalid NAV choice' });
         continue;
       }
+      const investment = await store.getInvestmentById(id);
+      if (!investment || investment.investment_type !== 'Mutual Fund') {
+        results.push({ id, ok: false, error: 'Mutual fund investment not found' });
+        continue;
+      }
+      let schemeCodeSaved = false;
+      if (update.scheme_code != null && String(update.scheme_code).trim()) {
+        const schemeCode = String(update.scheme_code).trim();
+        if (!isSchemeCode(schemeCode)) {
+          results.push({ id, ok: false, error: 'Invalid MFAPI scheme code' });
+          continue;
+        }
+        if (schemeCode !== String(investment.mutual_fund_scheme_code || '')) {
+          await store.updateInvestment(id, { ...investment, mutual_fund_scheme_code: schemeCode });
+          schemeCodeSaved = true;
+        }
+      }
       if (update.choice === 'reject') {
-        results.push({ id, ok: true, rejected: true });
+        results.push({ id, ok: true, rejected: true, scheme_code_saved: schemeCodeSaved });
         continue;
       }
 
       const nav = Number(update.nav);
-      const investment = await store.getInvestmentById(id);
-      if (!investment || investment.investment_type !== 'Mutual Fund' || !(Number(investment.units) > 0) || !(nav > 0)) {
+      if (!(Number(investment.units) > 0) || !(nav > 0)) {
         results.push({ id, ok: false, error: 'Invalid mutual fund or NAV value' });
         continue;
       }
@@ -238,7 +266,7 @@ router.post('/refresh-latest/apply', async (req, res) => {
         source
       });
       await store.setInvestmentValuation(id, { amount: value, nav_price: nav, nav_source: source });
-      results.push({ id, ok: true, value, nav, source });
+      results.push({ id, ok: true, value, nav, source, scheme_code_saved: schemeCodeSaved });
     }
     const applied = results.filter(result => result.ok && !result.rejected);
     res.json({
