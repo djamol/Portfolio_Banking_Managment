@@ -13,6 +13,7 @@ const configRoutes = require('./routes/config');
 const bankingRoutes = require('./routes/banking');
 const authRoutes = require('./routes/auth');
 const mutualFundRoutes = require('./routes/mutual-funds');
+const cronJobRoutes = require('./routes/cron-job');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -100,6 +101,7 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
+app.use('/api/cron_job', cronJobRoutes);
 app.use('/api', authGate);
 app.use('/api/auth', authRoutes);
 app.use('/api/mutual-funds', mutualFundRoutes);
@@ -142,6 +144,7 @@ db.initializeDatabase()
         error: syncErr.message
       });
     }
+    require('./utils/mf-nav-sync').startNavSyncScheduler();
     app.listen(PORT, HOST, () => {
       logger.info('Server is ready', {
         url: `http://${HOST}:${PORT}`,

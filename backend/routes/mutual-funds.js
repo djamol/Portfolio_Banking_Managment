@@ -1,5 +1,6 @@
 const express = require('express');
 const { fetchMfApi, isSchemeCode, selectNavAsOf, mfDateToIso } = require('../utils/mf-api');
+const { syncLatestNavs } = require('../utils/mf-nav-sync');
 const store = require('../db');
 
 const router = express.Router();
@@ -206,6 +207,16 @@ router.post('/refresh-latest', async (req, res) => {
   } catch (error) {
     console.error('Error refreshing mutual fund NAVs:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/nav-sync', async (req, res) => {
+  try {
+    const data = await syncLatestNavs();
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error syncing mutual fund NAVs:', error);
+    res.status(502).json({ success: false, error: error.message });
   }
 });
 

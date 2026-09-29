@@ -15,6 +15,7 @@ const configRoutes = require('./routes/config');
 const bankingRoutes = require('./routes/banking');
 const authRoutes = require('./routes/auth');
 const mutualFundRoutes = require('./routes/mutual-funds');
+const cronJobRoutes = require('./routes/cron-job');
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -99,6 +100,7 @@ router.get('/api/health', (req, res) => {
   });
 });
 
+router.use('/api/cron_job', cronJobRoutes);
 router.use('/api', authGate);
 router.use('/api/auth', authRoutes);
 router.use('/api/mutual-funds', mutualFundRoutes);
@@ -170,7 +172,10 @@ function bindHttpServer() {
 }
 
 db.initializeDatabase()
-  .then(() => bindHttpServer())
+  .then(() => {
+    require('./utils/mf-nav-sync').startNavSyncScheduler();
+    return bindHttpServer();
+  })
   .catch((err) => {
     logger.logError('Application startup', err, {
       hint: 'Container will exit because the app cannot start without a database connection'

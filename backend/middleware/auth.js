@@ -144,8 +144,25 @@ function publicApiPath(req) {
   return false;
 }
 
+function hasValidCronToken(req) {
+  const expected = process.env.CRON_TOKEN;
+  const provided = req.headers['x-cron-token'];
+  if (!expected || typeof provided !== 'string') return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function cronApiPath(req) {
+  return req.method === 'POST' && apiPathRelative(req) === '/mutual-funds/nav-sync';
+}
+
 function authGate(req, res, next) {
   if (publicApiPath(req)) return next();
+  if (cronApiPath(req) && hasValidCronToken(req)) {
+    req.user = { username: 'cron' };
+    return next();
+  }
   return requireAuth(req, res, next);
 }
 
