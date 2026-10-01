@@ -1,5 +1,86 @@
 const { getPool } = require('../config/database');
 
+let columnCache = new Map();
+let columnCachePool = null;
+
+/** Columns that actually exist, so a DB whose migration has not run yet still writes. */
+async function tableColumns(table) {
+  const pool = getPool();
+  if (columnCachePool !== pool) {
+    columnCache = new Map();
+    columnCachePool = pool;
+  }
+  if (!columnCache.has(table)) {
+    const [rows] = await pool.query(`SHOW COLUMNS FROM \`${table}\``);
+    columnCache.set(table, new Set(rows.map((row) => row.Field)));
+  }
+  return columnCache.get(table);
+}
+
+async function insertRow(table, values) {
+  const pool = getPool();
+  const columns = await tableColumns(table);
+  const fields = Object.keys(values).filter((field) => columns.has(field));
+  const [result] = await pool.query(
+    `INSERT INTO \`${table}\` (${fields.map((f) => `\`${f}\``).join(', ')})
+     VALUES (${fields.map(() => '?').join(', ')})`,
+    fields.map((field) => values[field])
+  );
+  return result;
+}
+
+async function updateRow(table, values, id) {
+  const pool = getPool();
+  const columns = await tableColumns(table);
+  const fields = Object.keys(values).filter((field) => columns.has(field));
+  await pool.query(
+    `UPDATE \`${table}\` SET ${fields.map((f) => `\`${f}\` = ?`).join(', ')} WHERE id = ?`,
+    [...fields.map((field) => values[field]), id]
+  );
+}
+
+function investmentRow(data) {
+  return {
+    website_app_name: data.website_app_name,
+    investment_type: data.investment_type,
+    sub_type_name: data.sub_type_name || null,
+    sub_type_category: data.sub_type_category || null,
+    amount: data.amount,
+    units: numOrNull(data.units),
+    nav_price: numOrNull(data.nav_price),
+    nav_source: data.nav_source || null,
+    mutual_fund_scheme_code: data.mutual_fund_scheme_code || null,
+    mutual_fund_scheme_name: data.mutual_fund_scheme_name || null,
+    profit_loss: numOrNull(data.profit_loss),
+    avg_buy_price: numOrNull(data.avg_buy_price),
+    invested_amount: numOrNull(data.invested_amount),
+    interest_rate: numOrNull(data.interest_rate),
+    maturity_date: data.maturity_date || null,
+    maturity_amount: numOrNull(data.maturity_amount),
+    payout_frequency: data.payout_frequency || null,
+    compounding: data.compounding || null,
+    investment_date: data.investment_date,
+    notes: data.notes || null
+  };
+}
+
+function historyRow(investmentId, data, changeDate, changeType) {
+  return {
+    investment_id: investmentId,
+    amount: data.amount,
+    units: numOrNull(data.units),
+    nav_price: numOrNull(data.nav_price),
+    invested_amount: numOrNull(data.invested_amount),
+    change_date: changeDate,
+    change_type: changeType,
+    notes: data.notes || null
+  };
+}
+
+async function listInvestmentColumns() {
+  return [...await tableColumns('investments')];
+}
+
 async function getAllInvestments() {
   const pool = getPool();
   const [rows] = await pool.query(`
@@ -39,48 +120,8 @@ async function getInvestmentById(id) {
 }
 
 async function createInvestment(data) {
-  const pool = getPool();
-  const [result] = await pool.query(
-    `INSERT INTO investments (website_app_name, investment_type, sub_type_name, sub_type_category, amount, units, nav_price, nav_source, mutual_fund_scheme_code, mutual_fund_scheme_name, profit_loss, avg_buy_price, invested_amount, interest_rate, maturity_date, maturity_amount, payout_frequency, compounding, investment_date, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      data.website_app_name,
-      data.investment_type,
-      data.sub_type_name || null,
-      data.sub_type_category || null,
-      data.amount,
-      data.units != null && data.units !== '' ? Number(data.units) : null,
-      data.nav_price != null && data.nav_price !== '' ? Number(data.nav_price) : null,
-      data.nav_source || null,
-      data.mutual_fund_scheme_code || null,
-      data.mutual_fund_scheme_name || null,
-      data.profit_loss != null && data.profit_loss !== '' ? Number(data.profit_loss) : null,
-      data.avg_buy_price != null && data.avg_buy_price !== '' ? Number(data.avg_buy_price) : null,
-      data.invested_amount != null && data.invested_amount !== '' ? Number(data.invested_amount) : null,
-      data.interest_rate != null && data.interest_rate !== '' ? Number(data.interest_rate) : null,
-      data.maturity_date || null,
-      data.maturity_amount != null && data.maturity_amount !== '' ? Number(data.maturity_amount) : null,
-      data.payout_frequency || null,
-      data.compounding || null,
-      data.investment_date,
-      data.notes || null
-    ]
-  );
-
-  await pool.query(
-    `INSERT INTO investment_history (investment_id, amount, units, nav_price, invested_amount, change_date, change_type, notes)
-     VALUES (?, ?, ?, ?, ?, ?, 'added', ?)`,
-    [
-      result.insertId,
-      data.amount,
-      data.units != null && data.units !== '' ? Number(data.units) : null,
-      data.nav_price != null && data.nav_price !== '' ? Number(data.nav_price) : null,
-      data.invested_amount != null && data.invested_amount !== '' ? Number(data.invested_amount) : null,
-      data.investment_date,
-      data.notes || null
-    ]
-  );
-
+  const result = await insertRow('investments', investmentRow(data));
+  await insertRow('investment_history', historyRow(result.insertId, data, data.investment_date, 'added'));
   return getInvestmentById(result.insertId);
 }
 
@@ -89,37 +130,7 @@ async function updateInvestment(id, data) {
   const [oldInvestment] = await pool.query('SELECT amount, units, nav_price, invested_amount FROM investments WHERE id = ?', [id]);
   if (!oldInvestment.length) return null;
 
-  await pool.query(
-    `UPDATE investments
-     SET website_app_name = ?, investment_type = ?, sub_type_name = ?,
-         sub_type_category = ?, amount = ?, units = ?, nav_price = ?, nav_source = ?, mutual_fund_scheme_code = ?, mutual_fund_scheme_name = ?, profit_loss = ?, avg_buy_price = ?, invested_amount = ?,
-         interest_rate = ?, maturity_date = ?, maturity_amount = ?, payout_frequency = ?, compounding = ?,
-         investment_date = ?, notes = ?
-     WHERE id = ?`,
-    [
-      data.website_app_name,
-      data.investment_type,
-      data.sub_type_name || null,
-      data.sub_type_category || null,
-      data.amount,
-      data.units != null && data.units !== '' ? Number(data.units) : null,
-      data.nav_price != null && data.nav_price !== '' ? Number(data.nav_price) : null,
-      data.nav_source || null,
-      data.mutual_fund_scheme_code || null,
-      data.mutual_fund_scheme_name || null,
-      data.profit_loss != null && data.profit_loss !== '' ? Number(data.profit_loss) : null,
-      data.avg_buy_price != null && data.avg_buy_price !== '' ? Number(data.avg_buy_price) : null,
-      data.invested_amount != null && data.invested_amount !== '' ? Number(data.invested_amount) : null,
-      data.interest_rate != null && data.interest_rate !== '' ? Number(data.interest_rate) : null,
-      data.maturity_date || null,
-      data.maturity_amount != null && data.maturity_amount !== '' ? Number(data.maturity_amount) : null,
-      data.payout_frequency || null,
-      data.compounding || null,
-      data.investment_date,
-      data.notes || null,
-      id
-    ]
-  );
+  await updateRow('investments', investmentRow(data), id);
 
   const amountChanged = Number(oldInvestment[0].amount) !== Number(data.amount);
   const valuationChanged = ['units', 'nav_price', 'invested_amount'].some(
@@ -136,19 +147,7 @@ async function updateInvestment(id, data) {
       const latestDate = latest[0]?.d ? String(latest[0].d).slice(0, 10) : null;
       if (latestDate && latestDate > changeDate) changeDate = latestDate;
     }
-    await pool.query(
-      `INSERT INTO investment_history (investment_id, amount, units, nav_price, invested_amount, change_date, change_type, notes)
-       VALUES (?, ?, ?, ?, ?, ?, 'updated', ?)`,
-      [
-        id,
-        data.amount,
-        numOrNull(data.units),
-        numOrNull(data.nav_price),
-        numOrNull(data.invested_amount),
-        changeDate,
-        data.notes || null
-      ]
-    );
+    await insertRow('investment_history', historyRow(id, data, changeDate, 'updated'));
   }
 
   return getInvestmentById(id);
@@ -597,6 +596,7 @@ async function setInvestmentValuation(id, { amount, nav_price, nav_source }) {
 
 module.exports = {
   getAllInvestments,
+  listInvestmentColumns,
   searchInvestments,
   getInvestmentById,
   createInvestment,

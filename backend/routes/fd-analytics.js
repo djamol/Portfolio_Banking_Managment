@@ -24,6 +24,8 @@ function clamp(value, min, max, fallback) {
   return Math.min(Math.max(parsed, min), max);
 }
 
+const DEPOSIT_COLUMNS = ['interest_rate', 'maturity_date', 'maturity_amount', 'payout_frequency', 'compounding'];
+
 router.get('/', async (req, res) => {
   const { asOf } = req.query;
   if (asOf && !validDate(asOf)) {
@@ -38,7 +40,10 @@ router.get('/', async (req, res) => {
   }
 
   try {
-    const investments = await store.getAllInvestments();
+    const [investments, columns] = await Promise.all([
+      store.getAllInvestments(),
+      Promise.resolve().then(() => store.listInvestmentColumns()).catch(() => null)
+    ]);
     const data = buildFdAnalytics({
       investments,
       asOf: asOf || null,
@@ -50,6 +55,10 @@ router.get('/', async (req, res) => {
         categories: listParam(req.query.categories)
       }
     });
+
+    data.data_quality.missing_columns = columns
+      ? DEPOSIT_COLUMNS.filter((column) => !columns.includes(column))
+      : [];
 
     if (cache.size > 40) cache.clear();
     cache.set(cacheKey, { at: Date.now(), value: data });

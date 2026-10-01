@@ -472,14 +472,26 @@ const createTables = async () => {
       'ALTER TABLE investment_history ADD COLUMN invested_amount DECIMAL(15, 2) NULL',
       'ALTER TABLE investment_transactions ADD INDEX idx_txn_investment_date (investment_id, txn_date)'
     ];
+    const applied = [];
+    const failed = [];
     for (const sql of alterStatements) {
       try {
         await connection.query(sql);
+        applied.push(sql);
       } catch (err) {
-        // Duplicate column / duplicate key name
+        // Duplicate column / duplicate key name means the migration already ran.
         if (err && (err.code === 'ER_DUP_FIELDNAME' || err.code === 'ER_DUP_KEYNAME')) continue;
-        throw err;
+        // A restricted DB user must not block startup; writes fall back to existing columns.
+        failed.push({ sql, code: err?.code, message: err?.message });
       }
+    }
+    if (applied.length) logger.info('MySQL: schema migrations applied', { count: applied.length, applied });
+    if (failed.length) {
+      logger.error('MySQL: schema migrations failed', {
+        count: failed.length,
+        failed,
+        hint: 'Run these ALTER statements manually; affected columns will be skipped on write until then'
+      });
     }
 
     try {

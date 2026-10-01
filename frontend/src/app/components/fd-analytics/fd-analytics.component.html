@@ -62,6 +62,13 @@
   </div>
 
   <ng-container *ngIf="data as report">
+    <div class="alert error" *ngIf="report.data_quality.missing_columns?.length">
+      <strong>Database migration pending:</strong>
+      the <code>investments</code> table is missing
+      {{ report.data_quality.missing_columns?.join(', ') }}.
+      Restart the API so the migration runs, or add the columns manually — until then these fields
+      are not saved and values fall back to the <code>maturity:</code> / <code>rate:</code> note tags.
+    </div>
     <div class="alert warn" *ngIf="report.summary.overdue.length">
       <strong>Action needed:</strong>
       {{ report.summary.overdue.length }} deposit(s) passed maturity and are still open —

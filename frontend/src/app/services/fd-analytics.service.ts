@@ -150,6 +150,7 @@ export interface FdAnalytics {
     by_payout: FdAllocationRow[];
   };
   data_quality: {
+    missing_columns?: string[];
     missing_rate: { id: number; name: string }[];
     missing_maturity: { id: number; name: string }[];
     from_notes: { id: number; name: string; maturity_source: string | null; rate_source: string | null }[];

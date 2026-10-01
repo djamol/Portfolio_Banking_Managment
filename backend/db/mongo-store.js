@@ -717,6 +717,8 @@ module.exports = {
   INVESTMENT_TYPES,
   formatDoc,
   getAllInvestments,
+  // Mongo documents are schemaless, so every field is always writable.
+  listInvestmentColumns: async () => null,
   searchInvestments,
   getInvestmentById,
   createInvestment,
