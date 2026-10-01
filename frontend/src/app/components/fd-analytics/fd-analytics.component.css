@@ -454,6 +454,10 @@ tbody tr:hover .sticky-col {
   color: #b45309;
 }
 
+.muted {
+  color: var(--app-muted);
+}
+
 .flat {
   color: inherit;
 }

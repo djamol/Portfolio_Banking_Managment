@@ -207,7 +207,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let row of filteredDeposits.slice(0, 12)">
+              <tr *ngFor="let row of upcomingMaturities.slice(0, 12)">
                 <td [title]="row.name">{{ row.name }}</td>
                 <td>{{ row.platform || '—' }}</td>
                 <td>{{ formatDate(row.maturity_date) }}</td>
@@ -222,8 +222,8 @@
                   {{ formatPercent(row.progress_pct, 0) }}
                 </td>
               </tr>
-              <tr *ngIf="!filteredDeposits.length">
-                <td colspan="8" class="empty">No deposits match the current filters.</td>
+              <tr *ngIf="!upcomingMaturities.length">
+                <td colspan="8" class="empty">No active upcoming maturities.</td>
               </tr>
             </tbody>
           </table>
@@ -238,7 +238,7 @@
         <div class="card-head-actions">
           <label class="inline-check">
             <input type="checkbox" [(ngModel)]="hideMatured" />
-            <span>Hide matured</span>
+            <span>Hide matured / closed</span>
           </label>
           <button type="button" class="btn btn-secondary" (click)="exportDepositsCsv()">Export CSV</button>
         </div>
@@ -340,7 +340,9 @@
                     </div>
                     <div>
                       <span class="detail-label">Status</span>
-                      <strong [class]="row.matured ? 'down' : 'up'">{{ row.matured ? 'Matured' : 'Active' }}</strong>
+                      <strong [class]="row.is_closed ? 'flat' : (row.matured ? 'down' : 'up')">
+                        {{ row.is_closed ? 'Closed' : (row.matured ? 'Matured' : 'Active') }}
+                      </strong>
                     </div>
                   </div>
                   <p class="detail-notes" *ngIf="row.notes">{{ row.notes }}</p>

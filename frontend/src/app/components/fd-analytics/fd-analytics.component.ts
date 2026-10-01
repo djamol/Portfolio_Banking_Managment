@@ -164,20 +164,42 @@ export class FdAnalyticsComponent implements OnInit {
             .filter(Boolean)
             .some((field) => String(field).toLowerCase().includes(term)))
       : [...rows];
-    if (this.hideMatured) matched = matched.filter((row) => !row.matured);
+    if (this.hideMatured) {
+      matched = matched.filter((row) => !row.matured && !row.is_closed && (row.current_value ?? 0) > 0);
+    }
 
     const key = this.sortKey;
     const direction = this.sortDirection === 'asc' ? 1 : -1;
     return matched.sort((a, b) => {
       const left = (a as unknown as Record<string, unknown>)[key];
       const right = (b as unknown as Record<string, unknown>)[key];
+      const leftEmpty = left === null || left === undefined || left === '';
+      const rightEmpty = right === null || right === undefined || right === '';
+      if (leftEmpty && rightEmpty) return 0;
+      if (leftEmpty) return 1;
+      if (rightEmpty) return -1;
       if (typeof left === 'string' || typeof right === 'string') {
-        return String(left ?? '').localeCompare(String(right ?? '')) * direction;
+        return String(left).localeCompare(String(right)) * direction;
       }
-      if (left === null || left === undefined) return 1;
-      if (right === null || right === undefined) return -1;
       return (Number(left) - Number(right)) * direction;
     });
+  }
+
+  get upcomingMaturities(): FdDeposit[] {
+    const rows = this.data?.deposits || [];
+    const term = this.search.trim().toLowerCase();
+    const asOf = this.data?.as_of || new Date().toISOString().slice(0, 10);
+    let matched = rows.filter(
+      (row) => !row.is_closed && (row.current_value ?? 0) > 0 && row.maturity_date && row.maturity_date >= asOf
+    );
+    if (term) {
+      matched = matched.filter((row) =>
+        [row.name, row.platform, row.category, row.investment_type]
+          .filter(Boolean)
+          .some((field) => String(field).toLowerCase().includes(term))
+      );
+    }
+    return matched.sort((a, b) => (a.maturity_date || '').localeCompare(b.maturity_date || ''));
   }
 
   get ladderBuckets(): FdLadderBucket[] {
@@ -264,6 +286,7 @@ export class FdAnalyticsComponent implements OnInit {
 
   /** Human countdown for a maturity date. */
   maturityLabel(deposit: FdDeposit): string {
+    if (deposit.is_closed || (deposit.current_value ?? 0) <= 0) return 'Closed';
     if (!deposit.maturity_date) return 'No maturity set';
     const days = deposit.days_to_maturity;
     if (days === null) return deposit.maturity_date;
@@ -274,6 +297,7 @@ export class FdAnalyticsComponent implements OnInit {
   }
 
   maturityClass(deposit: FdDeposit): string {
+    if (deposit.is_closed || (deposit.current_value ?? 0) <= 0) return 'muted';
     if (!deposit.maturity_date) return 'flat';
     if (deposit.matured) return 'down';
     if ((deposit.days_to_maturity ?? 999) <= 30) return 'warn';

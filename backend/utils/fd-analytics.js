@@ -145,7 +145,9 @@ function bandOf(bands, value, field) {
 }
 
 function buildDeposit(investment, asOf, taxRatePct) {
-  const principal = num(investment.invested_amount) || num(investment.amount);
+  const bookAmount = num(investment.amount);
+  const isClosed = bookAmount <= 0.009;
+  const principal = num(investment.invested_amount) || bookAmount;
   const startDate = toIsoDate(investment.investment_date);
   const maturityDate = toIsoDate(investment.maturity_date) || parseMaturityFromNotes(investment.notes);
   const rate = num(investment.interest_rate) || parseRateFromNotes(investment.notes) || null;
@@ -155,19 +157,19 @@ function buildDeposit(investment, asOf, taxRatePct) {
 
   const tenureDays = maturityDate && startDate ? daysBetween(startDate, maturityDate) : null;
   const tenureMonths = tenureDays !== null ? round(tenureDays / 30.44, 1) : null;
-  const matured = Boolean(maturityDate && maturityDate <= asOf);
-  const daysToMaturity = maturityDate ? daysBetween(asOf, maturityDate) : null;
+  const matured = isClosed || Boolean(maturityDate && maturityDate <= asOf);
+  const daysToMaturity = isClosed ? null : (maturityDate ? daysBetween(asOf, maturityDate) : null);
   const elapsedDays = startDate ? Math.max(daysBetween(startDate, asOf), 0) : null;
-  const progressPct = tenureDays && tenureDays > 0 && elapsedDays !== null
+  const progressPct = isClosed ? 100 : (tenureDays && tenureDays > 0 && elapsedDays !== null
     ? round(Math.min((elapsedDays / tenureDays) * 100, 100), 1)
-    : null;
+    : null);
 
   const accrualDate = matured && maturityDate ? maturityDate : asOf;
   let maturityAmount = num(investment.maturity_amount) || null;
   let totalInterest = null;
-  let accruedInterest = null;
-  let receivedInterest = null;
-  let currentValue = principal;
+  let accruedInterest = 0;
+  let receivedInterest = 0;
+  let currentValue = isClosed ? 0 : principal;
   let periodicPayout = null;
 
   if (rate && startDate) {
@@ -175,19 +177,24 @@ function buildDeposit(investment, asOf, taxRatePct) {
       if (!maturityAmount && maturityDate) {
         maturityAmount = round(compoundedValue(principal, rate, startDate, maturityDate, compounding));
       }
-      currentValue = round(compoundedValue(principal, rate, startDate, accrualDate, compounding));
-      accruedInterest = round((currentValue || 0) - principal);
-      receivedInterest = 0;
       totalInterest = maturityAmount !== null ? round(maturityAmount - principal) : null;
+      if (isClosed) {
+        currentValue = 0;
+        accruedInterest = 0;
+        receivedInterest = totalInterest || 0;
+      } else {
+        currentValue = round(compoundedValue(principal, rate, startDate, accrualDate, compounding));
+        accruedInterest = round((currentValue || 0) - principal);
+        receivedInterest = 0;
+      }
     } else {
       const perYear = PERIODS_PER_YEAR[payoutFrequency] || 1;
-      periodicPayout = round((principal * rate) / (100 * perYear));
+      periodicPayout = isClosed ? null : round((principal * rate) / (100 * perYear));
       maturityAmount = maturityAmount || principal;
-      currentValue = principal;
+      currentValue = isClosed ? 0 : principal;
       accruedInterest = 0;
-      // Interest leaves the deposit on each payout date, so it is realised income.
       const paidPeriods = Math.floor(Math.max(yearsBetween(startDate, accrualDate), 0) * perYear);
-      receivedInterest = round(paidPeriods * (periodicPayout || 0));
+      receivedInterest = round(paidPeriods * (((principal * rate) / (100 * perYear)) || 0));
       totalInterest = tenureDays !== null
         ? round((principal * rate / 100) * (tenureDays / 365.25))
         : null;
@@ -195,17 +202,20 @@ function buildDeposit(investment, asOf, taxRatePct) {
   } else if (maturityAmount) {
     totalInterest = round(maturityAmount - principal);
     accruedInterest = 0;
-    receivedInterest = 0;
+    receivedInterest = isClosed ? (totalInterest || 0) : 0;
+    currentValue = isClosed ? 0 : principal;
   }
 
-  const earnedInterest = round((accruedInterest || 0) + (receivedInterest || 0));
+  const earnedInterest = isClosed
+    ? (totalInterest || 0)
+    : round((accruedInterest || 0) + (receivedInterest || 0));
 
   // Back out the implied rate when only principal and maturity value are known.
   const impliedRate = !rate && maturityAmount && principal > 0 && tenureDays
     ? round(((maturityAmount / principal) ** (365.25 / tenureDays) - 1) * 100)
     : null;
 
-  const annualIncome = rate ? round((principal * rate) / 100) : null;
+  const annualIncome = isClosed || !rate ? 0 : round((principal * rate) / 100);
   const taxRate = num(taxRatePct);
   const postTaxRate = rate !== null ? round(rate * (1 - taxRate / 100)) : null;
 
@@ -228,7 +238,7 @@ function buildDeposit(investment, asOf, taxRatePct) {
     payout_frequency: payoutFrequency,
     compounding: isCumulative ? compounding : null,
     principal: round(principal),
-    book_amount: round(num(investment.amount)),
+    book_amount: round(bookAmount),
     current_value: round(currentValue),
     maturity_amount: maturityAmount !== null ? round(maturityAmount) : null,
     total_interest: totalInterest,
@@ -236,12 +246,12 @@ function buildDeposit(investment, asOf, taxRatePct) {
     accrued_interest: accruedInterest,
     received_interest: receivedInterest,
     earned_interest: earnedInterest,
-    pending_interest: totalInterest !== null
+    pending_interest: isClosed ? 0 : (totalInterest !== null
       ? round(Math.max(totalInterest - earnedInterest, 0))
-      : null,
+      : null),
     periodic_payout: periodicPayout,
     annual_income: annualIncome,
-    monthly_income: annualIncome !== null ? round(annualIncome / 12) : null,
+    monthly_income: annualIncome ? round(annualIncome / 12) : null,
     tenure_days: tenureDays,
     tenure_months: tenureMonths,
     tenure_band: bandOf(TENURE_BANDS, tenureMonths, 'maxMonths'),
@@ -249,6 +259,7 @@ function buildDeposit(investment, asOf, taxRatePct) {
     days_to_maturity: daysToMaturity,
     progress_pct: progressPct,
     matured,
+    is_closed: isClosed,
     is_cumulative: isCumulative,
     notes: investment.notes || null
   };
@@ -376,7 +387,7 @@ function valueProjection(deposits, asOf) {
 
     for (const deposit of dated) {
       if (deposit.investment_date > cursor) continue;
-      const matured = deposit.maturity_date && deposit.maturity_date <= cursor;
+      const matured = deposit.is_closed || (deposit.maturity_date && deposit.maturity_date <= cursor);
       if (matured) {
         released += deposit.maturity_amount ?? deposit.principal ?? 0;
         continue;
@@ -457,21 +468,29 @@ function buildFdAnalytics({
 
   const deposits = selected
     .map((row) => buildDeposit(row, valuationDate, taxRatePct))
-    .sort((a, b) => (a.maturity_date || '9999').localeCompare(b.maturity_date || '9999'));
+    .sort((a, b) => {
+      if (a.is_closed !== b.is_closed) return a.is_closed ? 1 : -1;
+      if (a.matured !== b.matured) return a.matured ? 1 : -1;
+      if (!a.maturity_date && b.maturity_date) return 1;
+      if (a.maturity_date && !b.maturity_date) return -1;
+      return (a.maturity_date || '').localeCompare(b.maturity_date || '');
+    });
 
-  const active = deposits.filter((deposit) => !deposit.matured);
-  const matured = deposits.filter((deposit) => deposit.matured);
-  const withRate = deposits.filter((deposit) => deposit.interest_rate !== null);
+  const active = deposits.filter((deposit) => !deposit.matured && !deposit.is_closed && (deposit.current_value || 0) > 0);
+  const matured = deposits.filter((deposit) => deposit.matured || deposit.is_closed || (deposit.current_value || 0) <= 0);
+  const withRate = active.filter((deposit) => deposit.interest_rate !== null);
 
-  const principal = deposits.reduce((sum, deposit) => sum + (deposit.principal || 0), 0);
-  const currentValue = deposits.reduce((sum, deposit) => sum + (deposit.current_value || 0), 0);
-  const maturityValue = deposits.reduce(
+  const activePrincipal = active.reduce((sum, deposit) => sum + (deposit.principal || 0), 0);
+  const totalPrincipal = deposits.reduce((sum, deposit) => sum + (deposit.principal || 0), 0);
+  const currentValue = active.reduce((sum, deposit) => sum + (deposit.current_value || 0), 0);
+  const maturityValue = active.reduce(
     (sum, deposit) => sum + (deposit.maturity_amount ?? deposit.principal ?? 0), 0
   );
-  const accrued = deposits.reduce((sum, deposit) => sum + (deposit.accrued_interest || 0), 0);
+  const accrued = active.reduce((sum, deposit) => sum + (deposit.accrued_interest || 0), 0);
   const received = deposits.reduce((sum, deposit) => sum + (deposit.received_interest || 0), 0);
+  const activeInterest = active.reduce((sum, deposit) => sum + (deposit.total_interest || 0), 0);
+  const pendingInterest = active.reduce((sum, deposit) => sum + (deposit.pending_interest || 0), 0);
   const totalInterest = deposits.reduce((sum, deposit) => sum + (deposit.total_interest || 0), 0);
-  const activePrincipal = active.reduce((sum, deposit) => sum + (deposit.principal || 0), 0);
 
   const rateWeight = withRate.reduce((sum, deposit) => sum + deposit.interest_rate * (deposit.principal || 0), 0);
   const rateBase = withRate.reduce((sum, deposit) => sum + (deposit.principal || 0), 0);
@@ -490,7 +509,9 @@ function buildFdAnalytics({
   const worstRate = withRate.length
     ? withRate.reduce((worst, deposit) => (deposit.interest_rate < worst.interest_rate ? deposit : worst))
     : null;
-  const nextMaturity = active.find((deposit) => deposit.maturity_date && deposit.maturity_date >= valuationDate) || null;
+  const nextMaturity = active
+    .filter((deposit) => deposit.maturity_date && deposit.maturity_date >= valuationDate)
+    .sort((a, b) => a.maturity_date.localeCompare(b.maturity_date))[0] || null;
 
   return {
     generated_at: new Date().toISOString(),
@@ -507,15 +528,17 @@ function buildFdAnalytics({
       deposits: deposits.length,
       active: active.length,
       matured: matured.length,
-      principal: round(principal),
+      principal: round(activePrincipal),
+      total_principal: round(totalPrincipal),
       current_value: round(currentValue),
       maturity_value: round(maturityValue),
       accrued_interest: round(accrued),
       received_interest: round(received),
       earned_interest: round(accrued + received),
-      pending_interest: round(Math.max(totalInterest - accrued - received, 0)),
-      total_interest: round(totalInterest),
-      post_tax_interest: round(totalInterest * (1 - num(taxRatePct) / 100)),
+      pending_interest: round(pendingInterest),
+      total_interest: round(activeInterest),
+      lifetime_interest: round(totalInterest),
+      post_tax_interest: round(activeInterest * (1 - num(taxRatePct) / 100)),
       avg_rate_pct: rateBase > 0 ? round(rateWeight / rateBase) : null,
       post_tax_avg_rate_pct: rateBase > 0
         ? round((rateWeight / rateBase) * (1 - num(taxRatePct) / 100))
@@ -534,14 +557,14 @@ function buildFdAnalytics({
         amount: nextMaturity.maturity_amount ?? nextMaturity.principal
       },
       maturing: [30, 90, 180, 365].map((days) => windowSummary(active, valuationDate, days)),
-      overdue: matured
+      overdue: active
         .filter((deposit) => deposit.maturity_date && deposit.maturity_date < valuationDate)
         .map((deposit) => ({
           id: deposit.id,
           name: deposit.name,
           maturity_date: deposit.maturity_date,
-          days_overdue: Math.abs(deposit.days_to_maturity || 0),
-          amount: deposit.maturity_amount ?? deposit.principal
+          days_overdue: Math.abs(daysBetween(deposit.maturity_date, valuationDate)),
+          amount: deposit.current_value || deposit.maturity_amount || deposit.principal
         }))
     },
     deposits,
@@ -561,11 +584,11 @@ function buildFdAnalytics({
       by_payout: groupTotals(deposits, (deposit) => deposit.payout_frequency)
     },
     data_quality: {
-      missing_rate: deposits.filter((deposit) => deposit.interest_rate === null)
+      missing_rate: active.filter((deposit) => deposit.interest_rate === null)
         .map((deposit) => ({ id: deposit.id, name: deposit.name })),
-      missing_maturity: deposits.filter((deposit) => !deposit.maturity_date)
+      missing_maturity: active.filter((deposit) => !deposit.maturity_date)
         .map((deposit) => ({ id: deposit.id, name: deposit.name })),
-      from_notes: deposits.filter((deposit) => deposit.maturity_source === 'notes' || deposit.rate_source === 'notes')
+      from_notes: active.filter((deposit) => deposit.maturity_source === 'notes' || deposit.rate_source === 'notes')
         .map((deposit) => ({
           id: deposit.id,
           name: deposit.name,

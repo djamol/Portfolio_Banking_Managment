@@ -42,6 +42,7 @@ export interface FdDeposit {
   days_to_maturity: number | null;
   progress_pct: number | null;
   matured: boolean;
+  is_closed: boolean;
   is_cumulative: boolean;
   notes: string | null;
 }
