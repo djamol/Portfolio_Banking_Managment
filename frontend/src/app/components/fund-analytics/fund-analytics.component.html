@@ -1,0 +1,442 @@
+<div class="fund-analytics">
+  <header class="page-head">
+    <div>
+      <h1>Mutual Fund &amp; ETF Analytics</h1>
+      <p class="sub" *ngIf="data">
+        {{ data.summary.holdings }} holdings · {{ data.summary.mutual_funds }} MF ·
+        {{ data.summary.etfs }} ETF · NAV history {{ formatDate(data.summary.first_date) }} →
+        {{ formatDate(data.summary.last_date) }} ({{ data.summary.snapshot_days }} days)
+      </p>
+    </div>
+    <div class="head-actions">
+      <button type="button" class="btn btn-secondary" (click)="resetFilters()">Reset</button>
+      <button type="button" class="btn btn-primary" (click)="load()" [disabled]="loading">
+        {{ loading ? 'Loading…' : 'Refresh' }}
+      </button>
+    </div>
+  </header>
+
+  <section class="card filters">
+    <div class="range-chips">
+      <button
+        type="button"
+        *ngFor="let range of quickRanges"
+        class="chip"
+        [class.active]="activeRange === range.id"
+        (click)="applyQuickRange(range.id)">
+        {{ range.label }}
+      </button>
+    </div>
+
+    <div class="filter-grid">
+      <label class="field">
+        <span>From</span>
+        <input type="date" [(ngModel)]="from" (change)="onManualDateChange()" />
+      </label>
+      <label class="field">
+        <span>To</span>
+        <input type="date" [(ngModel)]="to" (change)="onManualDateChange()" />
+      </label>
+      <label class="field">
+        <span>Period</span>
+        <select [ngModel]="period" (ngModelChange)="onPeriodChange($event)">
+          <option *ngFor="let item of periods" [value]="item.id">{{ item.label }}</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Top N</span>
+        <input type="number" min="3" max="50" [(ngModel)]="topN" (change)="load()" />
+      </label>
+      <app-multi-select-filter
+        label="Type"
+        [options]="data?.options?.types || []"
+        [selected]="selectedTypes"
+        (selectedChange)="selectedTypes = $event; load()">
+      </app-multi-select-filter>
+      <app-multi-select-filter
+        label="Platform"
+        [options]="data?.options?.platforms || []"
+        [selected]="selectedPlatforms"
+        (selectedChange)="selectedPlatforms = $event; load()">
+      </app-multi-select-filter>
+      <app-multi-select-filter
+        label="Category"
+        [options]="data?.options?.categories || []"
+        [selected]="selectedCategories"
+        (selectedChange)="selectedCategories = $event; load()">
+      </app-multi-select-filter>
+      <label class="field">
+        <span>Search</span>
+        <input type="text" placeholder="Fund, platform, scheme code" [(ngModel)]="search" />
+      </label>
+    </div>
+  </section>
+
+  <div class="alert error" *ngIf="error">{{ error }}</div>
+  <div class="alert info" *ngIf="loading">Crunching NAV history…</div>
+  <div class="alert info" *ngIf="!loading && data && !data.summary.snapshot_days">
+    No NAV snapshots found for this range. Use <a routerLink="/mutual-fund-history">Mutual Fund NAV History</a>
+    to fetch and save NAV history first.
+  </div>
+
+  <ng-container *ngIf="data as report">
+    <section class="kpi-grid">
+      <div class="kpi">
+        <span class="kpi-label">Current value</span>
+        <strong class="kpi-value">{{ formatCurrency(report.summary.current_value) }}</strong>
+        <span class="kpi-foot">Invested {{ formatCurrency(report.summary.invested_amount) }}</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Unrealised gain</span>
+        <strong class="kpi-value" [class]="trendClass(report.summary.gain)">
+          {{ formatCurrency(report.summary.gain) }}
+        </strong>
+        <span class="kpi-foot" [class]="trendClass(report.summary.gain_pct)">
+          {{ formatPercent(report.summary.gain_pct) }}
+        </span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">NAV return (range)</span>
+        <strong class="kpi-value" [class]="trendClass(report.summary.portfolio_return_pct)">
+          {{ formatPercent(report.summary.portfolio_return_pct) }}
+        </strong>
+        <span class="kpi-foot">CAGR {{ formatPercent(report.summary.portfolio_cagr_pct) }}</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Volatility (ann.)</span>
+        <strong class="kpi-value">{{ formatPercent(report.summary.volatility_pct) }}</strong>
+        <span class="kpi-foot down">Max DD {{ formatPercent(report.summary.max_drawdown_pct) }}</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Best day</span>
+        <strong class="kpi-value up">{{ formatPercent(report.summary.best_day?.pct) }}</strong>
+        <span class="kpi-foot">{{ formatDate(report.summary.best_day?.date) }}</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Worst day</span>
+        <strong class="kpi-value down">{{ formatPercent(report.summary.worst_day?.pct) }}</strong>
+        <span class="kpi-foot">{{ formatDate(report.summary.worst_day?.date) }}</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Positive days</span>
+        <strong class="kpi-value">{{ formatPercent(report.summary.positive_days_pct, 1) }}</strong>
+        <span class="kpi-foot">{{ report.summary.tracked_with_history }} funds with history</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Top performer</span>
+        <strong class="kpi-value up">{{ formatPercent(report.summary.best_holding?.range_return_pct) }}</strong>
+        <span class="kpi-foot" [title]="report.summary.best_holding?.name || ''">
+          {{ report.summary.best_holding?.name || '—' }}
+        </span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Laggard</span>
+        <strong class="kpi-value down">{{ formatPercent(report.summary.worst_holding?.range_return_pct) }}</strong>
+        <span class="kpi-foot" [title]="report.summary.worst_holding?.name || ''">
+          {{ report.summary.worst_holding?.name || '—' }}
+        </span>
+      </div>
+    </section>
+
+    <nav class="tabs">
+      <button
+        type="button"
+        *ngFor="let tab of tabs"
+        class="tab"
+        [class.active]="activeTab === tab.id"
+        (click)="activeTab = tab.id">
+        {{ tab.label }}
+      </button>
+    </nav>
+
+    <!-- Overview -->
+    <section *ngIf="activeTab === 'overview'" class="panel-grid">
+      <div class="card chart-card wide">
+        <h3>Portfolio value</h3>
+        <div class="chart-box">
+          <canvas baseChart type="line" [data]="valueChartData" [options]="currencyLineOptions"></canvas>
+        </div>
+      </div>
+      <div class="card chart-card">
+        <h3>Indexed NAV performance (base 100)</h3>
+        <div class="chart-box">
+          <canvas baseChart type="line" [data]="indexChartData" [options]="percentLineOptions"></canvas>
+        </div>
+      </div>
+      <div class="card chart-card">
+        <h3>Drawdown</h3>
+        <div class="chart-box">
+          <canvas baseChart type="line" [data]="drawdownChartData" [options]="percentLineOptions"></canvas>
+        </div>
+      </div>
+      <div class="card chart-card">
+        <h3>
+          Allocation
+          <span class="toggle-group">
+            <button type="button" [class.active]="allocationDimension === 'by_type'" (click)="setAllocationDimension('by_type')">Type</button>
+            <button type="button" [class.active]="allocationDimension === 'by_platform'" (click)="setAllocationDimension('by_platform')">Platform</button>
+            <button type="button" [class.active]="allocationDimension === 'by_category'" (click)="setAllocationDimension('by_category')">Category</button>
+          </span>
+        </h3>
+        <div class="chart-box">
+          <canvas baseChart type="doughnut" [data]="allocationChartData" [options]="doughnutOptions"></canvas>
+        </div>
+      </div>
+      <div class="card table-card">
+        <h3>Allocation breakdown</h3>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th>Bucket</th><th class="num">Funds</th><th class="num">Invested</th><th class="num">Value</th><th class="num">Gain</th><th class="num">Gain %</th></tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of allocationRows">
+                <td>{{ row.key }}</td>
+                <td class="num">{{ row.count }}</td>
+                <td class="num">{{ formatCurrency(row.invested) }}</td>
+                <td class="num">{{ formatCurrency(row.value) }}</td>
+                <td class="num" [class]="trendClass(row.gain)">{{ formatCurrency(row.gain) }}</td>
+                <td class="num" [class]="trendClass(row.gain_pct)">{{ formatPercent(row.gain_pct) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Holdings -->
+    <section *ngIf="activeTab === 'holdings'" class="card table-card">
+      <div class="card-head">
+        <h3>Holdings performance ({{ filteredHoldings.length }})</h3>
+        <button type="button" class="btn btn-secondary" (click)="exportHoldingsCsv()">Export CSV</button>
+      </div>
+      <div class="table-scroll tall">
+        <table class="dense">
+          <thead>
+            <tr>
+              <th class="sticky-col" (click)="sortBy('name')">Fund {{ sortIndicator('name') }}</th>
+              <th (click)="sortBy('investment_type')">Type {{ sortIndicator('investment_type') }}</th>
+              <th (click)="sortBy('platform')">Platform {{ sortIndicator('platform') }}</th>
+              <th class="num" (click)="sortBy('units')">Units {{ sortIndicator('units') }}</th>
+              <th class="num" (click)="sortBy('nav')">NAV {{ sortIndicator('nav') }}</th>
+              <th (click)="sortBy('nav_date')">NAV date {{ sortIndicator('nav_date') }}</th>
+              <th class="num" (click)="sortBy('invested_amount')">Invested {{ sortIndicator('invested_amount') }}</th>
+              <th class="num" (click)="sortBy('current_value')">Value {{ sortIndicator('current_value') }}</th>
+              <th class="num" (click)="sortBy('gain')">Gain {{ sortIndicator('gain') }}</th>
+              <th class="num" (click)="sortBy('gain_pct')">Gain % {{ sortIndicator('gain_pct') }}</th>
+              <th class="num" (click)="sortBy('range_return_pct')">Range % {{ sortIndicator('range_return_pct') }}</th>
+              <th class="num" (click)="sortBy('trailing.d1')">1D {{ sortIndicator('trailing.d1') }}</th>
+              <th class="num" (click)="sortBy('trailing.w1')">1W {{ sortIndicator('trailing.w1') }}</th>
+              <th class="num" (click)="sortBy('trailing.m1')">1M {{ sortIndicator('trailing.m1') }}</th>
+              <th class="num" (click)="sortBy('trailing.m3')">3M {{ sortIndicator('trailing.m3') }}</th>
+              <th class="num" (click)="sortBy('trailing.m6')">6M {{ sortIndicator('trailing.m6') }}</th>
+              <th class="num" (click)="sortBy('trailing.y1')">1Y {{ sortIndicator('trailing.y1') }}</th>
+              <th class="num" (click)="sortBy('trailing.ytd')">YTD {{ sortIndicator('trailing.ytd') }}</th>
+              <th class="num" (click)="sortBy('trailing.fy')">FY {{ sortIndicator('trailing.fy') }}</th>
+              <th class="num" (click)="sortBy('cagr_pct')">CAGR {{ sortIndicator('cagr_pct') }}</th>
+              <th class="num" (click)="sortBy('volatility_pct')">Vol {{ sortIndicator('volatility_pct') }}</th>
+              <th class="num" (click)="sortBy('max_drawdown_pct')">Max DD {{ sortIndicator('max_drawdown_pct') }}</th>
+              <th class="num" (click)="sortBy('positive_days_pct')">Up days {{ sortIndicator('positive_days_pct') }}</th>
+              <th class="num" (click)="sortBy('snapshot_count')">Pts {{ sortIndicator('snapshot_count') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of filteredHoldings">
+              <td class="sticky-col" [title]="row.name">{{ row.name }}</td>
+              <td>{{ row.investment_type }}</td>
+              <td>{{ row.platform || '—' }}</td>
+              <td class="num">{{ formatNumber(row.units) }}</td>
+              <td class="num">{{ formatNumber(row.nav) }}</td>
+              <td>{{ formatDate(row.nav_date) }}</td>
+              <td class="num">{{ formatCurrency(row.invested_amount) }}</td>
+              <td class="num">{{ formatCurrency(row.current_value) }}</td>
+              <td class="num" [class]="trendClass(row.gain)">{{ formatCurrency(row.gain) }}</td>
+              <td class="num" [class]="trendClass(row.gain_pct)">{{ formatPercent(row.gain_pct) }}</td>
+              <td class="num" [class]="trendClass(row.range_return_pct)">{{ formatPercent(row.range_return_pct) }}</td>
+              <td class="num" [class]="trendClass(row.trailing?.d1)">{{ formatPercent(row.trailing?.d1) }}</td>
+              <td class="num" [class]="trendClass(row.trailing?.w1)">{{ formatPercent(row.trailing?.w1) }}</td>
+              <td class="num" [class]="trendClass(row.trailing?.m1)">{{ formatPercent(row.trailing?.m1) }}</td>
+              <td class="num" [class]="trendClass(row.trailing?.m3)">{{ formatPercent(row.trailing?.m3) }}</td>
+              <td class="num" [class]="trendClass(row.trailing?.m6)">{{ formatPercent(row.trailing?.m6) }}</td>
+              <td class="num" [class]="trendClass(row.trailing?.y1)">{{ formatPercent(row.trailing?.y1) }}</td>
+              <td class="num" [class]="trendClass(row.trailing?.ytd)">{{ formatPercent(row.trailing?.ytd) }}</td>
+              <td class="num" [class]="trendClass(row.trailing?.fy)">{{ formatPercent(row.trailing?.fy) }}</td>
+              <td class="num" [class]="trendClass(row.cagr_pct)">{{ formatPercent(row.cagr_pct) }}</td>
+              <td class="num">{{ formatPercent(row.volatility_pct, 1) }}</td>
+              <td class="num down">{{ formatPercent(row.max_drawdown_pct, 1) }}</td>
+              <td class="num">{{ formatPercent(row.positive_days_pct, 0) }}</td>
+              <td class="num">{{ row.snapshot_count }}</td>
+            </tr>
+            <tr *ngIf="!filteredHoldings.length">
+              <td colspan="24" class="empty">No holdings match the current filters.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Period returns -->
+    <section *ngIf="activeTab === 'periods'" class="panel-grid">
+      <div class="card chart-card wide">
+        <h3>{{ period | titlecase }} portfolio return</h3>
+        <div class="chart-box">
+          <canvas baseChart type="bar" [data]="periodChartData" [options]="percentBarOptions"></canvas>
+        </div>
+      </div>
+      <div class="card chart-card wide">
+        <h3>Advancers vs decliners per {{ period }}</h3>
+        <div class="chart-box">
+          <canvas baseChart type="bar" [data]="breadthChartData" [options]="stackedBarOptions"></canvas>
+        </div>
+      </div>
+      <div class="card table-card wide">
+        <h3>Period breakdown</h3>
+        <div class="table-scroll tall">
+          <table class="dense">
+            <thead>
+              <tr>
+                <th>Period</th><th>Window</th><th class="num">Return %</th>
+                <th class="num">Start value</th><th class="num">End value</th><th class="num">Δ Value</th>
+                <th class="num">Up</th><th class="num">Down</th>
+                <th>Best fund</th><th class="num">Best %</th>
+                <th>Worst fund</th><th class="num">Worst %</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of report.period_rows">
+                <td>{{ row.label }}</td>
+                <td class="muted">{{ row.start }} → {{ row.end }}</td>
+                <td class="num" [class]="trendClass(row.change_pct)">{{ formatPercent(row.change_pct) }}</td>
+                <td class="num">{{ formatCurrency(row.start_value) }}</td>
+                <td class="num">{{ formatCurrency(row.end_value) }}</td>
+                <td class="num" [class]="trendClass(row.value_change)">{{ formatCurrency(row.value_change) }}</td>
+                <td class="num up">{{ row.advancers }}</td>
+                <td class="num down">{{ row.decliners }}</td>
+                <td [title]="row.best?.name || ''">{{ row.best?.name || '—' }}</td>
+                <td class="num up">{{ formatPercent(row.best?.pct) }}</td>
+                <td [title]="row.worst?.name || ''">{{ row.worst?.name || '—' }}</td>
+                <td class="num down">{{ formatPercent(row.worst?.pct) }}</td>
+              </tr>
+              <tr *ngIf="!report.period_rows.length">
+                <td colspan="12" class="empty">No NAV history in this range.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Heatmap -->
+    <section *ngIf="activeTab === 'heatmap'" class="card table-card">
+      <h3>Fund × {{ period }} return heatmap</h3>
+      <div class="table-scroll tall">
+        <table class="dense heatmap">
+          <thead>
+            <tr>
+              <th class="sticky-col">Fund</th>
+              <th class="num" *ngFor="let bucket of report.fund_period_matrix.periods">{{ bucket.label }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let fund of report.fund_period_matrix.funds">
+              <td class="sticky-col" [title]="fund.name">{{ fund.name }}</td>
+              <td
+                class="num heat"
+                *ngFor="let bucket of report.fund_period_matrix.periods"
+                [ngStyle]="heatStyle(fund.returns[bucket.key])">
+                {{ formatPercent(fund.returns[bucket.key], 1) }}
+              </td>
+            </tr>
+            <tr *ngIf="!report.fund_period_matrix.funds.length">
+              <td [attr.colspan]="report.fund_period_matrix.periods.length + 1" class="empty">
+                No NAV history in this range.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Best & worst -->
+    <section *ngIf="activeTab === 'leaders'" class="panel-grid">
+      <div class="card chart-card wide">
+        <h3>Top &amp; bottom performers ({{ formatDate(report.from) }} → {{ formatDate(report.to) }})</h3>
+        <div class="chart-box tall">
+          <canvas baseChart type="bar" [data]="leadersChartData" [options]="horizontalPercentOptions"></canvas>
+        </div>
+      </div>
+      <div class="card table-card">
+        <h3 class="up">Best performers</h3>
+        <div class="table-scroll">
+          <table class="dense">
+            <thead>
+              <tr><th>Fund</th><th class="num">Range %</th><th class="num">1M</th><th class="num">1Y</th><th class="num">Gain</th></tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of report.leaders.best">
+                <td [title]="row.name">{{ row.name }}</td>
+                <td class="num up">{{ formatPercent(row.range_return_pct) }}</td>
+                <td class="num" [class]="trendClass(row.trailing?.m1)">{{ formatPercent(row.trailing?.m1) }}</td>
+                <td class="num" [class]="trendClass(row.trailing?.y1)">{{ formatPercent(row.trailing?.y1) }}</td>
+                <td class="num" [class]="trendClass(row.gain)">{{ formatCurrency(row.gain) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card table-card">
+        <h3 class="down">Worst performers</h3>
+        <div class="table-scroll">
+          <table class="dense">
+            <thead>
+              <tr><th>Fund</th><th class="num">Range %</th><th class="num">1M</th><th class="num">1Y</th><th class="num">Max DD</th></tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of report.leaders.worst">
+                <td [title]="row.name">{{ row.name }}</td>
+                <td class="num down">{{ formatPercent(row.range_return_pct) }}</td>
+                <td class="num" [class]="trendClass(row.trailing?.m1)">{{ formatPercent(row.trailing?.m1) }}</td>
+                <td class="num" [class]="trendClass(row.trailing?.y1)">{{ formatPercent(row.trailing?.y1) }}</td>
+                <td class="num down">{{ formatPercent(row.max_drawdown_pct, 1) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Charts -->
+    <section *ngIf="activeTab === 'charts'" class="panel-grid">
+      <div class="card chart-card wide">
+        <h3>Top {{ compareLimit }} funds — {{ period }} return comparison</h3>
+        <div class="chart-box tall">
+          <canvas baseChart type="line" [data]="compareChartData" [options]="percentLineOptions"></canvas>
+        </div>
+      </div>
+      <div class="card chart-card">
+        <h3>Portfolio value</h3>
+        <div class="chart-box">
+          <canvas baseChart type="line" [data]="valueChartData" [options]="currencyLineOptions"></canvas>
+        </div>
+      </div>
+      <div class="card chart-card">
+        <h3>{{ period | titlecase }} return</h3>
+        <div class="chart-box">
+          <canvas baseChart type="bar" [data]="periodChartData" [options]="percentBarOptions"></canvas>
+        </div>
+      </div>
+      <div class="card chart-card">
+        <h3>Drawdown</h3>
+        <div class="chart-box">
+          <canvas baseChart type="line" [data]="drawdownChartData" [options]="percentLineOptions"></canvas>
+        </div>
+      </div>
+      <div class="card chart-card">
+        <h3>Allocation ({{ allocationDimension === 'by_type' ? 'type' : allocationDimension === 'by_platform' ? 'platform' : 'category' }})</h3>
+        <div class="chart-box">
+          <canvas baseChart type="doughnut" [data]="allocationChartData" [options]="doughnutOptions"></canvas>
+        </div>
+      </div>
+    </section>
+  </ng-container>
+</div>

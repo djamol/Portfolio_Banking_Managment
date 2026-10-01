@@ -34,4 +34,13 @@ async function listSnapshots(investmentId, from, to) {
     .find(filter).sort({ snapshot_date: 1 }).toArray()).map(formatSnapshot);
 }
 
-module.exports = { saveSnapshot, listSnapshots };
+async function listAllSnapshots(from, to) {
+  const filter = {};
+  if (from || to) filter.snapshot_date = {};
+  if (from) filter.snapshot_date.$gte = from;
+  if (to) filter.snapshot_date.$lte = to;
+  return (await getDb().collection('mutual_fund_nav_history')
+    .find(filter).sort({ investment_id: 1, snapshot_date: 1 }).toArray()).map(formatSnapshot);
+}
+
+module.exports = { saveSnapshot, listSnapshots, listAllSnapshots };

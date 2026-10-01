@@ -555,6 +555,17 @@ async function listMutualFundNavSnapshots(investmentId, from, to) {
   return rows;
 }
 
+async function listAllMutualFundNavSnapshots(from, to) {
+  const pool = getPool();
+  let sql = 'SELECT investment_id, snapshot_date, nav_date, units, nav_price, value, source FROM mutual_fund_nav_history WHERE 1 = 1';
+  const params = [];
+  if (from) { sql += ' AND snapshot_date >= ?'; params.push(from); }
+  if (to) { sql += ' AND snapshot_date <= ?'; params.push(to); }
+  sql += ' ORDER BY investment_id ASC, snapshot_date ASC';
+  const [rows] = await pool.query(sql, params);
+  return rows;
+}
+
 async function getAllTransactions() {
   const pool = getPool();
   const [rows] = await pool.query(
@@ -598,6 +609,7 @@ module.exports = {
   syncAmountsFromLatestHistory,
   saveMutualFundNavSnapshot,
   listMutualFundNavSnapshots,
+  listAllMutualFundNavSnapshots,
   getAllTransactions,
   setInvestmentValuation,
   VALID_TXN_TYPES

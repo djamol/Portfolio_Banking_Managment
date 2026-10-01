@@ -29,6 +29,14 @@ export const routes: Routes = [
     canActivate: [authGuard]
   },
   {
+    path: 'fund-analytics',
+    loadChildren: () =>
+      import('./components/fund-analytics/fund-analytics.module').then(
+        (m) => m.FundAnalyticsModule
+      ),
+    canActivate: [authGuard]
+  },
+  {
     path: 'cashflows',
     loadChildren: () =>
       import('./components/cashflows/cashflows.module').then((m) => m.CashflowsModule),

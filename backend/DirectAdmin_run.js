@@ -16,6 +16,8 @@ const bankingRoutes = require('./routes/banking');
 const authRoutes = require('./routes/auth');
 const mutualFundRoutes = require('./routes/mutual-funds');
 const cronJobRoutes = require('./routes/cron-job');
+const fundAnalyticsRoutes = require('./routes/fund-analytics');
+
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -110,6 +112,7 @@ router.use('/api/categories', categoriesRoutes);
 router.use('/api/portfolio', portfolioRoutes);
 router.use('/api/config', configRoutes);
 router.use('/api/banking', bankingRoutes);
+router.use('/api/fund-analytics', fundAnalyticsRoutes);
 
 if (hasFrontend) {
   logger.info('Serving bundled frontend from /public', { basePath: BASE_PATH || '/' });

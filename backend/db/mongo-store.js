@@ -748,6 +748,7 @@ module.exports = {
     return saved;
   },
   listMutualFundNavSnapshots: mutualFundNavStore.listSnapshots,
+  listAllMutualFundNavSnapshots: mutualFundNavStore.listAllSnapshots,
   getAllTransactions,
   setInvestmentValuation,
   VALID_TXN_TYPES
