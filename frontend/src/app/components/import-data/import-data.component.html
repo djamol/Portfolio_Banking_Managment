@@ -66,7 +66,45 @@
       <small class="form-text" *ngIf="useCustomDate">All imported investments will use this date</small>
     </div>
     
-    <div class="form-group" *ngIf="!supportsCsvImport && investmentType">
+    <ng-container *ngIf="supportsFdImport">
+      <div class="form-group">
+        <label for="fdFile">Upload FD statement (XLS / XLSX / CSV) *</label>
+        <input
+          type="file"
+          id="fdFile"
+          (change)="onFileSelected($event)"
+          accept=".xls,.xlsx,.csv"
+          class="form-control">
+        <small class="form-text">
+          Bank "FD Summary" exports with Account No, Principal, Maturity Amount, Maturity Date,
+          Rate of Interest and Deposit Start Date columns. Existing deposits are matched on account
+          number, so re-importing updates instead of duplicating.
+        </small>
+      </div>
+
+      <div class="form-group">
+        <label for="fdSubType">Sub type</label>
+        <input type="text" id="fdSubType" [(ngModel)]="fdSubTypeName" class="form-control" placeholder="Bank FD">
+      </div>
+
+      <div class="form-group">
+        <label for="fdPayout">Default interest payout</label>
+        <select id="fdPayout" [(ngModel)]="fdPayoutFrequency" class="form-control">
+          <option *ngFor="let option of payoutFrequencies" [value]="option">{{ option }}</option>
+        </select>
+        <small class="form-text">
+          Used when the statement does not state a payout frequency. Deposits whose maturity amount
+          is higher than the principal are detected as cumulative automatically.
+        </small>
+      </div>
+
+      <div class="form-group">
+        <label for="fdPassword">File password (optional)</label>
+        <input type="password" id="fdPassword" [(ngModel)]="fdPassword" class="form-control" autocomplete="off">
+      </div>
+    </ng-container>
+
+    <div class="form-group" *ngIf="!supportsCsvImport && !supportsFdImport && investmentType">
       <label for="genericFile">Upload File *</label>
       <input 
         type="file" 
@@ -78,7 +116,7 @@
     </div>
     
     <!-- Optional date selection for non-Mutual Fund -->
-    <div class="form-group" *ngIf="!supportsCsvImport && investmentType">
+    <div class="form-group" *ngIf="!supportsCsvImport && !supportsFdImport && investmentType">
       <label>
         <input 
           type="checkbox" 
@@ -101,7 +139,26 @@
       <p class="file-info">Selected file: {{ selectedFile.name }}</p>
     </div>
     
-    <div class="form-actions">
+    <div class="form-actions" *ngIf="supportsFdImport">
+      <button
+        type="button"
+        (click)="previewFdImport()"
+        [disabled]="!selectedFile || isUploading"
+        class="btn btn-secondary"
+        style="margin-right: 10px;">
+        Preview statement
+      </button>
+      <button
+        type="button"
+        (click)="importFdData()"
+        [disabled]="!platform || !fdPreview || isUploading || fdSelectedCount === 0"
+        class="btn btn-primary">
+        <span *ngIf="!isUploading">Import {{ fdSelectedCount }} deposit(s)</span>
+        <span *ngIf="isUploading">Working...</span>
+      </button>
+    </div>
+
+    <div class="form-actions" *ngIf="!supportsFdImport">
       <button 
         type="button" 
         (click)="previewDataImport()" 
@@ -138,7 +195,92 @@
     *ngIf="message">
     {{ message }}
   </div>
-  
+
+  <!-- FD statement preview -->
+  <div class="preview-section" *ngIf="fdPreview as fd">
+    <h3>Deposit preview ({{ fd.count }} deposits)</h3>
+    <p class="preview-hint">
+      {{ fd.bank || 'Statement' }}<span *ngIf="fd.holder"> · {{ fd.holder }}</span>.
+      Uncheck rows to skip them. Deposits already present are matched on account number and updated in place.
+    </p>
+
+    <div class="preview-summary">
+      <div class="summary-card">
+        <span class="summary-label">Statement total</span>
+        <span class="summary-value">{{ formatCurrency(fd.total_principal) }}</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">Selected principal</span>
+        <span class="summary-value">{{ formatCurrency(fdSelectedPrincipal) }}</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">New</span>
+        <span class="summary-value">{{ fdStatusCount('new') }}</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">Update / unchanged</span>
+        <span class="summary-value">{{ fdStatusCount('update') }} / {{ fdStatusCount('unchanged') }}</span>
+      </div>
+    </div>
+
+    <div class="preview-toolbar">
+      <input
+        type="search"
+        class="form-control preview-search"
+        [(ngModel)]="fdSearch"
+        placeholder="Search account no, branch, maturity date...">
+      <div class="preview-bulk">
+        <button type="button" class="btn btn-link" (click)="selectAllFd(true)">Select all</button>
+        <button type="button" class="btn btn-link" (click)="selectAllFd(false)">Clear</button>
+      </div>
+    </div>
+
+    <div class="table-container">
+      <table class="preview-table">
+        <thead>
+          <tr>
+            <th class="col-check"></th>
+            <th>Account no</th>
+            <th>Branch</th>
+            <th class="num">Principal</th>
+            <th class="num">Maturity amount</th>
+            <th class="num">Rate</th>
+            <th>Start</th>
+            <th>Maturity</th>
+            <th>Payout</th>
+            <th>Category</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let row of fdDeposits">
+            <td class="col-check">
+              <input type="checkbox" [(ngModel)]="row.selected">
+            </td>
+            <td>{{ row.account_no || '—' }}</td>
+            <td>{{ row.branch || '—' }}</td>
+            <td class="num">{{ formatCurrency(row.principal) }}</td>
+            <td class="num">{{ formatCurrency(row.maturity_amount) }}</td>
+            <td class="num">{{ row.interest_rate !== null ? row.interest_rate + '%' : '—' }}</td>
+            <td>{{ row.start_date || '—' }}</td>
+            <td>{{ row.maturity_date || '—' }}</td>
+            <td>
+              {{ fdEffectivePayout(row) }}
+              <small *ngIf="row.cumulative"> (cumulative)</small>
+            </td>
+            <td>{{ row.tenure_category || '—' }}</td>
+            <td>
+              <span class="status-badge" [ngClass]="'status-' + row.status">{{ row.status }}</span>
+            </td>
+          </tr>
+          <tr *ngIf="!fdDeposits.length">
+            <td colspan="11" class="empty-row">No deposits match the search.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- Preview Table -->
   <div class="preview-section" *ngIf="showPreview && previewData.length > 0">
     <h3>Data Preview ({{ previewData.length }} records)</h3>

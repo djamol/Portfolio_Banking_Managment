@@ -59,6 +59,7 @@ function investmentRow(data) {
     maturity_amount: numOrNull(data.maturity_amount),
     payout_frequency: data.payout_frequency || null,
     compounding: data.compounding || null,
+    external_ref: data.external_ref || null,
     investment_date: data.investment_date,
     notes: data.notes || null
   };

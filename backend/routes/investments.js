@@ -1,8 +1,12 @@
 const express = require('express');
+const multer = require('multer');
 const router = express.Router();
 const store = require('../db');
 const { resolveNav } = require('../utils/mf-api');
 const { xirr } = require('../db/investment-flows');
+const { parseFdStatement } = require('../utils/fd-statement');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 const VALID_TXN_TYPES = store.VALID_TXN_TYPES || new Set([
   'buy', 'sell', 'dividend', 'interest', 'fee', 'deposit', 'withdrawal', 'transfer_in', 'transfer_out'
@@ -12,7 +16,7 @@ const INVESTMENT_FIELDS = [
   'website_app_name', 'investment_type', 'sub_type_name', 'sub_type_category', 'amount', 'units',
   'nav_price', 'nav_source', 'avg_buy_price', 'invested_amount', 'profit_loss', 'investment_date',
   'notes', 'mutual_fund_scheme_code', 'mutual_fund_scheme_name',
-  'interest_rate', 'maturity_date', 'maturity_amount', 'payout_frequency', 'compounding'
+  'interest_rate', 'maturity_date', 'maturity_amount', 'payout_frequency', 'compounding', 'external_ref'
 ];
 const BULK_MAX_IDS = 1000;
 
@@ -53,6 +57,148 @@ router.get('/', async (req, res) => {
     res.json({ success: true, data: rows });
   } catch (error) {
     console.error('Error fetching investments:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+const FD_REF_PREFIX = 'fd';
+
+function fdRef(accountNo) {
+  return accountNo ? `${FD_REF_PREFIX}:${String(accountNo).replace(/\s/g, '')}` : null;
+}
+
+/** Match on external_ref, falling back to the notes tag when the column is missing. */
+function findByRef(investments, ref) {
+  if (!ref) return null;
+  return investments.find((row) => row.external_ref === ref)
+    || investments.find((row) => String(row.notes || '').includes(ref))
+    || null;
+}
+
+function fdNotes(deposit) {
+  return [
+    deposit.account_no ? fdRef(deposit.account_no) : null,
+    deposit.branch ? `branch:${deposit.branch}` : null,
+    deposit.maturity_date ? `maturity:${deposit.maturity_date}` : null,
+    deposit.interest_rate ? `rate:${deposit.interest_rate}` : null
+  ].filter(Boolean).join('\n');
+}
+
+function fdInvestmentPayload(deposit, defaults) {
+  const payoutFrequency = deposit.payout_frequency
+    || (deposit.cumulative ? 'at-maturity' : defaults.payout_frequency || 'quarterly');
+  return {
+    website_app_name: deposit.platform || defaults.platform,
+    investment_type: defaults.investment_type || 'FD',
+    sub_type_name: deposit.sub_type_name || defaults.sub_type_name || 'Bank FD',
+    sub_type_category: deposit.sub_type_category || deposit.tenure_category || null,
+    amount: deposit.principal,
+    invested_amount: deposit.principal,
+    interest_rate: deposit.interest_rate ?? null,
+    maturity_date: deposit.maturity_date || null,
+    maturity_amount: deposit.maturity_amount ?? null,
+    payout_frequency: payoutFrequency,
+    compounding: payoutFrequency === 'at-maturity' ? (defaults.compounding || 'quarterly') : null,
+    external_ref: fdRef(deposit.account_no),
+    investment_date: deposit.start_date || todayYmd(),
+    notes: fdNotes(deposit)
+  };
+}
+
+router.post('/import/fd/preview', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'file is required' });
+    }
+
+    const parsed = await parseFdStatement({
+      buffer: req.file.buffer,
+      filename: req.file.originalname,
+      password: req.body.password || ''
+    });
+    const investments = await store.getAllInvestments();
+
+    const deposits = parsed.deposits.map((deposit) => {
+      const ref = fdRef(deposit.account_no);
+      const existing = findByRef(investments, ref);
+      return {
+        ...deposit,
+        external_ref: ref,
+        existing_id: existing ? existing.id : null,
+        existing_amount: existing ? Number(existing.amount) : null,
+        status: existing
+          ? (Number(existing.amount) === deposit.principal ? 'unchanged' : 'update')
+          : 'new'
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        bank: parsed.bank,
+        holder: parsed.holder,
+        skipped: parsed.skipped,
+        count: deposits.length,
+        total_principal: round2(deposits.reduce((sum, d) => sum + (d.principal || 0), 0)),
+        deposits
+      }
+    });
+  } catch (error) {
+    console.error('Error previewing FD statement:', error);
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/import/fd', async (req, res) => {
+  try {
+    const { deposits, platform } = req.body || {};
+    if (!Array.isArray(deposits) || !deposits.length) {
+      return res.status(400).json({ success: false, error: 'deposits array is required' });
+    }
+    if (!platform) {
+      return res.status(400).json({ success: false, error: 'platform is required' });
+    }
+
+    const defaults = {
+      platform,
+      investment_type: req.body.investment_type || 'FD',
+      sub_type_name: req.body.sub_type_name || 'Bank FD',
+      payout_frequency: req.body.payout_frequency || 'quarterly',
+      compounding: req.body.compounding || 'quarterly'
+    };
+
+    const investments = await store.getAllInvestments();
+    let imported = 0;
+    let updated = 0;
+    const errors = [];
+
+    for (const deposit of deposits) {
+      try {
+        if (!deposit.principal || !deposit.start_date) {
+          errors.push(`Skipped ${deposit.account_no || 'row'}: missing principal or start date`);
+          continue;
+        }
+        const payload = fdInvestmentPayload(deposit, defaults);
+        const existing = findByRef(investments, payload.external_ref);
+        if (existing) {
+          await store.updateInvestment(existing.id, mergeInvestment(existing, payload));
+          updated += 1;
+        } else {
+          await store.createInvestment(payload);
+          imported += 1;
+        }
+      } catch (error) {
+        errors.push(`${deposit.account_no || 'row'}: ${error.message}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      data: { imported, updated, errors, totalProcessed: deposits.length },
+      message: `FD import completed: ${imported} added, ${updated} updated.`
+    });
+  } catch (error) {
+    console.error('Error importing FD statement:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

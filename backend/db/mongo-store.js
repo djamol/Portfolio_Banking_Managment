@@ -54,6 +54,7 @@ function formatDoc(doc) {
     maturity_amount: rest.maturity_amount != null ? Number(rest.maturity_amount) : null,
     payout_frequency: rest.payout_frequency || null,
     compounding: rest.compounding || null,
+    external_ref: rest.external_ref || null,
     created_at: rest.created_at ? new Date(rest.created_at).toISOString() : rest.created_at,
     updated_at: rest.updated_at ? new Date(rest.updated_at).toISOString() : rest.updated_at
   };
@@ -132,6 +133,7 @@ async function createInvestment(data) {
     maturity_amount: data.maturity_amount != null && data.maturity_amount !== '' ? Number(data.maturity_amount) : null,
     payout_frequency: data.payout_frequency || null,
     compounding: data.compounding || null,
+    external_ref: data.external_ref || null,
     investment_date: toDateString(data.investment_date),
     notes: data.notes || null,
     created_at: now,
@@ -178,6 +180,7 @@ async function updateInvestment(id, data) {
     maturity_amount: data.maturity_amount != null && data.maturity_amount !== '' ? Number(data.maturity_amount) : null,
     payout_frequency: data.payout_frequency || null,
     compounding: data.compounding || null,
+    external_ref: data.external_ref || null,
     investment_date: toDateString(data.investment_date),
     notes: data.notes || null,
     updated_at: now

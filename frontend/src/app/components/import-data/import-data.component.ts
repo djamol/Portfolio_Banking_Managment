@@ -1,9 +1,12 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { firstValueFrom } from 'rxjs';
 import { InvestmentService } from '../../services/investment.service';
 import { MutualFundScheme, MutualFundService } from '../../services/mutual-fund.service';
 import { CategoryService, SubTypeName, Category } from '../../services/category.service';
+import { FdImportService, FdStatementDeposit, FdStatementPreview } from '../../services/fd-import.service';
+import { PayoutFrequency } from '../../services/fd-analytics.service';
 import { formatIndianFull } from '../../utils/indian-number.util';
 
 @Component({
@@ -43,6 +46,116 @@ export class ImportDataComponent implements OnInit {
 
   get supportsCsvImport(): boolean {
     return this.investmentType === 'Mutual Fund' || this.investmentType === 'ETF';
+  }
+
+  // --- Deposit (FD / Bond / PPF / EPF) statement import ---
+  readonly depositTypes = ['FD', 'Bond', 'PPF', 'EPF'];
+  readonly payoutFrequencies: PayoutFrequency[] = ['at-maturity', 'monthly', 'quarterly', 'half-yearly', 'yearly'];
+  fdSubTypeName = 'Bank FD';
+  fdPayoutFrequency: PayoutFrequency = 'quarterly';
+  fdCompounding = 'quarterly';
+  fdPassword = '';
+  fdPreview: FdStatementPreview | null = null;
+  fdSearch = '';
+
+  get supportsFdImport(): boolean {
+    return this.depositTypes.includes(this.investmentType);
+  }
+
+  get fdDeposits(): FdStatementDeposit[] {
+    const rows = this.fdPreview?.deposits || [];
+    const term = this.fdSearch.trim().toLowerCase();
+    if (!term) return rows;
+    return rows.filter((row) =>
+      [row.account_no, row.branch, row.maturity_date, row.status]
+        .filter(Boolean)
+        .some((field) => String(field).toLowerCase().includes(term)));
+  }
+
+  get fdSelectedCount(): number {
+    return (this.fdPreview?.deposits || []).filter((row) => row.selected).length;
+  }
+
+  get fdSelectedPrincipal(): number {
+    return (this.fdPreview?.deposits || [])
+      .filter((row) => row.selected)
+      .reduce((sum, row) => sum + (row.principal || 0), 0);
+  }
+
+  fdStatusCount(status: FdStatementDeposit['status']): number {
+    return (this.fdPreview?.deposits || []).filter((row) => row.status === status).length;
+  }
+
+  selectAllFd(selected: boolean) {
+    (this.fdPreview?.deposits || []).forEach((row) => { row.selected = selected; });
+  }
+
+  /** Effective payout shown per row: cumulative deposits ignore the bulk default. */
+  fdEffectivePayout(row: FdStatementDeposit): string {
+    return row.payout_frequency || (row.cumulative ? 'at-maturity' : this.fdPayoutFrequency);
+  }
+
+  async previewFdImport() {
+    if (!this.selectedFile) {
+      this.showMessage('Please select an FD statement file.', 'error');
+      return;
+    }
+    this.isUploading = true;
+    this.message = 'Reading FD statement...';
+    this.messageType = 'info';
+    try {
+      const preview = await firstValueFrom(this.fdImportService.preview(this.selectedFile, this.fdPassword));
+      preview.deposits.forEach((row) => { row.selected = row.status !== 'unchanged'; });
+      this.fdPreview = preview;
+      if (!this.platform.trim() && preview.bank) this.platform = preview.bank;
+      const skipNote = preview.skipped ? ` ${preview.skipped} non-deposit row(s) ignored.` : '';
+      this.showMessage(`Found ${preview.count} deposit(s) totalling ${this.formatCurrency(preview.total_principal)}.${skipNote}`, 'success');
+    } catch (error: any) {
+      this.fdPreview = null;
+      this.showMessage('Could not read the statement: ' + (error?.error?.error || error?.message || error), 'error');
+    } finally {
+      this.isUploading = false;
+    }
+  }
+
+  async importFdData() {
+    if (!this.platform.trim()) {
+      this.showMessage('Please enter a platform/bank name.', 'error');
+      return;
+    }
+    const deposits = (this.fdPreview?.deposits || []).filter((row) => row.selected);
+    if (!deposits.length) {
+      this.showMessage('No rows selected. Check at least one deposit to import.', 'error');
+      return;
+    }
+
+    this.isUploading = true;
+    this.message = `Importing ${deposits.length} deposit(s)...`;
+    this.messageType = 'info';
+    try {
+      const result = await firstValueFrom(this.fdImportService.import({
+        platform: this.platform.trim(),
+        investment_type: this.investmentType,
+        sub_type_name: this.fdSubTypeName,
+        payout_frequency: this.fdPayoutFrequency,
+        compounding: this.fdCompounding,
+        deposits
+      }));
+      const errorNote = result.errors.length ? ` ${result.errors.length} row(s) failed.` : '';
+      this.showMessage(`${result.imported} added, ${result.updated} updated.${errorNote}`, result.errors.length ? 'info' : 'success');
+      this.fdPreview = null;
+      this.selectedFile = null;
+      this.fdPassword = '';
+    } catch (error: any) {
+      this.showMessage('Import failed: ' + (error?.error?.error || error?.message || error), 'error');
+    } finally {
+      this.isUploading = false;
+    }
+  }
+
+  formatCurrency(value: number | null | undefined): string {
+    if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
+    return `₹${Number(value).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
   }
   
   // Method to reset custom date to today when checkbox is toggled
@@ -124,7 +237,8 @@ export class ImportDataComponent implements OnInit {
   constructor(
     private investmentService: InvestmentService,
     private categoryService: CategoryService,
-    private mutualFundService: MutualFundService
+    private mutualFundService: MutualFundService,
+    private fdImportService: FdImportService
   ) {}
 
   async ngOnInit() {
@@ -157,6 +271,7 @@ export class ImportDataComponent implements OnInit {
       this.selectedFile = file;
       this.message = `Selected file: ${file.name}`;
       this.messageType = 'info';
+      this.fdPreview = null;
       this.resetPreviewState();
     }
   }

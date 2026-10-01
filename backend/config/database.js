@@ -254,6 +254,7 @@ const createTables = async () => {
         maturity_amount DECIMAL(15, 2) NULL,
         payout_frequency VARCHAR(16) NULL,
         compounding VARCHAR(16) NULL,
+        external_ref VARCHAR(64) NULL,
         investment_date DATE NOT NULL,
         notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -261,6 +262,7 @@ const createTables = async () => {
         INDEX idx_investment_type (investment_type),
         INDEX idx_investment_date (investment_date),
         INDEX idx_maturity_date (maturity_date),
+        INDEX idx_external_ref (external_ref),
         INDEX idx_website_app (website_app_name)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
@@ -466,7 +468,9 @@ const createTables = async () => {
       'ALTER TABLE investments ADD COLUMN maturity_amount DECIMAL(15, 2) NULL',
       'ALTER TABLE investments ADD COLUMN payout_frequency VARCHAR(16) NULL',
       'ALTER TABLE investments ADD COLUMN compounding VARCHAR(16) NULL',
+      'ALTER TABLE investments ADD COLUMN external_ref VARCHAR(64) NULL',
       'ALTER TABLE investments ADD INDEX idx_maturity_date (maturity_date)',
+      'ALTER TABLE investments ADD INDEX idx_external_ref (external_ref)',
       'ALTER TABLE investment_history ADD COLUMN units DECIMAL(20, 4) NULL',
       'ALTER TABLE investment_history ADD COLUMN nav_price DECIMAL(20, 4) NULL',
       'ALTER TABLE investment_history ADD COLUMN invested_amount DECIMAL(15, 2) NULL',
