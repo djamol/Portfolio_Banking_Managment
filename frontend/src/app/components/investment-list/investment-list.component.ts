@@ -11,6 +11,7 @@ import { matchesPlatformFilter } from '../../utils/ignore-platform.util';
 import { getApiDomain } from '../../utils/api-url.util';
 import { formatIndianFull, getIndianAmountBreakdown } from '../../utils/indian-number.util';
 import {
+  depositFormFields,
   parseMaturityDateFromNotes,
   setMaturityDateInNotes,
   showsMaturityHelper
@@ -622,6 +623,8 @@ export class InvestmentListComponent implements OnInit {
       invested_amount: null,
       profit_loss: null,
       investment_date: this.todayYmd(),
+      maturity_date: null,
+      ...depositFormFields(null),
       notes: ''
     };
     this.isEditing = false;
@@ -659,6 +662,7 @@ export class InvestmentListComponent implements OnInit {
     this.originalEditDate = this.toLocalYmd(investment.investment_date);
     this.currentInvestment = {
       ...investment,
+      ...depositFormFields(investment),
       investment_date: this.todayYmd()
     };
     this.isEditing = true;
@@ -1406,7 +1410,11 @@ export class InvestmentListComponent implements OnInit {
       avg_buy_price: investment.avg_buy_price ?? null,
       invested_amount: investment.invested_amount ?? null,
       profit_loss: investment.profit_loss ?? null,
+      mutual_fund_scheme_code: investment.mutual_fund_scheme_code ?? null,
+      mutual_fund_scheme_name: investment.mutual_fund_scheme_name ?? null,
       investment_date: this.todayYmd(),
+      maturity_date: investment.maturity_date ?? null,
+      ...depositFormFields(investment),
       notes: investment.notes || ''
     };
     this.isEditing = false;

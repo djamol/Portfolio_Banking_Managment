@@ -5,6 +5,7 @@ import { MutualFundScheme, MutualFundService } from '../../services/mutual-fund.
 import { CategoryService, SubTypeName, Category } from '../../services/category.service';
 import { INVESTMENT_TYPES, INVESTMENT_SUB_TYPES } from '../../constants/investment-types.constants';
 import {
+  depositFormFields,
   parseMaturityDateFromNotes,
   setMaturityDateInNotes,
   showsMaturityHelper
@@ -150,12 +151,9 @@ export class InvestmentFormComponent implements OnInit {
             invested_amount: response.invested_amount != null ? Number(response.invested_amount) : null,
             profit_loss: response.profit_loss != null ? Number(response.profit_loss) : null,
             mutual_fund_scheme_code: response.mutual_fund_scheme_code || '',
-            interest_rate: response.interest_rate != null ? Number(response.interest_rate) : null,
             maturity_date: (response.maturity_date || '').slice(0, 10)
               || parseMaturityDateFromNotes(response.notes) || '',
-            maturity_amount: response.maturity_amount != null ? Number(response.maturity_amount) : null,
-            payout_frequency: response.payout_frequency || '',
-            compounding: response.compounding || '',
+            ...depositFormFields(response),
             investment_date: this.todayYmd(),
             notes: response.notes || ''
           };
