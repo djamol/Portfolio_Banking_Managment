@@ -219,7 +219,61 @@
         [(ngModel)]="maturityDate"
         (ngModelChange)="onMaturityDateChange()"
         class="form-control">
-      <small class="field-hint">Saved as <code>maturity:YYYY-MM-DD</code> in notes for Dashboard maturity watch.</small>
+      <small class="field-hint">Also mirrored as <code>maturity:YYYY-MM-DD</code> in notes for the Dashboard maturity watch.</small>
+    </div>
+
+    <div class="form-group" *ngIf="showMaturityHelper">
+      <label for="interest_rate">Interest rate (% p.a.)</label>
+      <input
+        type="number"
+        id="interest_rate"
+        name="interest_rate"
+        [(ngModel)]="investment.interest_rate"
+        step="0.01"
+        min="0"
+        max="30"
+        class="form-control"
+        placeholder="e.g. 7.10">
+      <small class="field-hint">Drives accrual, maturity value and income projections on the Deposits analytics page.</small>
+    </div>
+
+    <div class="form-group" *ngIf="showMaturityHelper">
+      <label for="payout_frequency">Interest payout</label>
+      <select
+        id="payout_frequency"
+        name="payout_frequency"
+        [(ngModel)]="investment.payout_frequency"
+        class="form-control">
+        <option value="">At maturity (cumulative)</option>
+        <option *ngFor="let option of payoutFrequencies" [value]="option">{{ option }}</option>
+      </select>
+      <small class="field-hint">Non-cumulative deposits pay interest out; cumulative ones reinvest it.</small>
+    </div>
+
+    <div class="form-group" *ngIf="showMaturityHelper && (!investment.payout_frequency || investment.payout_frequency === 'at-maturity')">
+      <label for="compounding">Compounding</label>
+      <select
+        id="compounding"
+        name="compounding"
+        [(ngModel)]="investment.compounding"
+        class="form-control">
+        <option value="">Quarterly (bank default)</option>
+        <option *ngFor="let option of compoundingOptions" [value]="option">{{ option }}</option>
+      </select>
+    </div>
+
+    <div class="form-group" *ngIf="showMaturityHelper">
+      <label for="maturity_amount">Maturity amount (optional)</label>
+      <input
+        type="number"
+        id="maturity_amount"
+        name="maturity_amount"
+        [(ngModel)]="investment.maturity_amount"
+        step="0.01"
+        min="0"
+        class="form-control"
+        placeholder="Leave blank to compute from the rate">
+      <small class="field-hint">If the rate is unknown, entering this lets the app back out an implied rate.</small>
     </div>
 
     <div class="form-group">

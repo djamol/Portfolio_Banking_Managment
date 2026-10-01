@@ -63,6 +63,8 @@ export class InvestmentListComponent implements OnInit {
   originalEditDate = '';
   duplicateMatches: any[] = [];
   maturityDate = '';
+  readonly payoutFrequencies = ['at-maturity', 'monthly', 'quarterly', 'half-yearly', 'yearly'];
+  readonly compoundingOptions = ['quarterly', 'monthly', 'half-yearly', 'yearly', 'simple'];
   @ViewChild('searchInput') searchInput?: ElementRef<HTMLInputElement>;
   showBulkReclassify = false;
   bulkWorkingReclassify = false;
@@ -642,11 +644,15 @@ export class InvestmentListComponent implements OnInit {
   }
 
   onMaturityDateChange() {
+    this.currentInvestment.maturity_date = this.maturityDate || null;
+    // Keep the legacy notes tag in sync so older views still show a maturity date.
     this.currentInvestment.notes = setMaturityDateInNotes(this.currentInvestment.notes, this.maturityDate || null);
   }
 
   private syncMaturityFromNotes() {
-    this.maturityDate = parseMaturityDateFromNotes(this.currentInvestment.notes) || '';
+    this.maturityDate = String(this.currentInvestment.maturity_date || '').slice(0, 10)
+      || parseMaturityDateFromNotes(this.currentInvestment.notes)
+      || '';
   }
 
   openEditModal(investment: any) {
@@ -675,6 +681,11 @@ export class InvestmentListComponent implements OnInit {
     this.showNewCategoryInput = false;
     if (!this.showMaturityHelper) {
       this.maturityDate = '';
+      this.currentInvestment.maturity_date = null;
+      this.currentInvestment.interest_rate = null;
+      this.currentInvestment.maturity_amount = null;
+      this.currentInvestment.payout_frequency = null;
+      this.currentInvestment.compounding = null;
       this.currentInvestment.notes = setMaturityDateInNotes(this.currentInvestment.notes, null);
     }
     this.refreshDuplicateWarning();
@@ -859,6 +870,9 @@ export class InvestmentListComponent implements OnInit {
     this.currentInvestment.notes = setMaturityDateInNotes(this.currentInvestment.notes, this.maturityDate || null);
     const payload = {
       ...this.currentInvestment,
+      maturity_date: this.maturityDate || null,
+      payout_frequency: this.currentInvestment.payout_frequency || null,
+      compounding: this.currentInvestment.compounding || null,
       notes: this.currentInvestment.notes || null
     };
     if (this.isEditing && this.currentInvestment.id) {

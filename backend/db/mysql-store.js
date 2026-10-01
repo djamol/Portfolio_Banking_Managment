@@ -41,8 +41,8 @@ async function getInvestmentById(id) {
 async function createInvestment(data) {
   const pool = getPool();
   const [result] = await pool.query(
-    `INSERT INTO investments (website_app_name, investment_type, sub_type_name, sub_type_category, amount, units, nav_price, nav_source, mutual_fund_scheme_code, mutual_fund_scheme_name, profit_loss, avg_buy_price, invested_amount, investment_date, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO investments (website_app_name, investment_type, sub_type_name, sub_type_category, amount, units, nav_price, nav_source, mutual_fund_scheme_code, mutual_fund_scheme_name, profit_loss, avg_buy_price, invested_amount, interest_rate, maturity_date, maturity_amount, payout_frequency, compounding, investment_date, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.website_app_name,
       data.investment_type,
@@ -57,6 +57,11 @@ async function createInvestment(data) {
       data.profit_loss != null && data.profit_loss !== '' ? Number(data.profit_loss) : null,
       data.avg_buy_price != null && data.avg_buy_price !== '' ? Number(data.avg_buy_price) : null,
       data.invested_amount != null && data.invested_amount !== '' ? Number(data.invested_amount) : null,
+      data.interest_rate != null && data.interest_rate !== '' ? Number(data.interest_rate) : null,
+      data.maturity_date || null,
+      data.maturity_amount != null && data.maturity_amount !== '' ? Number(data.maturity_amount) : null,
+      data.payout_frequency || null,
+      data.compounding || null,
       data.investment_date,
       data.notes || null
     ]
@@ -88,6 +93,7 @@ async function updateInvestment(id, data) {
     `UPDATE investments
      SET website_app_name = ?, investment_type = ?, sub_type_name = ?,
          sub_type_category = ?, amount = ?, units = ?, nav_price = ?, nav_source = ?, mutual_fund_scheme_code = ?, mutual_fund_scheme_name = ?, profit_loss = ?, avg_buy_price = ?, invested_amount = ?,
+         interest_rate = ?, maturity_date = ?, maturity_amount = ?, payout_frequency = ?, compounding = ?,
          investment_date = ?, notes = ?
      WHERE id = ?`,
     [
@@ -104,6 +110,11 @@ async function updateInvestment(id, data) {
       data.profit_loss != null && data.profit_loss !== '' ? Number(data.profit_loss) : null,
       data.avg_buy_price != null && data.avg_buy_price !== '' ? Number(data.avg_buy_price) : null,
       data.invested_amount != null && data.invested_amount !== '' ? Number(data.invested_amount) : null,
+      data.interest_rate != null && data.interest_rate !== '' ? Number(data.interest_rate) : null,
+      data.maturity_date || null,
+      data.maturity_amount != null && data.maturity_amount !== '' ? Number(data.maturity_amount) : null,
+      data.payout_frequency || null,
+      data.compounding || null,
       data.investment_date,
       data.notes || null,
       id

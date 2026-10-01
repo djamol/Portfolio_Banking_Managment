@@ -1,0 +1,504 @@
+<div class="fd-analytics">
+  <header class="page-head">
+    <div>
+      <h1>Deposits &amp; FD Analytics</h1>
+      <p class="sub" *ngIf="data">
+        {{ data.summary.deposits }} deposits · {{ data.summary.active }} active ·
+        {{ data.summary.matured }} matured · as of {{ formatDate(data.as_of) }}
+      </p>
+    </div>
+    <div class="head-actions">
+      <button type="button" class="btn btn-secondary" (click)="resetFilters()">Reset</button>
+      <button type="button" class="btn btn-primary" (click)="load(true)" [disabled]="loading">
+        {{ loading ? 'Loading…' : 'Refresh' }}
+      </button>
+    </div>
+  </header>
+
+  <section class="card filters">
+    <div class="filter-grid">
+      <label class="field">
+        <span>As of</span>
+        <input type="date" [(ngModel)]="asOf" (change)="load()" />
+      </label>
+      <label class="field">
+        <span>Tax slab %</span>
+        <input type="number" min="0" max="50" step="5" [(ngModel)]="taxRatePct" (change)="load()" />
+      </label>
+      <label class="field">
+        <span>Cashflow horizon (months)</span>
+        <input type="number" min="3" max="120" step="3" [(ngModel)]="horizonMonths" (change)="load()" />
+      </label>
+      <app-multi-select-filter
+        label="Type"
+        [options]="data?.options?.types || []"
+        [selected]="selectedTypes"
+        (selectedChange)="selectedTypes = $event; load()">
+      </app-multi-select-filter>
+      <app-multi-select-filter
+        label="Bank / platform"
+        [options]="data?.options?.platforms || []"
+        [selected]="selectedPlatforms"
+        (selectedChange)="selectedPlatforms = $event; load()">
+      </app-multi-select-filter>
+      <app-multi-select-filter
+        label="Category"
+        [options]="data?.options?.categories || []"
+        [selected]="selectedCategories"
+        (selectedChange)="selectedCategories = $event; load()">
+      </app-multi-select-filter>
+      <label class="field">
+        <span>Search</span>
+        <input type="text" placeholder="Deposit, bank, category" [(ngModel)]="search" />
+      </label>
+    </div>
+  </section>
+
+  <div class="alert error" *ngIf="error">{{ error }}</div>
+  <div class="alert info" *ngIf="loading">Computing accruals…</div>
+  <div class="alert info" *ngIf="!loading && data && !data.summary.deposits">
+    No FD / Bond / PPF / EPF holdings found. Add one from
+    <a routerLink="/investments">Investments</a> with an interest rate and maturity date.
+  </div>
+
+  <ng-container *ngIf="data as report">
+    <div class="alert warn" *ngIf="report.summary.overdue.length">
+      <strong>Action needed:</strong>
+      {{ report.summary.overdue.length }} deposit(s) passed maturity and are still open —
+      {{ report.summary.overdue[0].name }} matured {{ report.summary.overdue[0].days_overdue }} days ago.
+    </div>
+    <div class="alert warn" *ngIf="report.data_quality.missing_rate.length || report.data_quality.missing_maturity.length">
+      <strong>Incomplete data:</strong>
+      <span *ngIf="report.data_quality.missing_rate.length">
+        {{ report.data_quality.missing_rate.length }} without an interest rate.
+      </span>
+      <span *ngIf="report.data_quality.missing_maturity.length">
+        {{ report.data_quality.missing_maturity.length }} without a maturity date.
+      </span>
+      <span *ngIf="report.data_quality.from_notes.length">
+        {{ report.data_quality.from_notes.length }} still read from notes — re-save them to use the new fields.
+      </span>
+    </div>
+
+    <section class="kpi-grid">
+      <div class="kpi">
+        <span class="kpi-label">Principal</span>
+        <strong class="kpi-value">{{ formatCurrency(report.summary.principal) }}</strong>
+        <span class="kpi-foot">{{ report.summary.active }} active deposits</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Current value</span>
+        <strong class="kpi-value">{{ formatCurrency(report.summary.current_value) }}</strong>
+        <span class="kpi-foot up">+{{ formatCurrency(report.summary.accrued_interest) }} accrued</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Value at maturity</span>
+        <strong class="kpi-value">{{ formatCurrency(report.summary.maturity_value) }}</strong>
+        <span class="kpi-foot">{{ formatCurrency(report.summary.pending_interest) }} still to earn</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Total interest</span>
+        <strong class="kpi-value up">{{ formatCurrency(report.summary.total_interest) }}</strong>
+        <span class="kpi-foot" *ngIf="report.tax_rate_pct">
+          {{ formatCurrency(report.summary.post_tax_interest) }} after {{ report.tax_rate_pct }}% tax
+        </span>
+        <span class="kpi-foot" *ngIf="!report.tax_rate_pct">set a tax slab for post-tax view</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Average rate</span>
+        <strong class="kpi-value">{{ formatPercent(report.summary.avg_rate_pct) }}</strong>
+        <span class="kpi-foot" *ngIf="report.tax_rate_pct">
+          {{ formatPercent(report.summary.post_tax_avg_rate_pct) }} post-tax
+        </span>
+        <span class="kpi-foot" *ngIf="!report.tax_rate_pct">principal weighted</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Interest income</span>
+        <strong class="kpi-value">{{ formatCurrency(report.summary.monthly_income) }}/mo</strong>
+        <span class="kpi-foot">{{ formatCurrency(report.summary.annual_income) }} per year</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Avg remaining tenure</span>
+        <strong class="kpi-value">{{ formatNumber(report.summary.avg_remaining_years, 2) }} yrs</strong>
+        <span class="kpi-foot">principal weighted</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Next maturity</span>
+        <strong class="kpi-value">{{ formatCurrency(report.summary.next_maturity?.amount) }}</strong>
+        <span class="kpi-foot" [title]="report.summary.next_maturity?.name || ''">
+          {{ report.summary.next_maturity ? (report.summary.next_maturity.name + ' · ' + report.summary.next_maturity.date) : '—' }}
+        </span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Best rate</span>
+        <strong class="kpi-value up">{{ formatPercent(report.summary.best_rate?.rate) }}</strong>
+        <span class="kpi-foot" [title]="report.summary.best_rate?.name || ''">
+          {{ report.summary.best_rate?.name || '—' }}
+        </span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Lowest rate</span>
+        <strong class="kpi-value down">{{ formatPercent(report.summary.worst_rate?.rate) }}</strong>
+        <span class="kpi-foot" [title]="report.summary.worst_rate?.name || ''">
+          {{ report.summary.worst_rate?.name || '—' }}
+        </span>
+      </div>
+    </section>
+
+    <section class="card reinvest" *ngIf="report.summary.maturing.length">
+      <h3>Reinvestment runway</h3>
+      <div class="window-grid">
+        <div class="window" *ngFor="let window of report.summary.maturing">
+          <span class="window-label">Next {{ window.days }} days</span>
+          <strong>{{ formatCurrency(window.proceeds) }}</strong>
+          <span class="window-foot">{{ window.count }} deposit(s) · by {{ window.until }}</span>
+        </div>
+      </div>
+    </section>
+
+    <nav class="tabs">
+      <button
+        type="button"
+        *ngFor="let tab of tabs"
+        class="tab"
+        [class.active]="activeTab === tab.id"
+        (click)="activeTab = tab.id">
+        {{ tab.label }}
+      </button>
+    </nav>
+
+    <!-- Overview -->
+    <section *ngIf="activeTab === 'overview'" class="panel-grid">
+      <div class="card chart-card wide">
+        <h3>Deposit book over time — locked vs released</h3>
+        <div class="chart-box">
+          <canvas baseChart type="line" [data]="projectionChartData" [options]="currencyLineOptions"></canvas>
+        </div>
+        <p class="footnote">Cumulative deposits are compounded forward; matured deposits move into "released".</p>
+      </div>
+      <div class="card chart-card">
+        <h3>Interest split</h3>
+        <div class="chart-box">
+          <canvas baseChart type="doughnut" [data]="interestSplitData" [options]="doughnutOptions"></canvas>
+        </div>
+      </div>
+      <div class="card chart-card">
+        <h3>Average rate by bank</h3>
+        <div class="chart-box">
+          <canvas baseChart type="bar" [data]="rateChartData" [options]="rateBarOptions"></canvas>
+        </div>
+      </div>
+      <div class="card table-card wide">
+        <h3>Upcoming maturities</h3>
+        <div class="table-scroll">
+          <table class="dense">
+            <thead>
+              <tr>
+                <th>Deposit</th><th>Bank</th><th>Maturity</th><th class="num">In</th>
+                <th class="num">Rate</th><th class="num">Principal</th><th class="num">Proceeds</th>
+                <th class="num">Progress</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of filteredDeposits.slice(0, 12)">
+                <td [title]="row.name">{{ row.name }}</td>
+                <td>{{ row.platform || '—' }}</td>
+                <td>{{ formatDate(row.maturity_date) }}</td>
+                <td class="num" [class]="maturityClass(row)">{{ maturityLabel(row) }}</td>
+                <td class="num">{{ formatPercent(row.interest_rate) }}</td>
+                <td class="num">{{ formatCurrency(row.principal) }}</td>
+                <td class="num">{{ formatCurrency(row.maturity_amount) }}</td>
+                <td class="num">
+                  <span class="progress" *ngIf="row.progress_pct !== null">
+                    <span class="progress-fill" [style.width.%]="row.progress_pct"></span>
+                  </span>
+                  {{ formatPercent(row.progress_pct, 0) }}
+                </td>
+              </tr>
+              <tr *ngIf="!filteredDeposits.length">
+                <td colspan="8" class="empty">No deposits match the current filters.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Deposits -->
+    <section *ngIf="activeTab === 'deposits'" class="card table-card">
+      <div class="card-head">
+        <h3>Deposit register ({{ filteredDeposits.length }})</h3>
+        <div class="card-head-actions">
+          <label class="inline-check">
+            <input type="checkbox" [(ngModel)]="hideMatured" />
+            <span>Hide matured</span>
+          </label>
+          <button type="button" class="btn btn-secondary" (click)="exportDepositsCsv()">Export CSV</button>
+        </div>
+      </div>
+      <div class="table-scroll tall">
+        <table class="dense">
+          <thead>
+            <tr>
+              <th class="sticky-col" (click)="sortBy('name')">Deposit {{ sortIndicator('name') }}</th>
+              <th (click)="sortBy('investment_type')">Type {{ sortIndicator('investment_type') }}</th>
+              <th (click)="sortBy('platform')">Bank {{ sortIndicator('platform') }}</th>
+              <th (click)="sortBy('investment_date')">Start {{ sortIndicator('investment_date') }}</th>
+              <th (click)="sortBy('maturity_date')">Maturity {{ sortIndicator('maturity_date') }}</th>
+              <th class="num" (click)="sortBy('tenure_months')">Tenure {{ sortIndicator('tenure_months') }}</th>
+              <th class="num" (click)="sortBy('interest_rate')">Rate {{ sortIndicator('interest_rate') }}</th>
+              <th (click)="sortBy('payout_frequency')">Payout {{ sortIndicator('payout_frequency') }}</th>
+              <th (click)="sortBy('compounding')">Compounding {{ sortIndicator('compounding') }}</th>
+              <th class="num" (click)="sortBy('principal')">Principal {{ sortIndicator('principal') }}</th>
+              <th class="num" (click)="sortBy('current_value')">Value now {{ sortIndicator('current_value') }}</th>
+              <th class="num" (click)="sortBy('maturity_amount')">At maturity {{ sortIndicator('maturity_amount') }}</th>
+              <th class="num" (click)="sortBy('total_interest')">Interest {{ sortIndicator('total_interest') }}</th>
+              <th class="num" (click)="sortBy('periodic_payout')">Payout amt {{ sortIndicator('periodic_payout') }}</th>
+              <th class="num" (click)="sortBy('monthly_income')">Income/mo {{ sortIndicator('monthly_income') }}</th>
+              <th class="num" (click)="sortBy('days_to_maturity')">Days left {{ sortIndicator('days_to_maturity') }}</th>
+              <th class="num" (click)="sortBy('progress_pct')">Progress {{ sortIndicator('progress_pct') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <ng-container *ngFor="let row of filteredDeposits">
+              <tr class="clickable" [class.expanded]="expandedId === row.id" [class.matured]="row.matured" (click)="toggleExpanded(row)">
+                <td class="sticky-col" [title]="row.name">
+                  <span class="caret">{{ expandedId === row.id ? '▾' : '▸' }}</span>{{ row.name }}
+                </td>
+                <td>{{ row.investment_type }}</td>
+                <td>{{ row.platform || '—' }}</td>
+                <td>{{ formatDate(row.investment_date) }}</td>
+                <td [class]="maturityClass(row)">{{ formatDate(row.maturity_date) }}</td>
+                <td class="num">{{ formatNumber(row.tenure_months) }}m</td>
+                <td class="num">{{ formatPercent(row.interest_rate) }}</td>
+                <td>{{ row.payout_frequency }}</td>
+                <td>{{ row.compounding || '—' }}</td>
+                <td class="num">{{ formatCurrency(row.principal) }}</td>
+                <td class="num">{{ formatCurrency(row.current_value) }}</td>
+                <td class="num">{{ formatCurrency(row.maturity_amount) }}</td>
+                <td class="num up">{{ formatCurrency(row.total_interest) }}</td>
+                <td class="num">{{ formatCurrency(row.periodic_payout) }}</td>
+                <td class="num">{{ formatCurrency(row.monthly_income) }}</td>
+                <td class="num" [class]="maturityClass(row)">{{ row.days_to_maturity ?? '—' }}</td>
+                <td class="num">{{ formatPercent(row.progress_pct, 0) }}</td>
+              </tr>
+              <tr class="detail-row" *ngIf="expandedId === row.id">
+                <td colspan="17">
+                  <div class="detail-grid">
+                    <div>
+                      <span class="detail-label">Category</span>
+                      <strong>{{ row.category || '—' }}</strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Accrued (unrealised)</span>
+                      <strong class="up">{{ formatCurrency(row.accrued_interest) }}</strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Received (paid out)</span>
+                      <strong class="up">{{ formatCurrency(row.received_interest) }}</strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Pending</span>
+                      <strong>{{ formatCurrency(row.pending_interest) }}</strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Post-tax interest</span>
+                      <strong>{{ formatCurrency(row.post_tax_interest) }}</strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Post-tax rate</span>
+                      <strong>{{ formatPercent(row.post_tax_rate_pct) }}</strong>
+                    </div>
+                    <div *ngIf="row.implied_rate_pct !== null">
+                      <span class="detail-label">Implied rate</span>
+                      <strong>{{ formatPercent(row.implied_rate_pct) }}</strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Annual income</span>
+                      <strong>{{ formatCurrency(row.annual_income) }}</strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Rate band · tenure band</span>
+                      <strong>{{ row.rate_band }} · {{ row.tenure_band }}</strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Data source</span>
+                      <strong [class]="row.maturity_source === 'notes' || row.rate_source === 'notes' ? 'warn' : 'flat'">
+                        maturity: {{ row.maturity_source || 'missing' }} · rate: {{ row.rate_source || 'missing' }}
+                      </strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Book amount</span>
+                      <strong>{{ formatCurrency(row.book_amount) }}</strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Status</span>
+                      <strong [class]="row.matured ? 'down' : 'up'">{{ row.matured ? 'Matured' : 'Active' }}</strong>
+                    </div>
+                  </div>
+                  <p class="detail-notes" *ngIf="row.notes">{{ row.notes }}</p>
+                </td>
+              </tr>
+            </ng-container>
+            <tr *ngIf="!filteredDeposits.length">
+              <td colspan="17" class="empty">No deposits match the current filters.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Maturity ladder -->
+    <section *ngIf="activeTab === 'ladder'" class="panel-grid">
+      <div class="card chart-card wide">
+        <h3>
+          Maturity ladder
+          <span class="toggle-group">
+            <button type="button" [class.active]="ladderBasis === 'by_month'" (click)="setLadderBasis('by_month')">Month</button>
+            <button type="button" [class.active]="ladderBasis === 'by_year'" (click)="setLadderBasis('by_year')">Year</button>
+            <button type="button" [class.active]="ladderBasis === 'by_financial_year'" (click)="setLadderBasis('by_financial_year')">FY</button>
+          </span>
+        </h3>
+        <div class="chart-box tall">
+          <canvas baseChart type="bar" [data]="ladderChartData" [options]="currencyBarOptions"></canvas>
+        </div>
+      </div>
+      <div class="card table-card wide">
+        <div class="card-head">
+          <h3>Maturity schedule</h3>
+          <button type="button" class="btn btn-secondary" (click)="exportLadderCsv()">Export CSV</button>
+        </div>
+        <div class="table-scroll tall">
+          <table class="dense">
+            <thead>
+              <tr>
+                <th>Bucket</th><th class="num">Deposits</th><th class="num">Principal</th>
+                <th class="num">Interest</th><th class="num">Proceeds</th><th>Maturing</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let bucket of ladderBuckets">
+                <td>{{ bucket.label }}</td>
+                <td class="num">{{ bucket.count }}</td>
+                <td class="num">{{ formatCurrency(bucket.principal) }}</td>
+                <td class="num up">{{ formatCurrency(bucket.interest) }}</td>
+                <td class="num">{{ formatCurrency(bucket.maturity_amount) }}</td>
+                <td class="wrap">
+                  <span class="pill" *ngFor="let item of bucket.deposits">
+                    {{ item.name }} · {{ formatCurrency(item.amount) }}
+                  </span>
+                </td>
+              </tr>
+              <tr *ngIf="!ladderBuckets.length">
+                <td colspan="6" class="empty">No maturity dates recorded yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Income & payouts -->
+    <section *ngIf="activeTab === 'income'" class="panel-grid">
+      <div class="card chart-card wide">
+        <h3>Expected cash inflow — next {{ report.horizon_months }} months</h3>
+        <div class="chart-box tall">
+          <canvas baseChart type="bar" [data]="cashflowChartData" [options]="currencyBarOptions"></canvas>
+        </div>
+      </div>
+      <div class="card table-card wide">
+        <h3>Payout calendar</h3>
+        <div class="table-scroll tall">
+          <table class="dense">
+            <thead>
+              <tr><th>Month</th><th class="num">Interest payouts</th><th class="num">Maturity proceeds</th><th class="num">Total inflow</th></tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let month of report.cashflow_calendar">
+                <td>{{ month.label }}</td>
+                <td class="num up">{{ month.interest ? formatCurrency(month.interest) : '—' }}</td>
+                <td class="num">{{ month.maturity ? formatCurrency(month.maturity) : '—' }}</td>
+                <td class="num"><strong>{{ month.total ? formatCurrency(month.total) : '—' }}</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card table-card wide">
+        <h3>Income-paying deposits</h3>
+        <div class="table-scroll">
+          <table class="dense">
+            <thead>
+              <tr>
+                <th>Deposit</th><th>Bank</th><th>Frequency</th><th class="num">Rate</th>
+                <th class="num">Per payout</th><th class="num">Monthly equivalent</th><th class="num">Annual</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of filteredDeposits">
+                <ng-container *ngIf="!row.is_cumulative && !row.matured">
+                  <td [title]="row.name">{{ row.name }}</td>
+                  <td>{{ row.platform || '—' }}</td>
+                  <td>{{ row.payout_frequency }}</td>
+                  <td class="num">{{ formatPercent(row.interest_rate) }}</td>
+                  <td class="num">{{ formatCurrency(row.periodic_payout) }}</td>
+                  <td class="num">{{ formatCurrency(row.monthly_income) }}</td>
+                  <td class="num up">{{ formatCurrency(row.annual_income) }}</td>
+                </ng-container>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="footnote">
+          Cumulative deposits reinvest interest instead of paying it out — see the Deposits tab for their accrual.
+        </p>
+      </div>
+    </section>
+
+    <!-- Allocation -->
+    <section *ngIf="activeTab === 'allocation'" class="panel-grid">
+      <div class="card chart-card">
+        <h3>
+          Allocation
+          <span class="toggle-group">
+            <button type="button" [class.active]="allocationDimension === 'by_platform'" (click)="setAllocationDimension('by_platform')">Bank</button>
+            <button type="button" [class.active]="allocationDimension === 'by_rate_band'" (click)="setAllocationDimension('by_rate_band')">Rate</button>
+            <button type="button" [class.active]="allocationDimension === 'by_tenure_band'" (click)="setAllocationDimension('by_tenure_band')">Tenure</button>
+            <button type="button" [class.active]="allocationDimension === 'by_payout'" (click)="setAllocationDimension('by_payout')">Payout</button>
+            <button type="button" [class.active]="allocationDimension === 'by_type'" (click)="setAllocationDimension('by_type')">Type</button>
+            <button type="button" [class.active]="allocationDimension === 'by_category'" (click)="setAllocationDimension('by_category')">Category</button>
+          </span>
+        </h3>
+        <div class="chart-box tall">
+          <canvas baseChart type="doughnut" [data]="allocationChartData" [options]="doughnutOptions"></canvas>
+        </div>
+      </div>
+      <div class="card table-card">
+        <h3>Allocation breakdown</h3>
+        <div class="table-scroll tall">
+          <table class="dense">
+            <thead>
+              <tr>
+                <th>Bucket</th><th class="num">Count</th><th class="num">Weight</th>
+                <th class="num">Principal</th><th class="num">Value now</th>
+                <th class="num">At maturity</th><th class="num">Interest</th><th class="num">Avg rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of allocationRows">
+                <td>{{ row.key }}</td>
+                <td class="num">{{ row.count }}</td>
+                <td class="num">{{ formatPercent(row.weight_pct, 1) }}</td>
+                <td class="num">{{ formatCurrency(row.principal) }}</td>
+                <td class="num">{{ formatCurrency(row.current_value) }}</td>
+                <td class="num">{{ formatCurrency(row.maturity_amount) }}</td>
+                <td class="num up">{{ formatCurrency(row.interest) }}</td>
+                <td class="num">{{ formatPercent(row.avg_rate_pct) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </ng-container>
+</div>

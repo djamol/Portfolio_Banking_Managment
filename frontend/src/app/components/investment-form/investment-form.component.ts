@@ -30,6 +30,11 @@ export class InvestmentFormComponent implements OnInit {
     invested_amount: null as number | null,
     profit_loss: null as number | null,
     mutual_fund_scheme_code: '',
+    interest_rate: null as number | null,
+    maturity_date: '' as string,
+    maturity_amount: null as number | null,
+    payout_frequency: '' as string,
+    compounding: '' as string,
     investment_date: new Date().toISOString().split('T')[0],
     notes: ''
   };
@@ -50,6 +55,9 @@ export class InvestmentFormComponent implements OnInit {
   investmentTypes = INVESTMENT_TYPES;
   investmentSubTypes: string[] = [];
   investmentCategories: string[] = [];
+
+  readonly payoutFrequencies = ['at-maturity', 'monthly', 'quarterly', 'half-yearly', 'yearly'];
+  readonly compoundingOptions = ['quarterly', 'monthly', 'half-yearly', 'yearly', 'simple'];
 
   dbSubTypeNames: SubTypeName[] = [];
   dbCategories: Category[] = [];
@@ -142,13 +150,19 @@ export class InvestmentFormComponent implements OnInit {
             invested_amount: response.invested_amount != null ? Number(response.invested_amount) : null,
             profit_loss: response.profit_loss != null ? Number(response.profit_loss) : null,
             mutual_fund_scheme_code: response.mutual_fund_scheme_code || '',
+            interest_rate: response.interest_rate != null ? Number(response.interest_rate) : null,
+            maturity_date: (response.maturity_date || '').slice(0, 10)
+              || parseMaturityDateFromNotes(response.notes) || '',
+            maturity_amount: response.maturity_amount != null ? Number(response.maturity_amount) : null,
+            payout_frequency: response.payout_frequency || '',
+            compounding: response.compounding || '',
             investment_date: this.todayYmd(),
             notes: response.notes || ''
           };
           if (response.investment_type === 'Mutual Fund') {
             this.mutualFundSearch = response.sub_type_name || '';
           }
-          this.maturityDate = parseMaturityDateFromNotes(this.investment.notes) || '';
+          this.maturityDate = this.investment.maturity_date;
           if (response.investment_type) {
             this.loadTypeOptions().then(() => {
               this.investment.sub_type_name = response.sub_type_name || '';
@@ -179,6 +193,11 @@ export class InvestmentFormComponent implements OnInit {
     }
     if (!this.showMaturityHelper) {
       this.maturityDate = '';
+      this.investment.maturity_date = '';
+      this.investment.interest_rate = null;
+      this.investment.maturity_amount = null;
+      this.investment.payout_frequency = '';
+      this.investment.compounding = '';
       this.investment.notes = setMaturityDateInNotes(this.investment.notes, null);
     }
     this.loadTypeOptions();
@@ -291,6 +310,8 @@ export class InvestmentFormComponent implements OnInit {
   }
 
   onMaturityDateChange() {
+    this.investment.maturity_date = this.maturityDate || '';
+    // Keep the legacy notes tag in sync so older views still show a maturity date.
     this.investment.notes = setMaturityDateInNotes(this.investment.notes, this.maturityDate || null);
   }
 
@@ -389,6 +410,9 @@ export class InvestmentFormComponent implements OnInit {
     this.investment.notes = setMaturityDateInNotes(this.investment.notes, this.maturityDate || null);
     const payload = {
       ...this.investment,
+      maturity_date: this.investment.maturity_date || null,
+      payout_frequency: this.investment.payout_frequency || null,
+      compounding: this.investment.compounding || null,
       notes: this.investment.notes || null
     };
 

@@ -17,6 +17,7 @@ const authRoutes = require('./routes/auth');
 const mutualFundRoutes = require('./routes/mutual-funds');
 const cronJobRoutes = require('./routes/cron-job');
 const fundAnalyticsRoutes = require('./routes/fund-analytics');
+const fdAnalyticsRoutes = require('./routes/fd-analytics');
 
 
 const app = express();
@@ -113,6 +114,7 @@ router.use('/api/portfolio', portfolioRoutes);
 router.use('/api/config', configRoutes);
 router.use('/api/banking', bankingRoutes);
 router.use('/api/fund-analytics', fundAnalyticsRoutes);
+router.use('/api/fd-analytics', fdAnalyticsRoutes);
 
 if (hasFrontend) {
   logger.info('Serving bundled frontend from /public', { basePath: BASE_PATH || '/' });

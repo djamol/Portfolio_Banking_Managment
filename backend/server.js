@@ -14,6 +14,7 @@ const bankingRoutes = require('./routes/banking');
 const authRoutes = require('./routes/auth');
 const mutualFundRoutes = require('./routes/mutual-funds');
 const fundAnalyticsRoutes = require('./routes/fund-analytics');
+const fdAnalyticsRoutes = require('./routes/fd-analytics');
 const cronJobRoutes = require('./routes/cron-job');
 
 const app = express();
@@ -107,6 +108,7 @@ app.use('/api', authGate);
 app.use('/api/auth', authRoutes);
 app.use('/api/mutual-funds', mutualFundRoutes);
 app.use('/api/fund-analytics', fundAnalyticsRoutes);
+app.use('/api/fd-analytics', fdAnalyticsRoutes);
 app.use('/api/investments', investmentRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/categories', categoriesRoutes);
