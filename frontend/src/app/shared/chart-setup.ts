@@ -12,12 +12,13 @@ import {
   LineElement,
   PieController,
   PointElement,
+  ScatterController,
   Tooltip
 } from 'chart.js';
 
 let registered = false;
 
-/** Register only the Chart.js pieces this app uses (line/bar/doughnut/pie). */
+/** Register only the Chart.js pieces this app uses (line/bar/doughnut/pie/scatter). */
 export function registerAppCharts() {
   if (registered) return;
   Chart.register(
@@ -25,6 +26,7 @@ export function registerAppCharts() {
     BarController,
     DoughnutController,
     PieController,
+    ScatterController,
     CategoryScale,
     LinearScale,
     PointElement,

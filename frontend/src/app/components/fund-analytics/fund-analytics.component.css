@@ -108,6 +108,14 @@
   color: #075985;
 }
 
+.alert.warn {
+  background: #fef3c7;
+  color: #92400e;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
@@ -213,6 +221,63 @@
   margin: 0;
 }
 
+.card-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--app-muted);
+  cursor: pointer;
+}
+
+.footnote {
+  margin: 8px 0 0;
+  font-size: 0.74rem;
+  color: var(--app-muted);
+}
+
+.mover-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.mover-split h4 {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+}
+
+.mover-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.8rem;
+}
+
+.mover-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.mover-list li span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty-line {
+  color: var(--app-muted);
+}
+
 .toggle-group {
   display: inline-flex;
   border: 1px solid var(--app-border);
@@ -282,6 +347,67 @@ tbody tr:hover td {
   background: #f8fafc;
 }
 
+tr.clickable {
+  cursor: pointer;
+}
+
+tr.expanded > td {
+  background: #eff6ff;
+}
+
+.caret {
+  display: inline-block;
+  width: 14px;
+  color: var(--app-muted);
+}
+
+.detail-row > td {
+  background: #f8fafc;
+  white-space: normal;
+  padding: 12px 16px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px 18px;
+}
+
+.detail-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.detail-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--app-muted);
+}
+
+.detail-grid strong small {
+  font-weight: 400;
+  color: var(--app-muted);
+  margin-left: 4px;
+}
+
+.detail-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.pill {
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border: 1px solid var(--app-border);
+}
+
 .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -339,5 +465,9 @@ tbody tr:hover .sticky-col {
 
   .chart-box {
     height: 240px;
+  }
+
+  .mover-split {
+    grid-template-columns: 1fr;
   }
 }

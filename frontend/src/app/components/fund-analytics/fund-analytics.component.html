@@ -10,7 +10,7 @@
     </div>
     <div class="head-actions">
       <button type="button" class="btn btn-secondary" (click)="resetFilters()">Reset</button>
-      <button type="button" class="btn btn-primary" (click)="load()" [disabled]="loading">
+      <button type="button" class="btn btn-primary" (click)="load(true)" [disabled]="loading">
         {{ loading ? 'Loading…' : 'Refresh' }}
       </button>
     </div>
@@ -42,6 +42,17 @@
         <select [ngModel]="period" (ngModelChange)="onPeriodChange($event)">
           <option *ngFor="let item of periods" [value]="item.id">{{ item.label }}</option>
         </select>
+      </label>
+      <label class="field">
+        <span>Benchmark fund</span>
+        <select [ngModel]="benchmarkId" (ngModelChange)="setBenchmark($event)">
+          <option [ngValue]="null">None</option>
+          <option *ngFor="let fund of data?.options?.funds || []" [ngValue]="fund.id">{{ fund.name }}</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Risk-free %</span>
+        <input type="number" min="0" max="20" step="0.25" [(ngModel)]="riskFreePct" (change)="load()" />
       </label>
       <label class="field">
         <span>Top N</span>
@@ -80,6 +91,18 @@
   </div>
 
   <ng-container *ngIf="data as report">
+    <div class="alert warn" *ngIf="report.data_quality.stale.length || report.data_quality.no_history.length">
+      <strong>Data gaps:</strong>
+      <span *ngIf="report.data_quality.no_history.length">
+        {{ report.data_quality.no_history.length }} holding(s) have no NAV history.
+      </span>
+      <span *ngIf="report.data_quality.stale.length">
+        {{ report.data_quality.stale.length }} NAV(s) older than
+        {{ report.data_quality.stale_threshold_days }} days (worst:
+        {{ report.data_quality.stale[0].name }}, {{ report.data_quality.stale[0].stale_days }}d).
+      </span>
+    </div>
+
     <section class="kpi-grid">
       <div class="kpi">
         <span class="kpi-label">Current value</span>
@@ -96,6 +119,13 @@
         </span>
       </div>
       <div class="kpi">
+        <span class="kpi-label">XIRR</span>
+        <strong class="kpi-value" [class]="trendClass(report.summary.xirr_pct)">
+          {{ formatPercent(report.summary.xirr_pct) }}
+        </strong>
+        <span class="kpi-foot">money-weighted</span>
+      </div>
+      <div class="kpi">
         <span class="kpi-label">NAV return (range)</span>
         <strong class="kpi-value" [class]="trendClass(report.summary.portfolio_return_pct)">
           {{ formatPercent(report.summary.portfolio_return_pct) }}
@@ -103,24 +133,34 @@
         <span class="kpi-foot">CAGR {{ formatPercent(report.summary.portfolio_cagr_pct) }}</span>
       </div>
       <div class="kpi">
+        <span class="kpi-label">Risk-adjusted</span>
+        <strong class="kpi-value">Sharpe {{ formatRatio(report.summary.sharpe) }}</strong>
+        <span class="kpi-foot">Sortino {{ formatRatio(report.summary.sortino) }} · rf {{ report.risk_free_pct }}%</span>
+      </div>
+      <div class="kpi">
         <span class="kpi-label">Volatility (ann.)</span>
         <strong class="kpi-value">{{ formatPercent(report.summary.volatility_pct) }}</strong>
         <span class="kpi-foot down">Max DD {{ formatPercent(report.summary.max_drawdown_pct) }}</span>
       </div>
       <div class="kpi">
-        <span class="kpi-label">Best day</span>
-        <strong class="kpi-value up">{{ formatPercent(report.summary.best_day?.pct) }}</strong>
-        <span class="kpi-foot">{{ formatDate(report.summary.best_day?.date) }}</span>
+        <span class="kpi-label">Best {{ period }}</span>
+        <strong class="kpi-value up">{{ formatPercent(report.summary.best_period?.change_pct) }}</strong>
+        <span class="kpi-foot">{{ report.summary.best_period?.label || '—' }}</span>
       </div>
       <div class="kpi">
-        <span class="kpi-label">Worst day</span>
-        <strong class="kpi-value down">{{ formatPercent(report.summary.worst_day?.pct) }}</strong>
-        <span class="kpi-foot">{{ formatDate(report.summary.worst_day?.date) }}</span>
+        <span class="kpi-label">Worst {{ period }}</span>
+        <strong class="kpi-value down">{{ formatPercent(report.summary.worst_period?.change_pct) }}</strong>
+        <span class="kpi-foot">{{ report.summary.worst_period?.label || '—' }}</span>
       </div>
       <div class="kpi">
-        <span class="kpi-label">Positive days</span>
-        <strong class="kpi-value">{{ formatPercent(report.summary.positive_days_pct, 1) }}</strong>
-        <span class="kpi-foot">{{ report.summary.tracked_with_history }} funds with history</span>
+        <span class="kpi-label">Hit rate</span>
+        <strong class="kpi-value">{{ formatPercent(report.summary.positive_periods_pct, 1) }}</strong>
+        <span class="kpi-foot">{{ formatPercent(report.summary.positive_days_pct, 1) }} positive days</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Concentration</span>
+        <strong class="kpi-value">{{ formatPercent(report.summary.concentration.top5_weight_pct, 1) }}</strong>
+        <span class="kpi-foot">top-5 weight · HHI {{ formatRatio(report.summary.concentration.hhi) }}</span>
       </div>
       <div class="kpi">
         <span class="kpi-label">Top performer</span>
@@ -134,6 +174,15 @@
         <strong class="kpi-value down">{{ formatPercent(report.summary.worst_holding?.range_return_pct) }}</strong>
         <span class="kpi-foot" [title]="report.summary.worst_holding?.name || ''">
           {{ report.summary.worst_holding?.name || '—' }}
+        </span>
+      </div>
+      <div class="kpi" *ngIf="report.benchmark as benchmark">
+        <span class="kpi-label">vs {{ benchmark.name }}</span>
+        <strong class="kpi-value" [class]="trendClass(benchmark.excess_pct)">
+          {{ formatPercent(benchmark.excess_pct) }}
+        </strong>
+        <span class="kpi-foot">
+          β {{ formatRatio(benchmark.beta) }} · r {{ formatRatio(benchmark.correlation) }}
         </span>
       </div>
     </section>
@@ -158,9 +207,9 @@
         </div>
       </div>
       <div class="card chart-card">
-        <h3>Indexed NAV performance (base 100)</h3>
+        <h3>Indexed performance (base 100)</h3>
         <div class="chart-box">
-          <canvas baseChart type="line" [data]="indexChartData" [options]="percentLineOptions"></canvas>
+          <canvas baseChart type="line" [data]="indexChartData" [options]="indexLineOptions"></canvas>
         </div>
       </div>
       <div class="card chart-card">
@@ -187,19 +236,47 @@
         <div class="table-scroll">
           <table>
             <thead>
-              <tr><th>Bucket</th><th class="num">Funds</th><th class="num">Invested</th><th class="num">Value</th><th class="num">Gain</th><th class="num">Gain %</th></tr>
+              <tr>
+                <th>Bucket</th><th class="num">Funds</th><th class="num">Weight</th>
+                <th class="num">Invested</th><th class="num">Value</th><th class="num">Gain %</th>
+              </tr>
             </thead>
             <tbody>
               <tr *ngFor="let row of allocationRows">
                 <td>{{ row.key }}</td>
                 <td class="num">{{ row.count }}</td>
+                <td class="num">{{ formatPercent(row.weight_pct, 1) }}</td>
                 <td class="num">{{ formatCurrency(row.invested) }}</td>
                 <td class="num">{{ formatCurrency(row.value) }}</td>
-                <td class="num" [class]="trendClass(row.gain)">{{ formatCurrency(row.gain) }}</td>
                 <td class="num" [class]="trendClass(row.gain_pct)">{{ formatPercent(row.gain_pct) }}</td>
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+      <div class="card table-card" *ngIf="report.movers.gainers.length || report.movers.losers.length">
+        <h3>Latest session movers · {{ formatDate(report.movers.date) }}</h3>
+        <div class="mover-split">
+          <div>
+            <h4 class="up">Gainers</h4>
+            <ul class="mover-list">
+              <li *ngFor="let mover of report.movers.gainers">
+                <span [title]="mover.name">{{ mover.name }}</span>
+                <strong class="up">{{ formatPercent(mover.pct) }}</strong>
+              </li>
+              <li class="empty-line" *ngIf="!report.movers.gainers.length">None</li>
+            </ul>
+          </div>
+          <div>
+            <h4 class="down">Losers</h4>
+            <ul class="mover-list">
+              <li *ngFor="let mover of report.movers.losers">
+                <span [title]="mover.name">{{ mover.name }}</span>
+                <strong class="down">{{ formatPercent(mover.pct) }}</strong>
+              </li>
+              <li class="empty-line" *ngIf="!report.movers.losers.length">None</li>
+            </ul>
+          </div>
         </div>
       </div>
     </section>
@@ -208,7 +285,13 @@
     <section *ngIf="activeTab === 'holdings'" class="card table-card">
       <div class="card-head">
         <h3>Holdings performance ({{ filteredHoldings.length }})</h3>
-        <button type="button" class="btn btn-secondary" (click)="exportHoldingsCsv()">Export CSV</button>
+        <div class="card-head-actions">
+          <label class="inline-check">
+            <input type="checkbox" [(ngModel)]="onlyWithHistory" />
+            <span>Only funds with NAV history</span>
+          </label>
+          <button type="button" class="btn btn-secondary" (click)="exportHoldingsCsv()">Export CSV</button>
+        </div>
       </div>
       <div class="table-scroll tall">
         <table class="dense">
@@ -217,6 +300,7 @@
               <th class="sticky-col" (click)="sortBy('name')">Fund {{ sortIndicator('name') }}</th>
               <th (click)="sortBy('investment_type')">Type {{ sortIndicator('investment_type') }}</th>
               <th (click)="sortBy('platform')">Platform {{ sortIndicator('platform') }}</th>
+              <th class="num" (click)="sortBy('weight_pct')">Weight {{ sortIndicator('weight_pct') }}</th>
               <th class="num" (click)="sortBy('units')">Units {{ sortIndicator('units') }}</th>
               <th class="num" (click)="sortBy('nav')">NAV {{ sortIndicator('nav') }}</th>
               <th (click)="sortBy('nav_date')">NAV date {{ sortIndicator('nav_date') }}</th>
@@ -224,6 +308,7 @@
               <th class="num" (click)="sortBy('current_value')">Value {{ sortIndicator('current_value') }}</th>
               <th class="num" (click)="sortBy('gain')">Gain {{ sortIndicator('gain') }}</th>
               <th class="num" (click)="sortBy('gain_pct')">Gain % {{ sortIndicator('gain_pct') }}</th>
+              <th class="num" (click)="sortBy('xirr_pct')">XIRR {{ sortIndicator('xirr_pct') }}</th>
               <th class="num" (click)="sortBy('range_return_pct')">Range % {{ sortIndicator('range_return_pct') }}</th>
               <th class="num" (click)="sortBy('trailing.d1')">1D {{ sortIndicator('trailing.d1') }}</th>
               <th class="num" (click)="sortBy('trailing.w1')">1W {{ sortIndicator('trailing.w1') }}</th>
@@ -231,48 +316,134 @@
               <th class="num" (click)="sortBy('trailing.m3')">3M {{ sortIndicator('trailing.m3') }}</th>
               <th class="num" (click)="sortBy('trailing.m6')">6M {{ sortIndicator('trailing.m6') }}</th>
               <th class="num" (click)="sortBy('trailing.y1')">1Y {{ sortIndicator('trailing.y1') }}</th>
+              <th class="num" (click)="sortBy('trailing.y3')">3Y* {{ sortIndicator('trailing.y3') }}</th>
               <th class="num" (click)="sortBy('trailing.ytd')">YTD {{ sortIndicator('trailing.ytd') }}</th>
               <th class="num" (click)="sortBy('trailing.fy')">FY {{ sortIndicator('trailing.fy') }}</th>
               <th class="num" (click)="sortBy('cagr_pct')">CAGR {{ sortIndicator('cagr_pct') }}</th>
               <th class="num" (click)="sortBy('volatility_pct')">Vol {{ sortIndicator('volatility_pct') }}</th>
+              <th class="num" (click)="sortBy('sharpe')">Sharpe {{ sortIndicator('sharpe') }}</th>
               <th class="num" (click)="sortBy('max_drawdown_pct')">Max DD {{ sortIndicator('max_drawdown_pct') }}</th>
-              <th class="num" (click)="sortBy('positive_days_pct')">Up days {{ sortIndicator('positive_days_pct') }}</th>
               <th class="num" (click)="sortBy('snapshot_count')">Pts {{ sortIndicator('snapshot_count') }}</th>
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let row of filteredHoldings">
-              <td class="sticky-col" [title]="row.name">{{ row.name }}</td>
-              <td>{{ row.investment_type }}</td>
-              <td>{{ row.platform || '—' }}</td>
-              <td class="num">{{ formatNumber(row.units) }}</td>
-              <td class="num">{{ formatNumber(row.nav) }}</td>
-              <td>{{ formatDate(row.nav_date) }}</td>
-              <td class="num">{{ formatCurrency(row.invested_amount) }}</td>
-              <td class="num">{{ formatCurrency(row.current_value) }}</td>
-              <td class="num" [class]="trendClass(row.gain)">{{ formatCurrency(row.gain) }}</td>
-              <td class="num" [class]="trendClass(row.gain_pct)">{{ formatPercent(row.gain_pct) }}</td>
-              <td class="num" [class]="trendClass(row.range_return_pct)">{{ formatPercent(row.range_return_pct) }}</td>
-              <td class="num" [class]="trendClass(row.trailing?.d1)">{{ formatPercent(row.trailing?.d1) }}</td>
-              <td class="num" [class]="trendClass(row.trailing?.w1)">{{ formatPercent(row.trailing?.w1) }}</td>
-              <td class="num" [class]="trendClass(row.trailing?.m1)">{{ formatPercent(row.trailing?.m1) }}</td>
-              <td class="num" [class]="trendClass(row.trailing?.m3)">{{ formatPercent(row.trailing?.m3) }}</td>
-              <td class="num" [class]="trendClass(row.trailing?.m6)">{{ formatPercent(row.trailing?.m6) }}</td>
-              <td class="num" [class]="trendClass(row.trailing?.y1)">{{ formatPercent(row.trailing?.y1) }}</td>
-              <td class="num" [class]="trendClass(row.trailing?.ytd)">{{ formatPercent(row.trailing?.ytd) }}</td>
-              <td class="num" [class]="trendClass(row.trailing?.fy)">{{ formatPercent(row.trailing?.fy) }}</td>
-              <td class="num" [class]="trendClass(row.cagr_pct)">{{ formatPercent(row.cagr_pct) }}</td>
-              <td class="num">{{ formatPercent(row.volatility_pct, 1) }}</td>
-              <td class="num down">{{ formatPercent(row.max_drawdown_pct, 1) }}</td>
-              <td class="num">{{ formatPercent(row.positive_days_pct, 0) }}</td>
-              <td class="num">{{ row.snapshot_count }}</td>
-            </tr>
+            <ng-container *ngFor="let row of filteredHoldings">
+              <tr class="clickable" [class.expanded]="expandedId === row.id" (click)="toggleExpanded(row)">
+                <td class="sticky-col" [title]="row.name">
+                  <span class="caret">{{ expandedId === row.id ? '▾' : '▸' }}</span>{{ row.name }}
+                </td>
+                <td>{{ row.investment_type }}</td>
+                <td>{{ row.platform || '—' }}</td>
+                <td class="num">{{ formatPercent(row.weight_pct, 1) }}</td>
+                <td class="num">{{ formatNumber(row.units) }}</td>
+                <td class="num">{{ formatNumber(row.nav) }}</td>
+                <td [class.down]="(row.stale_days || 0) > report.data_quality.stale_threshold_days">
+                  {{ formatDate(row.nav_date) }}
+                </td>
+                <td class="num">{{ formatCurrency(row.invested_amount) }}</td>
+                <td class="num">{{ formatCurrency(row.current_value) }}</td>
+                <td class="num" [class]="trendClass(row.gain)">{{ formatCurrency(row.gain) }}</td>
+                <td class="num" [class]="trendClass(row.gain_pct)">{{ formatPercent(row.gain_pct) }}</td>
+                <td class="num" [class]="trendClass(row.xirr_pct)">{{ formatPercent(row.xirr_pct) }}</td>
+                <td class="num" [class]="trendClass(row.range_return_pct)">{{ formatPercent(row.range_return_pct) }}</td>
+                <td class="num" [class]="trendClass(row.trailing?.d1)">{{ formatPercent(row.trailing?.d1) }}</td>
+                <td class="num" [class]="trendClass(row.trailing?.w1)">{{ formatPercent(row.trailing?.w1) }}</td>
+                <td class="num" [class]="trendClass(row.trailing?.m1)">{{ formatPercent(row.trailing?.m1) }}</td>
+                <td class="num" [class]="trendClass(row.trailing?.m3)">{{ formatPercent(row.trailing?.m3) }}</td>
+                <td class="num" [class]="trendClass(row.trailing?.m6)">{{ formatPercent(row.trailing?.m6) }}</td>
+                <td class="num" [class]="trendClass(row.trailing?.y1)">{{ formatPercent(row.trailing?.y1) }}</td>
+                <td class="num" [class]="trendClass(row.trailing?.y3)">{{ formatPercent(row.trailing?.y3) }}</td>
+                <td class="num" [class]="trendClass(row.trailing?.ytd)">{{ formatPercent(row.trailing?.ytd) }}</td>
+                <td class="num" [class]="trendClass(row.trailing?.fy)">{{ formatPercent(row.trailing?.fy) }}</td>
+                <td class="num" [class]="trendClass(row.cagr_pct)">{{ formatPercent(row.cagr_pct) }}</td>
+                <td class="num">{{ formatPercent(row.volatility_pct, 1) }}</td>
+                <td class="num">{{ formatRatio(row.sharpe) }}</td>
+                <td class="num down">{{ formatPercent(row.max_drawdown_pct, 1) }}</td>
+                <td class="num">{{ row.snapshot_count }}</td>
+              </tr>
+              <tr class="detail-row" *ngIf="expandedId === row.id">
+                <td colspan="27">
+                  <div class="detail-grid">
+                    <div>
+                      <span class="detail-label">Scheme code</span>
+                      <strong>{{ row.scheme_code || '—' }}</strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Tracked since</span>
+                      <strong>{{ formatDate(row.inception_date) }}</strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Since-inception</span>
+                      <strong [class]="trendClass(row.inception_return_pct)">
+                        {{ formatPercent(row.inception_return_pct) }}
+                      </strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">XIRR basis</span>
+                      <strong>{{ row.xirr_basis }}</strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Sortino</span>
+                      <strong>{{ formatRatio(row.sortino) }}</strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Downside dev.</span>
+                      <strong>{{ formatPercent(row.downside_pct, 1) }}</strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Beta · correlation</span>
+                      <strong>{{ formatRatio(row.beta) }} · {{ formatRatio(row.correlation) }}</strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Up days</span>
+                      <strong>{{ formatPercent(row.positive_days_pct, 0) }}</strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Best day</span>
+                      <strong class="up">
+                        {{ formatPercent(row.best_day?.pct) }}
+                        <small>{{ formatDate(row.best_day?.date) }}</small>
+                      </strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Worst day</span>
+                      <strong class="down">
+                        {{ formatPercent(row.worst_day?.pct) }}
+                        <small>{{ formatDate(row.worst_day?.date) }}</small>
+                      </strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Current streak</span>
+                      <strong [class]="row.streak?.direction === 'up' ? 'up' : 'down'">
+                        {{ row.streak ? (row.streak.sessions + ' sessions ' + formatPercent(row.streak.pct)) : '—' }}
+                      </strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">NAV staleness</span>
+                      <strong [class]="(row.stale_days || 0) > report.data_quality.stale_threshold_days ? 'down' : 'flat'">
+                        {{ row.stale_days === null ? '—' : row.stale_days + ' days' }}
+                      </strong>
+                    </div>
+                  </div>
+                  <div class="detail-chips" *ngIf="row.financial_year_returns.length">
+                    <span class="detail-label">Financial years</span>
+                    <span
+                      class="pill"
+                      *ngFor="let fy of row.financial_year_returns"
+                      [ngStyle]="heatStyle(fy.pct)">
+                      {{ fy.label }} {{ formatPercent(fy.pct, 1) }}
+                    </span>
+                  </div>
+                </td>
+              </tr>
+            </ng-container>
             <tr *ngIf="!filteredHoldings.length">
-              <td colspan="24" class="empty">No holdings match the current filters.</td>
+              <td colspan="27" class="empty">No holdings match the current filters.</td>
             </tr>
           </tbody>
         </table>
       </div>
+      <p class="footnote">* 3Y and 5Y returns are annualised. Click a row for detailed risk metrics.</p>
     </section>
 
     <!-- Period returns -->
@@ -290,7 +461,10 @@
         </div>
       </div>
       <div class="card table-card wide">
-        <h3>Period breakdown</h3>
+        <div class="card-head">
+          <h3>Period breakdown</h3>
+          <button type="button" class="btn btn-secondary" (click)="exportPeriodsCsv()">Export CSV</button>
+        </div>
         <div class="table-scroll tall">
           <table class="dense">
             <thead>
@@ -370,7 +544,7 @@
         <div class="table-scroll">
           <table class="dense">
             <thead>
-              <tr><th>Fund</th><th class="num">Range %</th><th class="num">1M</th><th class="num">1Y</th><th class="num">Gain</th></tr>
+              <tr><th>Fund</th><th class="num">Range %</th><th class="num">1M</th><th class="num">1Y</th><th class="num">XIRR</th></tr>
             </thead>
             <tbody>
               <tr *ngFor="let row of report.leaders.best">
@@ -378,7 +552,7 @@
                 <td class="num up">{{ formatPercent(row.range_return_pct) }}</td>
                 <td class="num" [class]="trendClass(row.trailing?.m1)">{{ formatPercent(row.trailing?.m1) }}</td>
                 <td class="num" [class]="trendClass(row.trailing?.y1)">{{ formatPercent(row.trailing?.y1) }}</td>
-                <td class="num" [class]="trendClass(row.gain)">{{ formatCurrency(row.gain) }}</td>
+                <td class="num" [class]="trendClass(row.xirr_pct)">{{ formatPercent(row.xirr_pct) }}</td>
               </tr>
             </tbody>
           </table>
@@ -403,6 +577,129 @@
           </table>
         </div>
       </div>
+      <div class="card chart-card wide" *ngIf="report.movers.gainers.length || report.movers.losers.length">
+        <h3>Latest session movers · {{ formatDate(report.movers.date) }}</h3>
+        <div class="chart-box">
+          <canvas baseChart type="bar" [data]="moversChartData" [options]="horizontalPercentOptions"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- Risk -->
+    <section *ngIf="activeTab === 'risk'" class="panel-grid">
+      <div class="card chart-card wide">
+        <h3>Risk vs return — volatility against range return</h3>
+        <div class="chart-box tall">
+          <canvas baseChart type="scatter" [data]="riskScatterData" [options]="scatterOptions"></canvas>
+        </div>
+      </div>
+      <div class="card chart-card wide">
+        <h3>Rolling returns</h3>
+        <div class="chart-box">
+          <canvas baseChart type="line" [data]="rollingChartData" [options]="percentLineOptions"></canvas>
+        </div>
+      </div>
+      <div class="card table-card wide">
+        <h3>Risk metrics by fund (risk-free {{ report.risk_free_pct }}%)</h3>
+        <div class="table-scroll tall">
+          <table class="dense">
+            <thead>
+              <tr>
+                <th class="sticky-col" (click)="sortBy('name')">Fund {{ sortIndicator('name') }}</th>
+                <th class="num" (click)="sortBy('volatility_pct')">Volatility {{ sortIndicator('volatility_pct') }}</th>
+                <th class="num" (click)="sortBy('downside_pct')">Downside {{ sortIndicator('downside_pct') }}</th>
+                <th class="num" (click)="sortBy('sharpe')">Sharpe {{ sortIndicator('sharpe') }}</th>
+                <th class="num" (click)="sortBy('sortino')">Sortino {{ sortIndicator('sortino') }}</th>
+                <th class="num" (click)="sortBy('beta')">Beta {{ sortIndicator('beta') }}</th>
+                <th class="num" (click)="sortBy('correlation')">Corr {{ sortIndicator('correlation') }}</th>
+                <th class="num" (click)="sortBy('max_drawdown_pct')">Max DD {{ sortIndicator('max_drawdown_pct') }}</th>
+                <th class="num" (click)="sortBy('positive_days_pct')">Up days {{ sortIndicator('positive_days_pct') }}</th>
+                <th class="num" (click)="sortBy('cagr_pct')">CAGR {{ sortIndicator('cagr_pct') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of filteredHoldings">
+                <td class="sticky-col" [title]="row.name">{{ row.name }}</td>
+                <td class="num">{{ formatPercent(row.volatility_pct, 1) }}</td>
+                <td class="num">{{ formatPercent(row.downside_pct, 1) }}</td>
+                <td class="num" [class]="trendClass(row.sharpe)">{{ formatRatio(row.sharpe) }}</td>
+                <td class="num" [class]="trendClass(row.sortino)">{{ formatRatio(row.sortino) }}</td>
+                <td class="num">{{ formatRatio(row.beta) }}</td>
+                <td class="num">{{ formatRatio(row.correlation) }}</td>
+                <td class="num down">{{ formatPercent(row.max_drawdown_pct, 1) }}</td>
+                <td class="num">{{ formatPercent(row.positive_days_pct, 0) }}</td>
+                <td class="num" [class]="trendClass(row.cagr_pct)">{{ formatPercent(row.cagr_pct) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card table-card wide">
+        <h3>Deepest drawdowns</h3>
+        <div class="table-scroll">
+          <table class="dense">
+            <thead>
+              <tr>
+                <th>Peak</th><th>Trough</th><th class="num">Depth</th>
+                <th>Recovered</th><th class="num">Recovery days</th><th class="num">Duration</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let episode of report.drawdowns">
+                <td>{{ episode.peak_date }}</td>
+                <td>{{ episode.trough_date }}</td>
+                <td class="num down">{{ formatPercent(episode.depth_pct) }}</td>
+                <td [class.down]="!episode.recovery_date">{{ episode.recovery_date || 'ongoing' }}</td>
+                <td class="num">{{ episode.recovery_days ?? '—' }}</td>
+                <td class="num">{{ episode.duration_days ?? '—' }}</td>
+              </tr>
+              <tr *ngIf="!report.drawdowns.length">
+                <td colspan="6" class="empty">No drawdowns recorded in this range.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Calendar -->
+    <section *ngIf="activeTab === 'calendar'" class="card table-card">
+      <div class="card-head">
+        <h3>{{ calendarBasis === 'calendar_returns' ? 'Calendar year' : 'Financial year' }} returns by fund</h3>
+        <span class="toggle-group">
+          <button type="button" [class.active]="calendarBasis === 'calendar_returns'" (click)="calendarBasis = 'calendar_returns'">Calendar year</button>
+          <button type="button" [class.active]="calendarBasis === 'financial_year_returns'" (click)="calendarBasis = 'financial_year_returns'">Financial year</button>
+        </span>
+      </div>
+      <div class="table-scroll tall">
+        <table class="dense heatmap">
+          <thead>
+            <tr>
+              <th class="sticky-col">Fund</th>
+              <th class="num" *ngFor="let column of calendarColumns">{{ column }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of calendarHoldings">
+              <td class="sticky-col" [title]="row.name">{{ row.name }}</td>
+              <td
+                class="num heat"
+                *ngFor="let column of calendarColumns"
+                [ngStyle]="heatStyle(calendarValue(row, column))">
+                {{ formatPercent(calendarValue(row, column), 1) }}
+              </td>
+            </tr>
+            <tr *ngIf="!calendarHoldings.length">
+              <td [attr.colspan]="calendarColumns.length + 1" class="empty">
+                Not enough NAV history for calendar returns.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="footnote">
+        Returns are NAV close-to-close within each year; the first year uses its own opening NAV.
+      </p>
     </section>
 
     <!-- Charts -->
@@ -420,9 +717,21 @@
         </div>
       </div>
       <div class="card chart-card">
+        <h3>Indexed performance</h3>
+        <div class="chart-box">
+          <canvas baseChart type="line" [data]="indexChartData" [options]="indexLineOptions"></canvas>
+        </div>
+      </div>
+      <div class="card chart-card">
         <h3>{{ period | titlecase }} return</h3>
         <div class="chart-box">
           <canvas baseChart type="bar" [data]="periodChartData" [options]="percentBarOptions"></canvas>
+        </div>
+      </div>
+      <div class="card chart-card">
+        <h3>Rolling returns</h3>
+        <div class="chart-box">
+          <canvas baseChart type="line" [data]="rollingChartData" [options]="percentLineOptions"></canvas>
         </div>
       </div>
       <div class="card chart-card">
@@ -432,7 +741,7 @@
         </div>
       </div>
       <div class="card chart-card">
-        <h3>Allocation ({{ allocationDimension === 'by_type' ? 'type' : allocationDimension === 'by_platform' ? 'platform' : 'category' }})</h3>
+        <h3>Allocation</h3>
         <div class="chart-box">
           <canvas baseChart type="doughnut" [data]="allocationChartData" [options]="doughnutOptions"></canvas>
         </div>
