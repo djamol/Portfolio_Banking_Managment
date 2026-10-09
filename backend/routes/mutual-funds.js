@@ -4,6 +4,7 @@ const { syncLatestNavs } = require('../utils/mf-nav-sync');
 const store = require('../db');
 
 const router = express.Router();
+const NAV_TYPES = ['Mutual Fund', 'ETF'];
 
 function validDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) && !Number.isNaN(Date.parse(value));
@@ -79,7 +80,7 @@ router.post('/snapshots', async (req, res) => {
   }
   try {
     const investment = await store.getInvestmentById(investmentId);
-    if (!investment || investment.investment_type !== 'Mutual Fund') {
+    if (!investment || !NAV_TYPES.includes(investment.investment_type)) {
       return res.status(404).json({ success: false, error: 'Mutual fund investment not found' });
     }
     if (!isSchemeCode(investment.mutual_fund_scheme_code)) {
@@ -114,7 +115,7 @@ router.post('/snapshots', async (req, res) => {
 router.post('/refresh-latest', async (req, res) => {
   try {
     const all = await store.getAllInvestments();
-    const funds = all.filter(inv => inv.investment_type === 'Mutual Fund');
+    const funds = all.filter(inv => NAV_TYPES.includes(inv.investment_type));
     const now = new Date();
     const snapshotDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const navCache = new Map();
@@ -237,7 +238,7 @@ router.post('/refresh-latest/apply', async (req, res) => {
         continue;
       }
       const investment = await store.getInvestmentById(id);
-      if (!investment || investment.investment_type !== 'Mutual Fund') {
+      if (!investment || !NAV_TYPES.includes(investment.investment_type)) {
         results.push({ id, ok: false, error: 'Mutual fund investment not found' });
         continue;
       }

@@ -44,7 +44,7 @@ export class MutualFundHistoryComponent implements OnInit {
     this.investmentService.getAll().subscribe({
       next: rows => {
         this.investments = (rows || []).filter(row =>
-          row.investment_type === 'Mutual Fund'
+          (row.investment_type === 'Mutual Fund' || row.investment_type === 'ETF')
           && row.mutual_fund_scheme_code
           && Number(row.units) > 0
         );

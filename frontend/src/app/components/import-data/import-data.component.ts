@@ -338,7 +338,7 @@ export class ImportDataComponent implements OnInit {
           const newValue = Number(record.presentValue) || 0;
           const change = newValue - previousValue;
           const existingMatch = existingInvestments?.find(inv =>
-            inv.investment_type === 'Mutual Fund'
+            inv.investment_type === this.investmentType
             && inv.website_app_name === this.platform
             && inv.sub_type_name === record.subTypeName
             && this.getCategoryNameVariants(record.subTypeCategory).includes(inv.sub_type_category)

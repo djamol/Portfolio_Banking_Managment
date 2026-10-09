@@ -363,7 +363,7 @@
               <span *ngIf="hasNewScheme" class="new-indicator" title="New category not in existing data">*</span>
               {{ sortIndicator('extractedScheme') }}
             </th>
-            <th *ngIf="investmentType === 'Mutual Fund'">MFAPI Scheme</th>
+            <th *ngIf="investmentType === 'Mutual Fund' || investmentType === 'ETF'">MFAPI Scheme</th>
             <th class="sortable num">Units</th>
             <th class="sortable num">NAV/LTP</th>
             <th class="sortable num">Invested</th>
@@ -393,7 +393,7 @@
               {{ record.extractedScheme }}
               <span *ngIf="record.isNewScheme" class="new-indicator-cell" title="New scheme category not in existing data">🆕</span>
             </td>
-            <td *ngIf="investmentType === 'Mutual Fund'" class="mfapi-cell">
+            <td *ngIf="investmentType === 'Mutual Fund' || investmentType === 'ETF'" class="mfapi-cell">
               <span *ngIf="record.mutualFundSchemeCode">{{ record.mutualFundSchemeCode }}</span>
               <ng-container *ngIf="!record.mutualFundSchemeCode">
                 <input

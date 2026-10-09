@@ -467,7 +467,7 @@ router.post('/', async (req, res) => {
 
     let resolvedNav = nav_price;
     let resolvedNavSource = nav_source || (nav_price != null ? 'imported' : null);
-    if (investment_type === 'Mutual Fund' && mutual_fund_scheme_code) {
+    if (['Mutual Fund', 'ETF'].includes(investment_type) && mutual_fund_scheme_code) {
       const resolved = await resolveMutualFundNav(mutual_fund_scheme_code, investment_date, nav_price);
       resolvedNav = resolved.nav;
       resolvedNavSource = resolved.source;
@@ -518,7 +518,7 @@ router.put('/:id', async (req, res) => {
       || String(investment_date || '').slice(0, 10) !== String(existing.investment_date || '').slice(0, 10)
       || req.body?.nav_price !== undefined
       || nav_price == null;
-    if (investment_type === 'Mutual Fund' && mutual_fund_scheme_code && navInputsChanged) {
+    if (['Mutual Fund', 'ETF'].includes(investment_type) && mutual_fund_scheme_code && navInputsChanged) {
       const resolved = await resolveMutualFundNav(mutual_fund_scheme_code, investment_date, nav_price);
       resolvedNav = resolved.nav;
       resolvedNavSource = resolved.source;

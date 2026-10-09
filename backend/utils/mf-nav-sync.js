@@ -13,7 +13,7 @@ async function runSync() {
   const started = Date.now();
   const snapshotDate = localYmd();
   const all = await store.getAllInvestments();
-  const funds = all.filter(inv => inv.investment_type === 'Mutual Fund'
+  const funds = all.filter(inv => ['Mutual Fund', 'ETF'].includes(inv.investment_type)
     && isSchemeCode(inv.mutual_fund_scheme_code) && Number(inv.units) > 0);
 
   const latest = funds.length ? await fetchMfApi('/latest') : [];

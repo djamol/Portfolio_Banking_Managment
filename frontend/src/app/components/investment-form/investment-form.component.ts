@@ -157,7 +157,7 @@ export class InvestmentFormComponent implements OnInit {
             investment_date: this.todayYmd(),
             notes: response.notes || ''
           };
-          if (response.investment_type === 'Mutual Fund') {
+          if (response.investment_type === 'Mutual Fund' || response.investment_type === 'ETF') {
             this.mutualFundSearch = response.sub_type_name || '';
           }
           this.maturityDate = this.investment.maturity_date;
@@ -184,7 +184,7 @@ export class InvestmentFormComponent implements OnInit {
     this.investment.sub_type_category = '';
     this.showNewSubTypeInput = false;
     this.showNewCategoryInput = false;
-    if (this.investment.investment_type !== 'Mutual Fund') {
+    if (this.investment.investment_type !== 'Mutual Fund' && this.investment.investment_type !== 'ETF') {
       this.mutualFundSearch = '';
       this.mutualFundResults = [];
       this.investment.mutual_fund_scheme_code = '';
