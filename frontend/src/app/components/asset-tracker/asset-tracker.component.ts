@@ -110,6 +110,61 @@ export interface FilterChip {
   label: string;
 }
 
+export interface RollingReturnRow {
+  period: string;
+  periodKey: '1m' | '3m' | '6m' | '1y' | 'ytd';
+  startDate: string;
+  endDate: string;
+  startLabel: string;
+  endLabel: string;
+  startAmount: number;
+  endAmount: number;
+  change: number;
+  changePercent: number;
+  days: number;
+  insufficient: boolean;
+}
+
+export interface HeatmapCell {
+  monthKey: string;
+  monthIndex: number;
+  monthShort: string;
+  changePercent: number | null;
+  change: number | null;
+  snapshotCount: number;
+  intensityClass: string;
+  title: string;
+}
+
+export interface HeatmapYearRow {
+  year: string;
+  cells: HeatmapCell[];
+}
+
+export interface CashflowDecomposeSummary {
+  fromDate: string;
+  toDate: string;
+  fromLabel: string;
+  toLabel: string;
+  startAmount: number;
+  endAmount: number;
+  portfolioChange: number;
+  netCashflow: number;
+  contributions: number;
+  withdrawals: number;
+  marketReturn: number;
+  marketReturnPercent: number | null;
+  hasCashflows: boolean;
+}
+
+export interface CashflowMonthPoint {
+  month: string;
+  monthLabel: string;
+  portfolioChange: number;
+  netCashflow: number;
+  marketReturn: number;
+}
+
 type SortDirection = 'asc' | 'desc';
 type RangePreset = '1m' | '3m' | '6m' | '1y' | 'ytd' | 'all';
 type SnapshotSortColumn = 'date' | 'amount' | 'diffPreviousDate' | 'diffPreviousPercent' | 'daysSincePrevious' | 'diffWithCurrent' | 'percent';
@@ -206,6 +261,37 @@ export class AssetTrackerComponent implements OnInit {
   snapshotPageSize = 25;
   snapshotTotalPages = 0;
   pagedDisplayRows: AssetTrackerRow[] = [];
+
+  rollingReturns: RollingReturnRow[] = [];
+  heatmapYears: HeatmapYearRow[] = [];
+  heatmapMonthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  cashflowSummary: CashflowDecomposeSummary | null = null;
+  cashflowMonthPoints: CashflowMonthPoint[] = [];
+  cashflowLoading = false;
+  cashflowEmpty = false;
+  private cashflowsByMonth = new Map<string, { net: number; inflow: number; outflow: number }>();
+  cashflowChartData: ChartConfiguration['data'] = { labels: [], datasets: [] };
+  cashflowChartOptions: ChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: true, position: 'top' },
+      tooltip: {
+        callbacks: {
+          label: (context) => {
+            const value = context.parsed.y ?? 0;
+            return `${context.dataset.label}: ${this.inrTooltip(value)}`;
+          }
+        }
+      }
+    },
+    scales: {
+      y: {
+        title: { display: true, text: 'Amount (₹)' },
+        ticks: { callback: (value) => '₹' + Number(value).toLocaleString('en-IN') }
+      }
+    }
+  };
 
   private readonly inrTooltip = (value: number) =>
     '₹' + value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -739,6 +825,7 @@ export class AssetTrackerComponent implements OnInit {
     this.buildRows(this.allSortedDates, this.allByDate, latestInView);
     this.updateGoalProgress();
     this.loadAllocation();
+    this.loadCashflows();
   }
 
   private clearView() {
@@ -748,6 +835,12 @@ export class AssetTrackerComponent implements OnInit {
     this.monthlyReport = [];
     this.yearlyReport = [];
     this.allocationBreakdown = [];
+    this.rollingReturns = [];
+    this.heatmapYears = [];
+    this.cashflowSummary = null;
+    this.cashflowMonthPoints = [];
+    this.cashflowEmpty = false;
+    this.cashflowChartData = { labels: [], datasets: [] };
     this.currentTotalBreakdown = null;
     this.growthBreakdown = null;
     this.peakBreakdown = null;
@@ -851,7 +944,10 @@ export class AssetTrackerComponent implements OnInit {
     this.computeStats(latestDate);
     this.buildMonthlyReport();
     this.buildYearlyReport();
+    this.buildRollingReturns();
+    this.buildHeatmap();
     this.syncCompareDates();
+    this.rebuildCashflowDecompose();
     this.currentTotalBreakdown = getIndianAmountBreakdown(this.currentAmount);
     this.growthBreakdown = getIndianAmountBreakdown(this.stats?.totalGrowth ?? 0);
     this.peakBreakdown = getIndianAmountBreakdown(this.stats?.highestAmount ?? 0);
@@ -1236,6 +1332,262 @@ export class AssetTrackerComponent implements OnInit {
         worstPercent: periodPercents.length ? Math.min(...periodPercents) : 0
       };
     }).reverse();
+  }
+
+  private buildRollingReturns() {
+    const dates = this.allSortedDates;
+    const byDate = this.allByDate;
+    if (dates.length < 2) {
+      this.rollingReturns = [];
+      return;
+    }
+
+    const endKey = dates[dates.length - 1];
+    const endDate = this.parseDateKey(endKey);
+    const endAmount = byDate.get(endKey) ?? 0;
+    const windows: Array<{ key: RollingReturnRow['periodKey']; label: string; months?: number; ytd?: boolean }> = [
+      { key: '1m', label: '1M', months: 1 },
+      { key: '3m', label: '3M', months: 3 },
+      { key: '6m', label: '6M', months: 6 },
+      { key: '1y', label: '1Y', months: 12 },
+      { key: 'ytd', label: 'YTD', ytd: true }
+    ];
+
+    this.rollingReturns = windows.map((w) => {
+      let startTarget: Date;
+      if (w.ytd) {
+        startTarget = new Date(endDate.getFullYear(), 0, 1);
+      } else {
+        startTarget = new Date(endDate.getFullYear(), endDate.getMonth() - (w.months ?? 0), endDate.getDate());
+      }
+      const startTargetKey = this.toDateKey(startTarget);
+      const startKey = this.findSnapshotOnOrBefore(dates, startTargetKey) ?? dates[0];
+      const startAmount = byDate.get(startKey) ?? 0;
+      const insufficient = startKey === endKey || startAmount === 0;
+      const change = endAmount - startAmount;
+      const changePercent = !insufficient && startAmount !== 0 ? (change / startAmount) * 100 : 0;
+      const days = this.daysBetween(this.parseDateKey(startKey), endDate);
+
+      return {
+        period: w.label,
+        periodKey: w.key,
+        startDate: startKey,
+        endDate: endKey,
+        startLabel: this.formatDateLabel(startKey),
+        endLabel: this.formatDateLabel(endKey),
+        startAmount,
+        endAmount,
+        change,
+        changePercent,
+        days,
+        insufficient
+      };
+    });
+  }
+
+  private findSnapshotOnOrBefore(sortedDates: string[], targetKey: string): string | null {
+    let found: string | null = null;
+    for (const key of sortedDates) {
+      if (key <= targetKey) found = key;
+      else break;
+    }
+    return found;
+  }
+
+  private buildHeatmap() {
+    if (!this.monthlyReport.length) {
+      this.heatmapYears = [];
+      return;
+    }
+
+    const byMonth = new Map(this.monthlyReport.map((m) => [m.monthKey, m]));
+    const years = [...new Set(this.monthlyReport.map((m) => m.monthKey.slice(0, 4)))].sort().reverse();
+    const percents = this.monthlyReport
+      .map((m) => m.changePercent)
+      .filter((p) => Number.isFinite(p));
+    const maxAbs = percents.length ? Math.max(...percents.map((p) => Math.abs(p)), 1) : 1;
+
+    this.heatmapYears = years.map((year) => {
+      const cells: HeatmapCell[] = this.heatmapMonthLabels.map((monthShort, monthIndex) => {
+        const monthKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+        const row = byMonth.get(monthKey);
+        if (!row) {
+          return {
+            monthKey,
+            monthIndex,
+            monthShort,
+            changePercent: null,
+            change: null,
+            snapshotCount: 0,
+            intensityClass: 'hm-empty',
+            title: `${monthShort} ${year}: no snapshots`
+          };
+        }
+        const intensityClass = this.heatmapIntensityClass(row.changePercent, maxAbs);
+        const sign = row.changePercent >= 0 ? '+' : '';
+        return {
+          monthKey,
+          monthIndex,
+          monthShort,
+          changePercent: row.changePercent,
+          change: row.change,
+          snapshotCount: row.snapshotCount,
+          intensityClass,
+          title: `${row.monthLabel}: ${sign}${row.changePercent.toFixed(2)}% · ${this.formatSignedAmount(row.change)} · ${row.snapshotCount} snapshot(s)`
+        };
+      });
+      return { year, cells };
+    });
+  }
+
+  private heatmapIntensityClass(changePercent: number, maxAbs: number): string {
+    if (!Number.isFinite(changePercent) || changePercent === 0) return 'hm-flat';
+    const ratio = Math.min(1, Math.abs(changePercent) / maxAbs);
+    const band = ratio < 0.25 ? 1 : ratio < 0.5 ? 2 : ratio < 0.75 ? 3 : 4;
+    return changePercent > 0 ? `hm-pos-${band}` : `hm-neg-${band}`;
+  }
+
+  private loadCashflows() {
+    this.cashflowLoading = true;
+    this.analyticsService.getCashflowsByMonth().subscribe({
+      next: (response) => {
+        this.cashflowsByMonth.clear();
+        for (const row of response.data || []) {
+          const month = String(row.month || '').slice(0, 7);
+          if (!month) continue;
+          this.cashflowsByMonth.set(month, {
+            net: this.toNumber(row.net_cashflow),
+            inflow: this.toNumber(row.inflow),
+            outflow: this.toNumber(row.outflow)
+          });
+        }
+        this.cashflowEmpty = this.cashflowsByMonth.size === 0;
+        this.cashflowLoading = false;
+        this.rebuildCashflowDecompose();
+      },
+      error: () => {
+        this.cashflowsByMonth.clear();
+        this.cashflowEmpty = true;
+        this.cashflowLoading = false;
+        this.rebuildCashflowDecompose();
+      }
+    });
+  }
+
+  onCompareDatesChange() {
+    this.rebuildCashflowDecompose();
+  }
+
+  private rebuildCashflowDecompose() {
+    if (this.rows.length < 2) {
+      this.cashflowSummary = null;
+      this.cashflowMonthPoints = [];
+      this.cashflowChartData = { labels: [], datasets: [] };
+      return;
+    }
+
+    const cmp = this.snapshotCompare;
+    const startRow = cmp
+      ? this.rows.find((r) => r.date === cmp.fromDate)!
+      : this.rows[0];
+    const endRow = cmp
+      ? this.rows.find((r) => r.date === cmp.toDate)!
+      : this.rows[this.rows.length - 1];
+    if (!startRow || !endRow) {
+      this.cashflowSummary = null;
+      return;
+    }
+
+    const fromDate = startRow.date;
+    const toDate = endRow.date;
+    const startAmount = startRow.amount;
+    const endAmount = endRow.amount;
+    const portfolioChange = endAmount - startAmount;
+
+    let netCashflow = 0;
+    let contributions = 0;
+    let withdrawals = 0;
+    const fromMonth = fromDate.slice(0, 7);
+    const toMonth = toDate.slice(0, 7);
+
+    for (const [month, cf] of this.cashflowsByMonth) {
+      if (month < fromMonth || month > toMonth) continue;
+      netCashflow += cf.net;
+      contributions += cf.outflow;
+      withdrawals += cf.inflow;
+    }
+
+    const hasCashflows = this.cashflowsByMonth.size > 0;
+    const marketReturn = portfolioChange + netCashflow;
+    const marketReturnPercent = startAmount > 0 ? (marketReturn / startAmount) * 100 : null;
+
+    this.cashflowSummary = {
+      fromDate,
+      toDate,
+      fromLabel: startRow.dateLabel,
+      toLabel: endRow.dateLabel,
+      startAmount,
+      endAmount,
+      portfolioChange,
+      netCashflow,
+      contributions,
+      withdrawals,
+      marketReturn,
+      marketReturnPercent,
+      hasCashflows
+    };
+
+    this.buildCashflowMonthPoints(fromMonth, toMonth);
+  }
+
+  private buildCashflowMonthPoints(fromMonth: string, toMonth: string) {
+    const chronologicalMonthly = [...this.monthlyReport].reverse();
+    const points: CashflowMonthPoint[] = [];
+
+    for (const m of chronologicalMonthly) {
+      if (m.monthKey < fromMonth || m.monthKey > toMonth) continue;
+      const cf = this.cashflowsByMonth.get(m.monthKey);
+      const netCashflow = cf?.net ?? 0;
+      const portfolioChange = m.change;
+      points.push({
+        month: m.monthKey,
+        monthLabel: m.monthLabel,
+        portfolioChange,
+        netCashflow,
+        marketReturn: portfolioChange + netCashflow
+      });
+    }
+
+    this.cashflowMonthPoints = points;
+    this.cashflowChartData = {
+      labels: points.map((p) => p.monthLabel),
+      datasets: [
+        {
+          type: 'bar',
+          label: 'Portfolio Δ',
+          data: points.map((p) => p.portfolioChange),
+          backgroundColor: 'rgba(59, 130, 246, 0.7)',
+          borderColor: 'rgba(59, 130, 246, 1)',
+          borderWidth: 1
+        } as any,
+        {
+          type: 'bar',
+          label: 'Net cashflow',
+          data: points.map((p) => p.netCashflow),
+          backgroundColor: 'rgba(245, 158, 11, 0.7)',
+          borderColor: 'rgba(245, 158, 11, 1)',
+          borderWidth: 1
+        } as any,
+        {
+          type: 'bar',
+          label: 'Est. market',
+          data: points.map((p) => p.marketReturn),
+          backgroundColor: 'rgba(16, 185, 129, 0.7)',
+          borderColor: 'rgba(16, 185, 129, 1)',
+          borderWidth: 1
+        } as any
+      ]
+    };
   }
 
   private applySort() {

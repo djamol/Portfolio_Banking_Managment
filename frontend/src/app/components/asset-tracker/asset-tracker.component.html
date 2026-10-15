@@ -32,8 +32,11 @@
 
   <nav class="section-nav" *ngIf="stats">
     <button type="button" (click)="scrollToSection('at-kpis')">Summary</button>
+    <button type="button" (click)="scrollToSection('at-returns')">Returns</button>
     <button type="button" (click)="scrollToSection('at-compare')">Compare</button>
+    <button type="button" (click)="scrollToSection('at-cashflow')">Cashflow</button>
     <button type="button" (click)="scrollToSection('at-charts')">Charts</button>
+    <button type="button" (click)="scrollToSection('at-calendar')">Calendar</button>
     <button type="button" (click)="scrollToSection('at-monthly')">Monthly</button>
     <button type="button" (click)="scrollToSection('at-snapshots')">Snapshots</button>
   </nav>
@@ -354,6 +357,45 @@
       </div>
     </div>
 
+    <!-- Rolling returns -->
+    <div class="card returns-card" id="at-returns" *ngIf="rollingReturns.length">
+      <div class="table-header">
+        <div>
+          <h3>Rolling returns</h3>
+          <p class="chart-hint">Trailing windows from the latest snapshot in the current series</p>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table class="tracker-table">
+          <thead>
+            <tr>
+              <th>Period</th>
+              <th>Start → End</th>
+              <th class="num">Change</th>
+              <th class="num">Return %</th>
+              <th class="num">Days</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let r of rollingReturns" [class.muted-row]="r.insufficient">
+              <td><strong>{{ r.period }}</strong></td>
+              <td class="muted">
+                {{ r.insufficient ? 'Insufficient history' : (r.startLabel + ' → ' + r.endLabel) }}
+              </td>
+              <td class="num" [class.positive]="!r.insufficient && isPositive(r.change)" [class.negative]="!r.insufficient && isNegative(r.change)">
+                {{ r.insufficient ? '—' : formatSignedAmount(r.change) }}
+              </td>
+              <td class="num" [class.positive]="!r.insufficient && isPositive(r.changePercent)" [class.negative]="!r.insufficient && isNegative(r.changePercent)">
+                <ng-container *ngIf="!r.insufficient">{{ isPositive(r.changePercent) ? '+' : '' }}{{ r.changePercent | number:'1.2-2' }}%</ng-container>
+                <ng-container *ngIf="r.insufficient">—</ng-container>
+              </td>
+              <td class="num muted">{{ r.insufficient ? '—' : r.days }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- Snapshot compare -->
     <div class="card compare-card" id="at-compare" *ngIf="rows.length > 1">
       <div class="table-header">
@@ -365,13 +407,13 @@
       <div class="compare-controls">
         <label>
           From
-          <select [(ngModel)]="compareFrom" class="date-input">
+          <select [(ngModel)]="compareFrom" (ngModelChange)="onCompareDatesChange()" class="date-input">
             <option *ngFor="let row of rows" [value]="row.date">{{ row.dateLabel }}</option>
           </select>
         </label>
         <label>
           To
-          <select [(ngModel)]="compareTo" class="date-input">
+          <select [(ngModel)]="compareTo" (ngModelChange)="onCompareDatesChange()" class="date-input">
             <option *ngFor="let row of rows" [value]="row.date">{{ row.dateLabel }}</option>
           </select>
         </label>
@@ -417,6 +459,67 @@
       <ul>
         <li *ngFor="let insight of stats.insights">{{ insight }}</li>
       </ul>
+    </div>
+
+    <!-- Market vs cashflow -->
+    <div class="card cashflow-card" id="at-cashflow" *ngIf="rows.length > 1">
+      <div class="table-header">
+        <div>
+          <h3>Market return vs cashflows</h3>
+          <p class="chart-hint">
+            Approximate split using Compare dates
+            <span *ngIf="cashflowSummary"> ({{ cashflowSummary.fromLabel }} → {{ cashflowSummary.toLabel }})</span>
+            · market ≈ portfolio Δ + net cashflow
+          </p>
+        </div>
+      </div>
+
+      <div class="chart-empty" *ngIf="cashflowLoading">Loading cashflows…</div>
+
+      <ng-container *ngIf="!cashflowLoading && cashflowSummary as cf">
+        <div class="cashflow-kpis">
+          <div class="cashflow-kpi">
+            <span class="pm-label">Portfolio change</span>
+            <span class="pm-value" [class.positive]="isPositive(cf.portfolioChange)" [class.negative]="isNegative(cf.portfolioChange)">
+              {{ formatSignedAmount(cf.portfolioChange) }}
+            </span>
+          </div>
+          <div class="cashflow-kpi">
+            <span class="pm-label">Net cashflow</span>
+            <span class="pm-value" [class.positive]="isPositive(cf.netCashflow)" [class.negative]="isNegative(cf.netCashflow)">
+              {{ cf.hasCashflows ? formatSignedAmount(cf.netCashflow) : '—' }}
+            </span>
+            <span class="muted" *ngIf="cf.hasCashflows">
+              In {{ getIndianBreakdown(cf.contributions).primaryDisplay }} · Out {{ getIndianBreakdown(cf.withdrawals).primaryDisplay }}
+            </span>
+          </div>
+          <div class="cashflow-kpi">
+            <span class="pm-label">Est. market return</span>
+            <span class="pm-value" *ngIf="cf.hasCashflows" [class.positive]="isPositive(cf.marketReturn)" [class.negative]="isNegative(cf.marketReturn)">
+              {{ formatSignedAmount(cf.marketReturn) }}
+            </span>
+            <span class="pm-value muted" *ngIf="!cf.hasCashflows">—</span>
+            <span class="muted" *ngIf="cf.hasCashflows && cf.marketReturnPercent !== null"
+              [class.positive]="isPositive(cf.marketReturnPercent)"
+              [class.negative]="isNegative(cf.marketReturnPercent)">
+              {{ isPositive(cf.marketReturnPercent) ? '+' : '' }}{{ cf.marketReturnPercent | number:'1.2-2' }}%
+            </span>
+          </div>
+        </div>
+
+        <p class="cashflow-empty-hint" *ngIf="!cf.hasCashflows">
+          No investment cashflows recorded yet — portfolio change only.
+          <a routerLink="/cashflows">Add cashflows</a> to separate market vs money-in/out.
+        </p>
+
+        <div class="chart-container" *ngIf="cf.hasCashflows && cashflowMonthPoints.length">
+          <canvas baseChart
+            [data]="cashflowChartData"
+            [options]="cashflowChartOptions"
+            [type]="'bar'">
+          </canvas>
+        </div>
+      </ng-container>
     </div>
 
     <!-- Charts -->
@@ -495,6 +598,43 @@
             [options]="growthChartOptions"
             [type]="'line'">
           </canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Return calendar heatmap -->
+    <div class="card calendar-card" id="at-calendar" *ngIf="heatmapYears.length">
+      <div class="table-header">
+        <div>
+          <h3>Return calendar</h3>
+          <p class="chart-hint">Month × year heatmap of monthly portfolio change %</p>
+        </div>
+        <div class="heatmap-legend">
+          <span class="hm-legend-neg">Loss</span>
+          <span class="hm-swatch hm-neg-3"></span>
+          <span class="hm-swatch hm-neg-1"></span>
+          <span class="hm-swatch hm-flat"></span>
+          <span class="hm-swatch hm-pos-1"></span>
+          <span class="hm-swatch hm-pos-3"></span>
+          <span class="hm-legend-pos">Gain</span>
+        </div>
+      </div>
+      <div class="heatmap-scroll">
+        <div class="heatmap-grid">
+          <div class="hm-corner"></div>
+          <div class="hm-month-label" *ngFor="let m of heatmapMonthLabels">{{ m }}</div>
+          <ng-container *ngFor="let yearRow of heatmapYears">
+            <div class="hm-year">{{ yearRow.year }}</div>
+            <button
+              type="button"
+              class="hm-cell"
+              *ngFor="let cell of yearRow.cells"
+              [ngClass]="cell.intensityClass"
+              [title]="cell.title"
+              [attr.aria-label]="cell.title">
+              <span *ngIf="cell.changePercent !== null">{{ cell.changePercent | number:'1.0-0' }}%</span>
+            </button>
+          </ng-container>
         </div>
       </div>
     </div>
