@@ -124,6 +124,55 @@
     <p class="empty">No income credits for the selected categories in this range.</p>
   </ng-template>
 
+  <div class="card calendar-card" *ngIf="incomeAnalytics && heatmapYears.length">
+    <div class="heatmap-header">
+      <div>
+        <h3>Income calendar</h3>
+        <p class="hint">Year · Jan–Dec · Yearly total (selected income categories). Click a cell to filter.</p>
+      </div>
+      <div class="heatmap-legend">
+        <span class="hm-legend-neg">Low</span>
+        <span class="hm-swatch hm-flat"></span>
+        <span class="hm-swatch hm-pos-1"></span>
+        <span class="hm-swatch hm-pos-2"></span>
+        <span class="hm-swatch hm-pos-3"></span>
+        <span class="hm-swatch hm-pos-4"></span>
+        <span class="hm-legend-pos">High</span>
+      </div>
+    </div>
+    <div class="heatmap-scroll">
+      <div class="heatmap-grid">
+        <div class="hm-corner hm-month-label">Year</div>
+        <div class="hm-month-label" *ngFor="let m of heatmapMonthLabels">{{ m }}</div>
+        <div class="hm-month-label hm-yearly-label">Yearly</div>
+        <ng-container *ngFor="let yearRow of heatmapYears">
+          <div class="hm-year">{{ yearRow.year }}</div>
+          <button
+            type="button"
+            class="hm-cell"
+            *ngFor="let cell of yearRow.cells"
+            [ngClass]="cell.intensityClass"
+            [class.hm-clickable]="cell.amount !== null"
+            [title]="cell.title"
+            [attr.aria-label]="cell.title"
+            (click)="openHeatmapCell(cell)">
+            <span *ngIf="cell.amount !== null">{{ cell.display }}</span>
+          </button>
+          <button
+            type="button"
+            class="hm-cell hm-yearly-cell"
+            [ngClass]="yearRow.yearly.intensityClass"
+            [class.hm-clickable]="yearRow.yearly.amount !== null"
+            [title]="yearRow.yearly.title"
+            [attr.aria-label]="yearRow.yearly.title"
+            (click)="openHeatmapCell(yearRow.yearly)">
+            <span *ngIf="yearRow.yearly.amount !== null">{{ yearRow.yearly.display }}</span>
+          </button>
+        </ng-container>
+      </div>
+    </div>
+  </div>
+
   <div class="two-col" *ngIf="incomeAnalytics && incomeTableRows.length">
     <div class="card">
       <h3>Highest months</h3>

@@ -362,15 +362,49 @@
       <div class="table-header">
         <div>
           <h3>Rolling returns</h3>
-          <p class="chart-hint">Trailing windows from the latest snapshot in the current series</p>
+          <p class="chart-hint">
+            Trailing windows from the latest snapshot
+            <span *ngIf="salaryLoading"> · loading salary credits…</span>
+            <span *ngIf="!salaryLoading && salaryTxnCount > 0">
+              · {{ salaryTxnCount }} salary txn(s) · {{ getIndianBreakdown(salaryTotalLoaded).primaryDisplay }} total
+            </span>
+            <span *ngIf="!salaryLoading && salaryTxnCount === 0">
+              · no bank salary credits found (category Income_Salary_Payroll)
+            </span>
+          </p>
+        </div>
+        <div class="return-mode-toggle" role="group" aria-label="Return mode">
+          <button
+            type="button"
+            class="preset-btn"
+            [class.active]="rollingReturnMode === 'exclude_salary'"
+            (click)="setRollingReturnMode('exclude_salary')"
+            title="Subtract bank salary credits in the window from portfolio change">
+            Except salary
+          </button>
+          <button
+            type="button"
+            class="preset-btn"
+            [class.active]="rollingReturnMode === 'include_salary'"
+            (click)="setRollingReturnMode('include_salary')"
+            title="Raw portfolio change including salary-funded growth">
+            Include salary
+          </button>
         </div>
       </div>
+      <p class="chart-hint return-mode-hint" *ngIf="rollingReturnMode === 'exclude_salary'">
+        Showing portfolio Δ minus bank salary deposits in each window (approx. return without income-funded growth).
+      </p>
+      <p class="chart-hint return-mode-hint" *ngIf="rollingReturnMode === 'include_salary'">
+        Showing raw portfolio change — salary credits are listed but not subtracted.
+      </p>
       <div class="table-wrapper">
         <table class="tracker-table">
           <thead>
             <tr>
               <th>Period</th>
               <th>Start → End</th>
+              <th class="num">Salary</th>
               <th class="num">Change</th>
               <th class="num">Return %</th>
               <th class="num">Days</th>
@@ -382,11 +416,20 @@
               <td class="muted">
                 {{ r.insufficient ? 'Insufficient history' : (r.startLabel + ' → ' + r.endLabel) }}
               </td>
-              <td class="num" [class.positive]="!r.insufficient && isPositive(r.change)" [class.negative]="!r.insufficient && isNegative(r.change)">
-                {{ r.insufficient ? '—' : formatSignedAmount(r.change) }}
+              <td class="num muted" [title]="formatFullInr(r.salaryCredits)">
+                {{ r.insufficient || r.salaryCredits === 0 ? '—' : getIndianBreakdown(r.salaryCredits).primaryDisplay }}
               </td>
-              <td class="num" [class.positive]="!r.insufficient && isPositive(r.changePercent)" [class.negative]="!r.insufficient && isNegative(r.changePercent)">
-                <ng-container *ngIf="!r.insufficient">{{ isPositive(r.changePercent) ? '+' : '' }}{{ r.changePercent | number:'1.2-2' }}%</ng-container>
+              <td class="num"
+                [class.positive]="!r.insufficient && isPositive(displayChange(r))"
+                [class.negative]="!r.insufficient && isNegative(displayChange(r))">
+                {{ r.insufficient ? '—' : formatSignedAmount(displayChange(r)) }}
+              </td>
+              <td class="num"
+                [class.positive]="!r.insufficient && isPositive(displayChangePercent(r))"
+                [class.negative]="!r.insufficient && isNegative(displayChangePercent(r))">
+                <ng-container *ngIf="!r.insufficient">
+                  {{ isPositive(displayChangePercent(r)) ? '+' : '' }}{{ displayChangePercent(r) | number:'1.2-2' }}%
+                </ng-container>
                 <ng-container *ngIf="r.insufficient">—</ng-container>
               </td>
               <td class="num muted">{{ r.insufficient ? '—' : r.days }}</td>
@@ -607,7 +650,7 @@
       <div class="table-header">
         <div>
           <h3>Return calendar</h3>
-          <p class="chart-hint">Month × year heatmap of monthly portfolio change %</p>
+          <p class="chart-hint">Year · Jan–Dec · Yearly total (first vs last snapshot in the year)</p>
         </div>
         <div class="heatmap-legend">
           <span class="hm-legend-neg">Loss</span>
@@ -621,8 +664,9 @@
       </div>
       <div class="heatmap-scroll">
         <div class="heatmap-grid">
-          <div class="hm-corner"></div>
+          <div class="hm-corner hm-month-label">Year</div>
           <div class="hm-month-label" *ngFor="let m of heatmapMonthLabels">{{ m }}</div>
+          <div class="hm-month-label hm-yearly-label">Yearly</div>
           <ng-container *ngFor="let yearRow of heatmapYears">
             <div class="hm-year">{{ yearRow.year }}</div>
             <button
@@ -633,6 +677,14 @@
               [title]="cell.title"
               [attr.aria-label]="cell.title">
               <span *ngIf="cell.changePercent !== null">{{ cell.changePercent | number:'1.0-0' }}%</span>
+            </button>
+            <button
+              type="button"
+              class="hm-cell hm-yearly-cell"
+              [ngClass]="yearRow.yearly.intensityClass"
+              [title]="yearRow.yearly.title"
+              [attr.aria-label]="yearRow.yearly.title">
+              <span *ngIf="yearRow.yearly.changePercent !== null">{{ yearRow.yearly.changePercent | number:'1.0-0' }}%</span>
             </button>
           </ng-container>
         </div>

@@ -43,6 +43,23 @@ export type IncomeTableRow = {
   leaves: string[];
 };
 
+export type IncomeHeatmapCell = {
+  monthKey: string;
+  monthShort: string;
+  amount: number | null;
+  txnCount: number;
+  intensityClass: string;
+  display: string;
+  title: string;
+  grain: 'month' | 'year';
+};
+
+export type IncomeHeatmapYearRow = {
+  year: string;
+  cells: IncomeHeatmapCell[];
+  yearly: IncomeHeatmapCell;
+};
+
 @Component({
   selector: 'app-banking-income',
   templateUrl: './banking-income.component.html',
@@ -70,6 +87,8 @@ export class BankingIncomeComponent implements OnInit, OnDestroy {
   totalTxnCount = 0;
   avgTxn = 0;
   loading = false;
+  heatmapMonthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  heatmapYears: IncomeHeatmapYearRow[] = [];
 
   private readonly destroy$ = new Subject<void>();
   private readonly topTxnLeaves$ = new Subject<string[]>();
@@ -311,13 +330,139 @@ export class BankingIncomeComponent implements OnInit, OnDestroy {
       }]
     };
 
+    this.buildIncomeHeatmap(byMonth);
     this.topTxnLeaves$.next(this.incomeTableRows.map((r) => r.category));
+  }
+
+  private buildIncomeHeatmap(byMonth: Map<string, MonthBucket>) {
+    if (!byMonth.size) {
+      this.heatmapYears = [];
+      return;
+    }
+
+    const years = [...new Set([...byMonth.keys()].map((m) => m.slice(0, 4)).filter((y) => /^\d{4}$/.test(y)))]
+      .sort()
+      .reverse();
+
+    const amounts = [...byMonth.values()].map((b) => Number(b.amount) || 0).filter((a) => a > 0);
+    const yearTotals = years.map((year) => {
+      let sum = 0;
+      let txns = 0;
+      for (let m = 1; m <= 12; m++) {
+        const key = `${year}-${String(m).padStart(2, '0')}`;
+        const bucket = byMonth.get(key);
+        if (!bucket) continue;
+        sum += Number(bucket.amount) || 0;
+        txns += Number(bucket.txn_count) || 0;
+      }
+      return { year, amount: sum, txn_count: txns };
+    });
+    const maxAbs = Math.max(
+      ...amounts,
+      ...yearTotals.map((y) => y.amount),
+      1
+    );
+
+    this.heatmapYears = years.map((year) => {
+      const cells: IncomeHeatmapCell[] = this.heatmapMonthLabels.map((monthShort, monthIndex) => {
+        const monthKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+        const bucket = byMonth.get(monthKey);
+        if (!bucket || !(Number(bucket.amount) > 0)) {
+          return {
+            monthKey,
+            monthShort,
+            amount: null,
+            txnCount: 0,
+            intensityClass: 'hm-empty',
+            display: '',
+            title: `${monthShort} ${year}: no income`,
+            grain: 'month'
+          };
+        }
+        const amount = Number(bucket.amount) || 0;
+        const txnCount = Number(bucket.txn_count) || 0;
+        return {
+          monthKey,
+          monthShort,
+          amount,
+          txnCount,
+          intensityClass: this.incomeHeatIntensity(amount, maxAbs),
+          display: this.formatHeatAmount(amount),
+          title: `${formatYearMonthLabel(monthKey)}: ₹${formatMoney(amount)} · ${txnCount} txn(s)`,
+          grain: 'month'
+        };
+      });
+
+      const yearTot = yearTotals.find((y) => y.year === year)!;
+      const yearly: IncomeHeatmapCell = yearTot.amount > 0
+        ? {
+            monthKey: year,
+            monthShort: 'Yearly',
+            amount: yearTot.amount,
+            txnCount: yearTot.txn_count,
+            intensityClass: this.incomeHeatIntensity(yearTot.amount, maxAbs),
+            display: this.formatHeatAmount(yearTot.amount),
+            title: `${year} yearly: ₹${formatMoney(yearTot.amount)} · ${yearTot.txn_count} txn(s)`,
+            grain: 'year'
+          }
+        : {
+            monthKey: year,
+            monthShort: 'Yearly',
+            amount: null,
+            txnCount: 0,
+            intensityClass: 'hm-empty',
+            display: '',
+            title: `${year}: no income`,
+            grain: 'year'
+          };
+
+      return { year, cells, yearly };
+    });
+  }
+
+  private incomeHeatIntensity(amount: number, maxAbs: number): string {
+    if (!Number.isFinite(amount) || amount <= 0) return 'hm-flat';
+    const ratio = Math.min(1, amount / maxAbs);
+    const band = ratio < 0.25 ? 1 : ratio < 0.5 ? 2 : ratio < 0.75 ? 3 : 4;
+    return `hm-pos-${band}`;
+  }
+
+  private formatHeatAmount(amount: number): string {
+    const n = Number(amount) || 0;
+    if (n >= 1_00_00_000) return `${(n / 1_00_00_000).toFixed(1)}Cr`;
+    if (n >= 1_00_000) return `${(n / 1_00_000).toFixed(1)}L`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+    return String(Math.round(n));
+  }
+
+  openHeatmapCell(cell: IncomeHeatmapCell) {
+    if (cell.amount == null || cell.amount <= 0) return;
+    if (cell.grain === 'year') {
+      this.openPeriod({
+        key: cell.monthKey,
+        label: cell.monthKey,
+        amount: cell.amount,
+        txn_count: cell.txnCount,
+        pct: 0,
+        grain: 'year'
+      });
+      return;
+    }
+    this.openPeriod({
+      key: cell.monthKey,
+      label: formatYearMonthLabel(cell.monthKey),
+      amount: cell.amount,
+      txn_count: cell.txnCount,
+      pct: 0,
+      grain: 'month'
+    });
   }
 
   private clearViews() {
     this.incomeTableRows = [];
     this.monthRankRows = [];
     this.yearRankRows = [];
+    this.heatmapYears = [];
     this.highlights = null;
     this.topTransactions = [];
     this.topTxnsLoading = false;

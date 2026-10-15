@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { AnalyticsFilters, AnalyticsService } from '../../services/analytics.service';
+import { BankTransactionsService } from '../../services/banking/bank-transactions.service';
 import { ChartConfiguration, ChartOptions } from 'chart.js';
 import { INVESTMENT_TYPES } from '../../constants/investment-types.constants';
 import { hasMultiSelectFilter, pruneSelections } from '../../utils/advanced-filter.util';
@@ -121,9 +122,14 @@ export interface RollingReturnRow {
   endAmount: number;
   change: number;
   changePercent: number;
+  salaryCredits: number;
+  adjustedChange: number;
+  adjustedChangePercent: number;
   days: number;
   insufficient: boolean;
 }
+
+type RollingReturnMode = 'include_salary' | 'exclude_salary';
 
 export interface HeatmapCell {
   monthKey: string;
@@ -139,6 +145,7 @@ export interface HeatmapCell {
 export interface HeatmapYearRow {
   year: string;
   cells: HeatmapCell[];
+  yearly: HeatmapCell;
 }
 
 export interface CashflowDecomposeSummary {
@@ -263,6 +270,11 @@ export class AssetTrackerComponent implements OnInit {
   pagedDisplayRows: AssetTrackerRow[] = [];
 
   rollingReturns: RollingReturnRow[] = [];
+  rollingReturnMode: RollingReturnMode = 'exclude_salary';
+  salaryLoading = false;
+  salaryTxnCount = 0;
+  salaryTotalLoaded = 0;
+  private salaryCredits: Array<{ date: string; amount: number }> = [];
   heatmapYears: HeatmapYearRow[] = [];
   heatmapMonthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   cashflowSummary: CashflowDecomposeSummary | null = null;
@@ -409,7 +421,10 @@ export class AssetTrackerComponent implements OnInit {
     }
   };
 
-  constructor(private analyticsService: AnalyticsService) {}
+  constructor(
+    private analyticsService: AnalyticsService,
+    private bankTransactionsService: BankTransactionsService
+  ) {}
 
   ngOnInit() {
     this.loadGoalFromStorage();
@@ -826,6 +841,7 @@ export class AssetTrackerComponent implements OnInit {
     this.updateGoalProgress();
     this.loadAllocation();
     this.loadCashflows();
+    this.loadSalaryCredits();
   }
 
   private clearView() {
@@ -836,6 +852,9 @@ export class AssetTrackerComponent implements OnInit {
     this.yearlyReport = [];
     this.allocationBreakdown = [];
     this.rollingReturns = [];
+    this.salaryCredits = [];
+    this.salaryTxnCount = 0;
+    this.salaryTotalLoaded = 0;
     this.heatmapYears = [];
     this.cashflowSummary = null;
     this.cashflowMonthPoints = [];
@@ -1366,6 +1385,11 @@ export class AssetTrackerComponent implements OnInit {
       const insufficient = startKey === endKey || startAmount === 0;
       const change = endAmount - startAmount;
       const changePercent = !insufficient && startAmount !== 0 ? (change / startAmount) * 100 : 0;
+      const salaryCredits = this.sumSalaryCredits(startKey, endKey);
+      const adjustedChange = change - salaryCredits;
+      const adjustedChangePercent = !insufficient && startAmount !== 0
+        ? (adjustedChange / startAmount) * 100
+        : 0;
       const days = this.daysBetween(this.parseDateKey(startKey), endDate);
 
       return {
@@ -1379,10 +1403,87 @@ export class AssetTrackerComponent implements OnInit {
         endAmount,
         change,
         changePercent,
+        salaryCredits,
+        adjustedChange,
+        adjustedChangePercent,
         days,
         insufficient
       };
     });
+  }
+
+  setRollingReturnMode(mode: RollingReturnMode) {
+    this.rollingReturnMode = mode;
+  }
+
+  displayChange(row: RollingReturnRow): number {
+    return this.rollingReturnMode === 'exclude_salary' ? row.adjustedChange : row.change;
+  }
+
+  displayChangePercent(row: RollingReturnRow): number {
+    return this.rollingReturnMode === 'exclude_salary' ? row.adjustedChangePercent : row.changePercent;
+  }
+
+  private loadSalaryCredits() {
+    if (!this.allSortedDates.length) {
+      this.salaryCredits = [];
+      this.salaryTxnCount = 0;
+      this.salaryTotalLoaded = 0;
+      this.buildRollingReturns();
+      return;
+    }
+
+    const from = this.allSortedDates[0];
+    const to = this.allSortedDates[this.allSortedDates.length - 1];
+    this.salaryLoading = true;
+
+    this.bankTransactionsService.getTransactions({
+      category: 'Income_Salary_Payroll',
+      from,
+      to,
+      limit: 5000,
+      sort: 'date_asc'
+    }).subscribe({
+      next: (result) => {
+        const credits: Array<{ date: string; amount: number }> = [];
+        for (const txn of result.rows || []) {
+          const dateKey = this.normalizeDateKey(txn.txn_date);
+          const amount = this.toNumber(txn.deposit);
+          if (!dateKey || amount <= 0) continue;
+          const cat = String(txn.category || '');
+          if (!this.isSalaryCategory(cat)) continue;
+          credits.push({ date: dateKey, amount });
+        }
+        this.salaryCredits = credits;
+        this.salaryTxnCount = credits.length;
+        this.salaryTotalLoaded = credits.reduce((sum, c) => sum + c.amount, 0);
+        this.salaryLoading = false;
+        this.buildRollingReturns();
+      },
+      error: () => {
+        this.salaryCredits = [];
+        this.salaryTxnCount = 0;
+        this.salaryTotalLoaded = 0;
+        this.salaryLoading = false;
+        this.buildRollingReturns();
+      }
+    });
+  }
+
+  private isSalaryCategory(category: string): boolean {
+    const c = category.toLowerCase();
+    return c === 'income_salary_payroll' || c.includes('salary') || c.includes('payroll');
+  }
+
+  /** Salary credits strictly after startDate through endDate (inclusive). */
+  private sumSalaryCredits(fromDate: string, toDate: string): number {
+    let sum = 0;
+    for (const credit of this.salaryCredits) {
+      if (credit.date > fromDate && credit.date <= toDate) {
+        sum += credit.amount;
+      }
+    }
+    return sum;
   }
 
   private findSnapshotOnOrBefore(sortedDates: string[], targetKey: string): string | null {
@@ -1401,10 +1502,12 @@ export class AssetTrackerComponent implements OnInit {
     }
 
     const byMonth = new Map(this.monthlyReport.map((m) => [m.monthKey, m]));
+    const byYear = new Map(this.yearlyReport.map((y) => [y.year, y]));
     const years = [...new Set(this.monthlyReport.map((m) => m.monthKey.slice(0, 4)))].sort().reverse();
-    const percents = this.monthlyReport
-      .map((m) => m.changePercent)
-      .filter((p) => Number.isFinite(p));
+    const percents = [
+      ...this.monthlyReport.map((m) => m.changePercent),
+      ...this.yearlyReport.map((y) => y.changePercent)
+    ].filter((p) => Number.isFinite(p));
     const maxAbs = percents.length ? Math.max(...percents.map((p) => Math.abs(p)), 1) : 1;
 
     this.heatmapYears = years.map((year) => {
@@ -1436,7 +1539,35 @@ export class AssetTrackerComponent implements OnInit {
           title: `${row.monthLabel}: ${sign}${row.changePercent.toFixed(2)}% · ${this.formatSignedAmount(row.change)} · ${row.snapshotCount} snapshot(s)`
         };
       });
-      return { year, cells };
+
+      const yearRow = byYear.get(year);
+      let yearly: HeatmapCell;
+      if (!yearRow) {
+        yearly = {
+          monthKey: `${year}-Y`,
+          monthIndex: 12,
+          monthShort: 'Yearly',
+          changePercent: null,
+          change: null,
+          snapshotCount: 0,
+          intensityClass: 'hm-empty',
+          title: `${year}: no yearly data`
+        };
+      } else {
+        const sign = yearRow.changePercent >= 0 ? '+' : '';
+        yearly = {
+          monthKey: `${year}-Y`,
+          monthIndex: 12,
+          monthShort: 'Yearly',
+          changePercent: yearRow.changePercent,
+          change: yearRow.change,
+          snapshotCount: yearRow.snapshotCount,
+          intensityClass: this.heatmapIntensityClass(yearRow.changePercent, maxAbs),
+          title: `${year} yearly: ${sign}${yearRow.changePercent.toFixed(2)}% · ${this.formatSignedAmount(yearRow.change)} · ${yearRow.snapshotCount} snapshot(s)`
+        };
+      }
+
+      return { year, cells, yearly };
     });
   }
 
