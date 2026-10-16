@@ -5,15 +5,16 @@
 
 .budget-bar {
   height: 8px;
-  background: #e2e8f0;
+  background: var(--app-surface);
   border-radius: 999px;
   overflow: hidden;
   margin-bottom: 4px;
+  box-shadow: var(--app-shadow-in-sm);
 }
 
 .budget-bar-fill {
   height: 100%;
-  background: var(--bank-accent, #3b82f6);
+  background: var(--bank-accent, var(--app-accent));
   border-radius: 999px;
   transition: width 0.2s ease;
 }
@@ -36,7 +37,7 @@
 }
 
 tr.budget-over {
-  background: #fef2f2;
+  background: rgba(196, 92, 92, 0.12);
 }
 
 .forecast-strip {

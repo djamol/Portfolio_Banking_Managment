@@ -1,12 +1,14 @@
 /* page-specific */
 .input-error {
-  border-color: #c0392b !important;
-  box-shadow: 0 0 0 2px rgba(192, 57, 43, 0.15);
+  border: none !important;
+  box-shadow:
+    var(--app-shadow-in-sm),
+    0 0 0 2px rgba(196, 92, 92, 0.25) !important;
 }
 
 .field-error {
   margin: 6px 0 0;
-  color: #c0392b;
+  color: var(--bank-debit, var(--app-danger));
   font-size: 0.875rem;
   font-weight: 600;
 }
@@ -25,10 +27,12 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 6px;
+  border: none;
+  border-radius: var(--app-radius-sm);
   max-height: 220px;
   overflow: auto;
+  background: var(--app-surface);
+  box-shadow: var(--app-shadow-in-sm);
 }
 
 .file-list li {
@@ -36,7 +40,7 @@
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border-bottom: 1px solid var(--border-color, #eee);
+  border-bottom: 1px solid rgba(197, 204, 214, 0.35);
 }
 
 .file-list li:last-child {
@@ -53,7 +57,7 @@
 }
 
 .file-meta {
-  color: #666;
+  color: var(--bank-muted, var(--app-muted));
   font-size: 0.8rem;
   white-space: nowrap;
 }
@@ -62,7 +66,7 @@
   background: none;
   border: none;
   padding: 0;
-  color: #2563eb;
+  color: var(--bank-accent, var(--app-accent));
   cursor: pointer;
   font-size: 0.85rem;
   white-space: nowrap;
@@ -74,9 +78,9 @@
 }
 
 .btn-link.danger {
-  color: #c0392b;
+  color: var(--bank-debit, var(--app-danger));
 }
 
 .row-error td {
-  color: #c0392b;
+  color: var(--bank-debit, var(--app-danger));
 }

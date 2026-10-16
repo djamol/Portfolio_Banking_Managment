@@ -14,18 +14,18 @@
 .cat-breadcrumb .crumb {
   background: transparent;
   border: none;
-  color: #2563eb;
+  color: var(--bank-accent, var(--app-accent));
   cursor: pointer;
   padding: 0.15rem 0.35rem;
-  border-radius: 4px;
+  border-radius: var(--app-radius-sm, 12px);
   font: inherit;
 }
 
 .cat-breadcrumb .crumb:hover {
-  background: rgba(37, 99, 235, 0.08);
+  background: var(--app-accent-soft);
 }
 
 .cat-breadcrumb .crumb-sep {
-  color: #94a3b8;
+  color: var(--bank-muted, var(--app-muted));
   user-select: none;
 }

@@ -10,24 +10,24 @@
 .cat-breadcrumb .crumb {
   background: transparent;
   border: none;
-  color: #2563eb;
+  color: var(--bank-accent, var(--app-accent));
   cursor: pointer;
   padding: 0.15rem 0.35rem;
-  border-radius: 4px;
+  border-radius: var(--app-radius-sm, 12px);
   font: inherit;
 }
 
 .cat-breadcrumb .crumb:hover {
-  background: rgba(37, 99, 235, 0.08);
+  background: var(--app-accent-soft);
 }
 
 .cat-breadcrumb .crumb-sep {
-  color: #94a3b8;
+  color: var(--bank-muted, var(--app-muted));
   user-select: none;
 }
 
 .drill-hint {
-  color: #94a3b8;
+  color: var(--bank-muted, var(--app-muted));
   margin-left: 0.35rem;
   font-size: 0.75rem;
 }
@@ -41,17 +41,19 @@
   appearance: none;
   -webkit-appearance: none;
   box-sizing: border-box;
+  border-radius: var(--app-radius, 18px);
+  transition: background 0.18s ease, box-shadow 0.18s ease;
 }
 
 .click-stat:hover {
-  outline: 2px solid #93c5fd;
-  background: #eff6ff;
+  background: var(--app-accent-soft);
+  box-shadow: var(--app-shadow-in-sm);
 }
 
 .stat-sub {
   margin-top: 4px;
   font-size: 0.75rem;
-  color: var(--bank-muted, #64748b);
+  color: var(--bank-muted, var(--app-muted));
 }
 
 .insight-actions {
@@ -62,13 +64,14 @@
 }
 
 .insight-chip {
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
-  color: #334155;
-  border-radius: 999px;
+  border: none;
+  background: var(--bank-surface, var(--app-surface));
+  color: var(--bank-ink, var(--app-ink));
+  border-radius: var(--app-radius-sm, 12px);
   padding: 6px 12px;
   font-size: 0.8rem;
   text-align: left;
+  box-shadow: var(--app-shadow-out-sm);
 }
 
 .compare-grid {
@@ -79,7 +82,6 @@
 
 .chart-sub {
   margin: 0 0 10px;
-  color: var(--bank-muted, #64748b);
+  color: var(--bank-muted, var(--app-muted));
   font-size: 0.82rem;
 }
-

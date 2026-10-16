@@ -26,9 +26,20 @@
 .txn-search input {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
+  border: none;
+  border-radius: var(--bank-radius-sm, var(--app-radius-sm));
   font-size: 0.9rem;
+  font-family: inherit;
+  color: var(--bank-ink, var(--app-ink));
+  background: var(--bank-surface, var(--app-surface));
+  box-shadow: var(--bank-shadow-in-sm, var(--app-shadow-in-sm));
+}
+
+.txn-search input:focus {
+  outline: none;
+  box-shadow:
+    var(--bank-shadow-in-sm, var(--app-shadow-in-sm)),
+    0 0 0 3px var(--bank-accent-soft, var(--app-accent-soft));
 }
 
 .txn-page-meta {
@@ -49,10 +60,10 @@
   align-items: center;
   padding: 10px 12px;
   margin-bottom: 12px;
-  background: #eff6ff;
-  border: 1px solid #93c5fd;
-  border-radius: 10px;
-  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.08);
+  background: var(--bank-surface, var(--app-surface));
+  border: none;
+  border-radius: var(--bank-radius, var(--app-radius));
+  box-shadow: var(--bank-shadow-out, var(--app-shadow-out));
 }
 
 .txn-bulk-meta {
@@ -83,39 +94,44 @@
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  background: #e2e8f0;
-  color: #475569;
+  background: var(--bank-surface, var(--app-surface));
+  color: var(--bank-muted, var(--app-muted));
   vertical-align: middle;
+  box-shadow: var(--app-shadow-in-sm);
 }
 
 .src-badge.src-manual {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: var(--app-accent-soft);
+  color: var(--bank-accent, var(--app-accent));
+  box-shadow: none;
 }
 
 .src-badge.src-rule {
-  background: #ede9fe;
-  color: #6d28d9;
+  background: rgba(74, 124, 155, 0.22);
+  color: var(--app-accent-hover, #3d6a85);
+  box-shadow: none;
 }
 
 .xfer-badge {
-  background: #fef3c7;
-  color: #92400e;
+  background: rgba(184, 134, 11, 0.14);
+  color: var(--app-warning, #b8860b);
+  box-shadow: none;
 }
 
 .transfer-row {
-  background: #fffbeb;
+  background: rgba(184, 134, 11, 0.1);
 }
 
 .month-group td {
-  background: #f1f5f9;
-  color: #334155;
+  background: var(--bank-surface, var(--app-surface));
+  color: var(--bank-ink, var(--app-ink));
   font-weight: 700;
   font-size: 0.78rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   padding: 6px 8px;
-  border-bottom: 1px solid #cbd5e1;
+  border-bottom: 1px solid rgba(197, 204, 214, 0.35);
+  box-shadow: var(--app-shadow-in-sm);
 }
 
 .txn-detail-head {
@@ -128,7 +144,7 @@
 .rule-from-txn {
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px dashed #cbd5e1;
+  border-top: 1px solid rgba(197, 204, 214, 0.35);
 }
 
 .rule-from-txn h4 {

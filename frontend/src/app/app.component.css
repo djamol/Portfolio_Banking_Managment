@@ -1,10 +1,11 @@
 .navbar {
-  background-color: var(--app-nav-bg, #0f172a);
-  padding: 0.75rem 0;
-  margin-bottom: 20px;
+  background: var(--app-nav-bg, var(--app-bg));
+  padding: 0.65rem 0;
+  margin-bottom: 24px;
   position: sticky;
   top: 0;
   z-index: 100;
+  box-shadow: var(--app-shadow-out-sm);
 }
 
 .nav-container {
@@ -18,7 +19,7 @@
 }
 
 .nav-brand {
-  color: #fff;
+  color: var(--app-ink);
   text-decoration: none;
   font-size: 1.25rem;
   font-weight: 700;
@@ -26,22 +27,32 @@
   white-space: nowrap;
 }
 
+.nav-brand:hover {
+  color: var(--app-accent);
+}
+
 .nav-toggle {
   display: none;
   flex-direction: column;
   gap: 5px;
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 8px;
+  background: var(--app-surface);
+  border: none;
+  border-radius: var(--app-radius-sm);
   padding: 8px 10px;
   cursor: pointer;
+  box-shadow: var(--app-shadow-out-sm);
+}
+
+.nav-toggle:active {
+  box-shadow: var(--app-shadow-in-sm);
 }
 
 .nav-toggle span {
   display: block;
   width: 18px;
   height: 2px;
-  background: #fff;
+  background: var(--app-ink);
+  border-radius: 1px;
 }
 
 .nav-menu {
@@ -59,11 +70,11 @@
 
 .nav-link,
 .nav-group-btn {
-  color: rgba(255, 255, 255, 0.88);
+  color: var(--app-muted);
   text-decoration: none;
-  padding: 0.45rem 0.85rem;
-  border-radius: 6px;
-  transition: background-color 0.15s, color 0.15s;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--app-radius-sm);
+  transition: box-shadow 0.18s ease, color 0.18s ease, background-color 0.18s ease;
   font-size: 0.9rem;
   font-weight: 500;
   background: transparent;
@@ -76,23 +87,24 @@
 .nav-link.active,
 .nav-group-btn:hover,
 .nav-group.open > .nav-group-btn {
-  background-color: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  color: var(--app-accent);
+  background: var(--app-surface);
+  box-shadow: var(--app-shadow-in-sm);
 }
 
 .nav-dropdown {
   display: none;
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 8px);
   left: 0;
-  min-width: 180px;
+  min-width: 200px;
   margin: 0;
-  padding: 6px;
+  padding: 8px;
   list-style: none;
-  background: #1e293b;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.35);
+  background: var(--app-surface);
+  border: none;
+  border-radius: var(--app-radius-sm);
+  box-shadow: var(--app-shadow-out);
 }
 
 .nav-group:hover > .nav-dropdown,
@@ -116,19 +128,25 @@
 }
 
 .logout-btn {
-  background-color: var(--app-danger, #dc2626);
-  color: white;
+  background: var(--app-surface);
+  color: var(--app-danger);
   border: none;
-  padding: 0.45rem 0.9rem;
-  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  border-radius: var(--app-radius-sm);
   cursor: pointer;
   font-size: 0.88rem;
-  font-weight: 500;
-  transition: background-color 0.15s;
+  font-weight: 600;
+  box-shadow: var(--app-shadow-out-sm);
+  transition: box-shadow 0.18s ease, background-color 0.18s ease, color 0.18s ease;
 }
 
 .logout-btn:hover {
-  background-color: #b91c1c;
+  background: rgba(196, 92, 92, 0.12);
+  color: var(--app-danger-hover);
+}
+
+.logout-btn:active {
+  box-shadow: var(--app-shadow-in-sm);
 }
 
 @media (max-width: 900px) {
@@ -139,17 +157,17 @@
   .nav-menu {
     display: none;
     position: absolute;
-    top: calc(100% + 8px);
+    top: calc(100% + 10px);
     left: 12px;
     right: 12px;
     flex-direction: column;
     align-items: stretch;
     gap: 4px;
-    padding: 10px;
-    background: #1e293b;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.4);
+    padding: 12px;
+    background: var(--app-surface);
+    border-radius: var(--app-radius);
+    border: none;
+    box-shadow: var(--app-shadow-out);
   }
 
   .nav-menu.open {
@@ -159,11 +177,12 @@
   .nav-dropdown {
     position: static;
     display: none;
-    box-shadow: none;
+    box-shadow: var(--app-shadow-in-sm);
     border: none;
-    background: transparent;
-    padding: 0 0 0 8px;
+    background: var(--app-surface);
+    padding: 6px;
     margin-top: 4px;
+    border-radius: var(--app-radius-sm);
   }
 
   .nav-group.open > .nav-dropdown {

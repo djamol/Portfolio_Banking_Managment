@@ -13,7 +13,7 @@
 }
 
 .expense-page tr.peak-row td {
-  background: #fef2f2;
+  background: rgba(196, 92, 92, 0.12);
 }
 
 .expense-page .month-rank-box {

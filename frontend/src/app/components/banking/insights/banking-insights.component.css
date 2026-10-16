@@ -23,24 +23,28 @@
   align-items: flex-start;
   gap: 0.15rem;
   padding: 0.55rem 0.85rem;
-  border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: 0.5rem;
-  background: var(--surface-elevated, #fff);
+  border: none;
+  border-radius: var(--app-radius-sm);
+  background: var(--app-surface);
   cursor: pointer;
   text-align: left;
   font-weight: 600;
   font-size: 0.9rem;
+  color: var(--app-ink);
+  box-shadow: var(--app-shadow-out-sm);
+  transition: box-shadow 0.18s ease, background 0.18s ease, color 0.18s ease;
 }
 
 .workflow-pill small {
   font-weight: normal;
-  color: var(--text-muted, #64748b);
+  color: var(--app-muted);
   font-size: 0.75rem;
 }
 
 .workflow-pill.active {
-  border-color: var(--primary, #3b82f6);
-  background: color-mix(in srgb, var(--primary, #3b82f6) 8%, white);
+  background: var(--app-accent-soft);
+  color: var(--app-accent);
+  box-shadow: var(--app-shadow-in-sm);
 }
 
 .workflow-step .step-head {
@@ -61,11 +65,12 @@
   width: 1.75rem;
   height: 1.75rem;
   border-radius: 999px;
-  background: var(--primary, #3b82f6);
-  color: #fff;
+  background: var(--app-surface);
+  color: var(--app-accent);
   font-size: 0.85rem;
   font-weight: 700;
   flex-shrink: 0;
+  box-shadow: var(--app-shadow-out-sm);
 }
 
 .chart-card .chart-wrap {

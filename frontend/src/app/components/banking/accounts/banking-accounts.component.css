@@ -7,15 +7,17 @@
 
 .badge {
   display: inline-block;
-  padding: 0.1rem 0.4rem;
-  border-radius: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
   font-size: 0.7rem;
   font-weight: 600;
-  background: #e2e8f0;
-  color: #334155;
+  background: var(--app-surface);
+  color: var(--app-muted);
+  box-shadow: var(--app-shadow-in-sm);
 }
 
 .badge.warn {
-  background: #fef3c7;
-  color: #92400e;
+  background: rgba(184, 134, 11, 0.14);
+  color: var(--app-warning, #b8860b);
+  box-shadow: none;
 }

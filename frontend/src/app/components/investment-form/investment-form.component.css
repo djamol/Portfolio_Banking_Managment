@@ -1,15 +1,18 @@
 .investment-form-container {
   max-width: 600px;
   margin: 20px auto;
-  padding: 20px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  padding: 24px;
+  background: var(--app-surface);
+  border-radius: var(--app-radius);
+  box-shadow: var(--app-shadow-out);
+  border: none;
+  font-family: var(--app-font);
+  color: var(--app-ink);
 }
 
 .investment-form-container h2 {
   margin-top: 0;
-  color: #333;
+  color: var(--app-ink);
   text-align: center;
 }
 
@@ -20,23 +23,29 @@
 .form-group label {
   display: block;
   margin-bottom: 5px;
-  font-weight: bold;
-  color: #555;
+  font-weight: 600;
+  color: var(--app-ink);
 }
 
 .form-control {
   width: 100%;
-  padding: 10px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  padding: 10px 14px;
+  border: none;
+  border-radius: var(--app-radius-sm);
   font-size: 16px;
+  font-family: inherit;
+  color: var(--app-ink);
+  background: var(--app-surface);
+  box-shadow: var(--app-shadow-in-sm);
   box-sizing: border-box;
+  transition: box-shadow 0.18s ease;
 }
 
 .form-control:focus {
   outline: none;
-  border-color: #007bff;
-  box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+  box-shadow:
+    var(--app-shadow-in-sm),
+    0 0 0 3px var(--app-accent-soft);
 }
 
 .form-actions {
@@ -49,37 +58,48 @@
 .btn {
   padding: 10px 20px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--app-radius-sm);
   cursor: pointer;
   font-size: 16px;
-  transition: background-color 0.3s;
+  font-weight: 600;
+  font-family: inherit;
+  background: var(--app-surface);
+  color: var(--app-ink);
+  box-shadow: var(--app-shadow-out-sm);
+  transition: box-shadow 0.18s ease, color 0.18s ease, background-color 0.18s ease, transform 0.15s ease;
+}
+
+.btn:active:not(:disabled) {
+  box-shadow: var(--app-shadow-in-sm);
+  transform: scale(0.98);
 }
 
 .btn-primary {
-  background-color: #007bff;
-  color: white;
+  color: var(--app-accent);
+  background: var(--app-surface);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background-color: #0056b3;
+  background: var(--app-accent-soft);
+  color: var(--app-accent-hover);
 }
 
 .btn-secondary {
-  background-color: #6c757d;
-  color: white;
+  color: var(--app-muted);
+  background: var(--app-surface);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background-color: #545b62;
+  color: var(--app-ink);
 }
 
 .btn-success {
-  background-color: #28a745;
-  color: white;
+  color: var(--app-success);
+  background: var(--app-surface);
 }
 
 .btn-success:hover:not(:disabled) {
-  background-color: #218838;
+  background: rgba(61, 139, 110, 0.14);
 }
 
 .btn-sm {
@@ -88,23 +108,25 @@
 }
 
 .btn:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
 .error-message {
-  background: #f8d7da;
-  color: #721c24;
-  padding: 12px;
-  border-radius: 6px;
+  background: var(--app-surface);
+  color: var(--app-danger);
+  padding: 12px 14px;
+  border-radius: var(--app-radius-sm);
   margin-bottom: 20px;
-  border: 1px solid #f5c6cb;
+  border: none;
+  box-shadow: var(--app-shadow-in-sm);
 }
 
 .loading {
   text-align: center;
   padding: 20px;
   font-size: 18px;
+  color: var(--app-muted);
 }
 
 /* New styles for add functionality */
@@ -115,10 +137,10 @@
 }
 
 .add-new-btn {
-  background-color: #28a745;
-  color: white;
+  background: var(--app-surface);
+  color: var(--app-success);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--app-radius-sm);
   width: 36px;
   height: 36px;
   font-size: 20px;
@@ -127,18 +149,25 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  box-shadow: var(--app-shadow-out-sm);
+  transition: box-shadow 0.18s ease, background-color 0.18s ease;
 }
 
 .add-new-btn:hover {
-  background-color: #218838;
+  background: rgba(61, 139, 110, 0.14);
+}
+
+.add-new-btn:active {
+  box-shadow: var(--app-shadow-in-sm);
 }
 
 .new-input-container {
   margin-top: 10px;
   padding: 15px;
-  background-color: #f8f9fa;
-  border-radius: 4px;
-  border: 1px dashed #ccc;
+  background: var(--app-surface);
+  border-radius: var(--app-radius-sm);
+  border: none;
+  box-shadow: var(--app-shadow-in-sm);
 }
 
 .new-input-buttons {
@@ -150,18 +179,19 @@
 .field-hint {
   display: block;
   margin-top: 6px;
-  color: #6c757d;
+  color: var(--app-muted);
   font-size: 0.85em;
 }
 
 .duplicate-warning {
-  background: #fff3cd;
-  color: #856404;
-  border: 1px solid #ffeeba;
-  border-radius: 6px;
+  background: var(--app-surface);
+  color: var(--app-warning);
+  border: none;
+  border-radius: var(--app-radius-sm);
   padding: 10px 12px;
   margin-bottom: 16px;
   font-size: 0.9em;
+  box-shadow: var(--app-shadow-in-sm);
 }
 
 textarea.form-control {
