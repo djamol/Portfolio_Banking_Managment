@@ -106,10 +106,10 @@ export class ImportExportComponent implements OnInit {
       keepBackups: this.gdrive.keepBackups
     };
     if (this.gdriveClientSecretInput.trim()) {
-      body.clientSecret = this.gdriveClientSecretInput.trim();
+      body['clientSecret'] = this.gdriveClientSecretInput.trim();
     }
     if (this.gdriveRefreshTokenInput.trim()) {
-      body.refreshToken = this.gdriveRefreshTokenInput.trim();
+      body['refreshToken'] = this.gdriveRefreshTokenInput.trim();
     }
 
     this.http.put<{ success: boolean; data: GdriveSettings; message?: string; error?: string }>(
