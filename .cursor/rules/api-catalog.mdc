@@ -18,6 +18,11 @@ Base: `{apiDomain}/api`. Response shape usually `{ success, data, error? }`. Ban
 | GET/POST | `/create_backup` | `routes/create-backup.js` — SQL → `*.sql.zip` in `BACKUP_DIR` (no auth) |
 | GET/POST | `/upload_drive` | `routes/upload-drive.js` — zip → Drive `PORTFOLIO_BK/`, keep latest 4 (no auth; `?create=1` builds zip first) |
 | GET | `/config` | `routes/config.js` → ignorePlatforms, dbType, database presets, embeddedMysql |
+| GET/PUT | `/config/google-drive` | Drive backup settings (auth); OAuth connect generates refresh token |
+| POST | `/config/google-drive/oauth/start` | returns Google `authUrl` + redirect URI |
+| GET | `/config/google-drive/oauth/callback` | public OAuth callback → saves refresh token |
+| POST | `/config/google-drive/test` | test Drive connection |
+| POST | `/config/google-drive/disconnect` | clear stored refresh token |
 | POST | `/config/database` | switch MySQL host at runtime (preset localhost/docker/custom) |
 | POST | `/auth/login` | `{ username, password, rememberMe }` → `pfm_session` cookie |
 | POST | `/auth/logout` | `routes/auth.js` |

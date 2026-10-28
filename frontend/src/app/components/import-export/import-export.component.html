@@ -109,6 +109,96 @@
     </label>
   </div>
 
+  <!-- Google Drive backup -->
+  <div class="section gdrive-section">
+    <h3>Google Drive backup</h3>
+    <p>
+      Cron-style APIs (no login): <code>/api/create_backup</code> and
+      <code>/api/upload_drive?create=1</code>. Uploads land in
+      <code>{{ gdrive.folderName || 'PORTFOLIO_BK' }}/&lt;file.sql.zip&gt;</code>;
+      older zips are pruned (keep latest {{ gdrive.keepBackups || 4 }}).
+    </p>
+
+    <div class="gdrive-status" [class.connected]="gdrive.connected" [class.disconnected]="!gdrive.connected">
+      <strong>{{ gdrive.connected ? 'Connected' : 'Not connected' }}</strong>
+      <span *ngIf="gdrive.refreshTokenSet">Refresh token: {{ gdrive.refreshTokenMasked }}</span>
+      <span *ngIf="!gdrive.refreshTokenSet">Generate a refresh token with Connect Google Drive below.</span>
+    </div>
+
+    <div class="gdrive-form">
+      <div class="form-group">
+        <label for="gdriveClientId">OAuth Client ID</label>
+        <input id="gdriveClientId" type="text" [(ngModel)]="gdrive.clientId" name="gdriveClientId"
+          autocomplete="off" placeholder="xxxx.apps.googleusercontent.com" [disabled]="gdriveBusy">
+      </div>
+      <div class="form-group">
+        <label for="gdriveClientSecret">OAuth Client Secret</label>
+        <input id="gdriveClientSecret" type="password" [(ngModel)]="gdriveClientSecretInput" name="gdriveClientSecret"
+          autocomplete="new-password"
+          [placeholder]="gdrive.clientSecretSet ? ('Saved: ' + gdrive.clientSecretMasked + ' — leave blank to keep') : 'Client secret'"
+          [disabled]="gdriveBusy">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="gdriveFolder">Drive folder name</label>
+          <input id="gdriveFolder" type="text" [(ngModel)]="gdrive.folderName" name="gdriveFolder"
+            placeholder="PORTFOLIO_BK" [disabled]="gdriveBusy">
+        </div>
+        <div class="form-group">
+          <label for="gdriveKeep">Keep latest backups</label>
+          <input id="gdriveKeep" type="number" min="1" max="50" [(ngModel)]="gdrive.keepBackups" name="gdriveKeep"
+            [disabled]="gdriveBusy">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="gdriveFolderId">Folder ID (optional)</label>
+        <input id="gdriveFolderId" type="text" [(ngModel)]="gdrive.folderId" name="gdriveFolderId"
+          placeholder="Leave empty to find/create folder by name under My Drive" [disabled]="gdriveBusy">
+      </div>
+      <div class="form-group">
+        <label for="gdriveRefreshPaste">Refresh token (optional paste)</label>
+        <input id="gdriveRefreshPaste" type="password" [(ngModel)]="gdriveRefreshTokenInput" name="gdriveRefreshPaste"
+          autocomplete="new-password"
+          [placeholder]="gdrive.refreshTokenSet ? ('Saved: ' + gdrive.refreshTokenMasked + ' — leave blank to keep') : 'Or paste token instead of OAuth'"
+          [disabled]="gdriveBusy">
+      </div>
+    </div>
+
+    <div class="redirect-box" *ngIf="gdrive.redirectUri">
+      <strong>Authorized redirect URI</strong>
+      <p>Add this exact URI in Google Cloud Console → APIs &amp; Services → Credentials → your OAuth client:</p>
+      <code class="redirect-uri" (click)="copyRedirectUri()" title="Click to copy">{{ gdrive.redirectUri }}</code>
+    </div>
+
+    <div class="gdrive-actions">
+      <button class="btn btn-secondary" type="button" (click)="saveGdriveSettings()" [disabled]="gdriveBusy || loading">
+        Save settings
+      </button>
+      <button class="btn btn-primary" type="button" (click)="connectGoogleDrive()" [disabled]="gdriveBusy || loading">
+        Connect Google Drive
+      </button>
+      <button class="btn btn-secondary" type="button" (click)="testGoogleDrive()" [disabled]="gdriveBusy || loading || !gdrive.connected">
+        Test connection
+      </button>
+      <button class="btn btn-primary" type="button" (click)="runDriveBackup()" [disabled]="gdriveBusy || loading || !gdrive.connected">
+        Backup now → Drive
+      </button>
+      <button class="btn btn-danger" type="button" (click)="disconnectGoogleDrive()" [disabled]="gdriveBusy || loading || !gdrive.refreshTokenSet">
+        Disconnect
+      </button>
+    </div>
+
+    <div class="gdrive-help">
+      <h5>Setup</h5>
+      <ol>
+        <li>Google Cloud Console → create OAuth client (Web application).</li>
+        <li>Paste Client ID &amp; Secret here → Save settings.</li>
+        <li>Add the redirect URI above to the OAuth client.</li>
+        <li>Click <strong>Connect Google Drive</strong> and approve access — refresh token is stored on the server.</li>
+      </ol>
+    </div>
+  </div>
+
   <!-- Instructions -->
   <div class="instructions">
     <h4>Format notes</h4>

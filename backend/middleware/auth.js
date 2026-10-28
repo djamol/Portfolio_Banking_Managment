@@ -141,6 +141,8 @@ function publicApiPath(req) {
   if (req.method === 'GET' && (path === '/health' || path === 'health')) return true;
   if (req.method === 'POST' && (path === '/auth/login' || path === '/auth/logout')) return true;
   if (req.method === 'GET' && path === '/config') return true;
+  // Google OAuth redirect (browser returns without relying on session)
+  if (req.method === 'GET' && path === '/config/google-drive/oauth/callback') return true;
   return false;
 }
 

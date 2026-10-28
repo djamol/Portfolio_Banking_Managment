@@ -1,30 +1,40 @@
 const fs = require('fs');
 const logger = require('./logger');
 const { isBackupZipName } = require('./backup-sql');
+const { getDriveSettings } = require('./google-drive-settings');
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
 
 function driveConfig() {
-  const clientId = String(process.env.GOOGLE_DRIVE_CLIENT_ID || '').trim();
-  const clientSecret = String(process.env.GOOGLE_DRIVE_CLIENT_SECRET || '').trim();
-  const refreshToken = String(process.env.GOOGLE_DRIVE_REFRESH_TOKEN || '').trim();
-  const folderId = String(process.env.GOOGLE_DRIVE_FOLDER_ID || '').trim();
-  const folderName = String(process.env.GOOGLE_DRIVE_BACKUP_FOLDER || 'PORTFOLIO_BK').trim() || 'PORTFOLIO_BK';
-  const keepRaw = Number(process.env.GOOGLE_DRIVE_KEEP_BACKUPS);
-  const keepBackups = Number.isFinite(keepRaw) && keepRaw > 0 ? Math.floor(keepRaw) : 4;
-
-  return { clientId, clientSecret, refreshToken, folderId, folderName, keepBackups };
+  return getDriveSettings();
 }
 
 function assertDriveConfigured(cfg = driveConfig()) {
   if (!cfg.clientId || !cfg.clientSecret || !cfg.refreshToken) {
     throw new Error(
-      'Google Drive is not configured. Set GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET, and GOOGLE_DRIVE_REFRESH_TOKEN.'
+      'Google Drive is not configured. Open Backup & restore → Google Drive settings, save Client ID/Secret, then Connect Google Drive (or set env vars).'
     );
   }
   return cfg;
+}
+
+/** Lightweight connectivity check for settings UI. */
+async function testDriveConnection() {
+  const cfg = assertDriveConfigured();
+  const accessToken = await getAccessToken(cfg);
+  const folderId = await resolveBackupFolderId(accessToken, cfg);
+  const files = await listDriveBackupFiles(accessToken, folderId);
+  return {
+    ok: true,
+    folderName: cfg.folderName,
+    folderId,
+    backupFileCount: files.length,
+    latest: files[0]
+      ? { id: files[0].id, name: files[0].name, createdTime: files[0].createdTime }
+      : null
+  };
 }
 
 async function getAccessToken(cfg = assertDriveConfigured()) {
@@ -264,5 +274,6 @@ module.exports = {
   getAccessToken,
   resolveBackupFolderId,
   listDriveBackupFiles,
-  uploadBackupAndPrune
+  uploadBackupAndPrune,
+  testDriveConnection
 };

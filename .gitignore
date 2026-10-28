@@ -34,3 +34,6 @@ data/*.sql
 
 # Local SQL backup zips (created by /api/create_backup)
 backend/backups/
+
+# Persisted Google Drive OAuth settings (client secret + refresh token)
+backend/data/

@@ -1,10 +1,24 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 import { getApiBaseUrl } from '../../utils/api-url.util';
 
 type MessageType = 'success' | 'error' | 'info';
+
+type GdriveSettings = {
+  clientId: string;
+  clientSecretSet?: boolean;
+  clientSecretMasked?: string;
+  refreshTokenSet?: boolean;
+  refreshTokenMasked?: string;
+  folderName: string;
+  folderId: string;
+  keepBackups: number;
+  connected?: boolean;
+  redirectUri?: string;
+};
 
 @Component({
   selector: 'app-import-export',
@@ -13,7 +27,7 @@ type MessageType = 'success' | 'error' | 'info';
   templateUrl: './import-export.component.html',
   styleUrl: './import-export.component.css'
 })
-export class ImportExportComponent {
+export class ImportExportComponent implements OnInit {
   loading = false;
   message = '';
   messageType: MessageType = 'info';
@@ -22,10 +36,207 @@ export class ImportExportComponent {
   pendingSqlFile: File | null = null;
   pendingMongoFile: File | null = null;
 
-  constructor(private http: HttpClient) {}
+  gdriveBusy = false;
+  gdriveClientSecretInput = '';
+  gdriveRefreshTokenInput = '';
+  gdrive: GdriveSettings = {
+    clientId: '',
+    folderName: 'PORTFOLIO_BK',
+    folderId: '',
+    keepBackups: 4
+  };
+
+  constructor(
+    private http: HttpClient,
+    private route: ActivatedRoute,
+    private router: Router
+  ) {}
+
+  ngOnInit(): void {
+    this.loadGdriveSettings();
+    this.route.queryParamMap.subscribe((params) => {
+      const status = params.get('gdrive');
+      if (!status) return;
+      if (status === 'connected') {
+        this.showMessage('Google Drive connected — refresh token saved on the server.', 'success');
+        this.loadGdriveSettings();
+      } else if (status === 'error') {
+        this.showMessage(
+          'Google Drive connect failed: ' + (params.get('gdrive_msg') || 'unknown error'),
+          'error'
+        );
+      }
+      this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { gdrive: null, gdrive_msg: null },
+        queryParamsHandling: 'merge',
+        replaceUrl: true
+      });
+    });
+  }
 
   private get apiUrl(): string {
     return getApiBaseUrl();
+  }
+
+  loadGdriveSettings(): void {
+    this.http.get<{ success: boolean; data: GdriveSettings }>(`${this.apiUrl}/config/google-drive`).subscribe({
+      next: (res) => {
+        if (res.success && res.data) {
+          this.gdrive = {
+            ...this.gdrive,
+            ...res.data,
+            keepBackups: res.data.keepBackups || 4,
+            folderName: res.data.folderName || 'PORTFOLIO_BK'
+          };
+        }
+      },
+      error: (error) => {
+        console.error('Failed to load Google Drive settings', error);
+      }
+    });
+  }
+
+  saveGdriveSettings(): void {
+    this.gdriveBusy = true;
+    const body: Record<string, unknown> = {
+      clientId: this.gdrive.clientId,
+      folderName: this.gdrive.folderName,
+      folderId: this.gdrive.folderId,
+      keepBackups: this.gdrive.keepBackups
+    };
+    if (this.gdriveClientSecretInput.trim()) {
+      body.clientSecret = this.gdriveClientSecretInput.trim();
+    }
+    if (this.gdriveRefreshTokenInput.trim()) {
+      body.refreshToken = this.gdriveRefreshTokenInput.trim();
+    }
+
+    this.http.put<{ success: boolean; data: GdriveSettings; message?: string; error?: string }>(
+      `${this.apiUrl}/config/google-drive`,
+      body
+    ).subscribe({
+      next: (res) => {
+        this.gdriveBusy = false;
+        if (res.success && res.data) {
+          this.gdrive = { ...this.gdrive, ...res.data };
+          this.gdriveClientSecretInput = '';
+          this.gdriveRefreshTokenInput = '';
+          this.showMessage(res.message || 'Google Drive settings saved.', 'success');
+        } else {
+          this.showMessage(res.error || 'Failed to save settings', 'error');
+        }
+      },
+      error: (error) => {
+        this.gdriveBusy = false;
+        this.showMessage('Save failed: ' + this.errorText(error), 'error');
+      }
+    });
+  }
+
+  connectGoogleDrive(): void {
+    this.gdriveBusy = true;
+    const returnUrl = `${window.location.origin}${window.location.pathname || '/'}#/import-export`;
+    this.http.post<{ success: boolean; data?: { authUrl: string; redirectUri?: string }; error?: string }>(
+      `${this.apiUrl}/config/google-drive/oauth/start`,
+      { returnUrl }
+    ).subscribe({
+      next: (res) => {
+        this.gdriveBusy = false;
+        if (res.success && res.data?.authUrl) {
+          if (res.data.redirectUri) {
+            this.gdrive.redirectUri = res.data.redirectUri;
+          }
+          window.location.href = res.data.authUrl;
+        } else {
+          this.showMessage(res.error || 'Could not start Google OAuth', 'error');
+        }
+      },
+      error: (error) => {
+        this.gdriveBusy = false;
+        this.showMessage('Connect failed: ' + this.errorText(error), 'error');
+      }
+    });
+  }
+
+  testGoogleDrive(): void {
+    this.gdriveBusy = true;
+    this.showMessage('Testing Google Drive connection...', 'info');
+    this.http.post<{ success: boolean; data?: any; error?: string }>(
+      `${this.apiUrl}/config/google-drive/test`,
+      {}
+    ).subscribe({
+      next: (res) => {
+        this.gdriveBusy = false;
+        if (res.success && res.data) {
+          const latest = res.data.latest?.name ? `; latest: ${res.data.latest.name}` : '';
+          this.showMessage(
+            `Drive OK — folder ${res.data.folderName} (${res.data.backupFileCount} backup zip(s))${latest}`,
+            'success'
+          );
+        } else {
+          this.showMessage(res.error || 'Test failed', 'error');
+        }
+      },
+      error: (error) => {
+        this.gdriveBusy = false;
+        this.showMessage('Test failed: ' + this.errorText(error), 'error');
+      }
+    });
+  }
+
+  runDriveBackup(): void {
+    this.gdriveBusy = true;
+    this.showMessage('Creating SQL zip and uploading to Google Drive...', 'info');
+    // Unauthenticated cron route; credentials still sent (harmless)
+    this.http.get<{ success: boolean; data?: any; error?: string }>(
+      `${this.apiUrl}/upload_drive?create=1`
+    ).subscribe({
+      next: (res) => {
+        this.gdriveBusy = false;
+        if (res.success) {
+          this.showMessage(res.data?.message || 'Backup uploaded to Google Drive.', 'success');
+        } else {
+          this.showMessage(res.error || 'Backup upload failed', 'error');
+        }
+      },
+      error: (error) => {
+        this.gdriveBusy = false;
+        this.showMessage('Backup failed: ' + this.errorText(error), 'error');
+      }
+    });
+  }
+
+  disconnectGoogleDrive(): void {
+    if (!window.confirm('Clear the stored Google Drive refresh token?')) return;
+    this.gdriveBusy = true;
+    this.http.post<{ success: boolean; data?: GdriveSettings; message?: string; error?: string }>(
+      `${this.apiUrl}/config/google-drive/disconnect`,
+      {}
+    ).subscribe({
+      next: (res) => {
+        this.gdriveBusy = false;
+        if (res.success && res.data) {
+          this.gdrive = { ...this.gdrive, ...res.data };
+          this.showMessage(res.message || 'Disconnected.', 'success');
+        } else {
+          this.showMessage(res.error || 'Disconnect failed', 'error');
+        }
+      },
+      error: (error) => {
+        this.gdriveBusy = false;
+        this.showMessage('Disconnect failed: ' + this.errorText(error), 'error');
+      }
+    });
+  }
+
+  copyRedirectUri(): void {
+    const uri = this.gdrive.redirectUri;
+    if (!uri) return;
+    navigator.clipboard?.writeText(uri).then(
+      () => this.showMessage('Redirect URI copied.', 'success'),
+      () => this.showMessage('Could not copy — select the URI manually.', 'info')
+    );
   }
 
   exportCsv() {

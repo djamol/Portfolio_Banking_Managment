@@ -2,6 +2,16 @@ const express = require('express');
 const router = express.Router();
 const { getIgnorePlatforms } = require('../utils/ignore-platform');
 const { getDbType, isMongoDb, mysqlDb } = require('../config/index');
+const {
+  getPublicDriveSettings,
+  saveDriveSettings,
+  getOAuthRedirectUri,
+  buildGoogleAuthUrl,
+  consumeOAuthState,
+  exchangeAuthorizationCode,
+  safeReturnUrl
+} = require('../utils/google-drive-settings');
+const { testDriveConnection } = require('../utils/google-drive');
 
 router.get('/', (req, res) => {
   const data = {
@@ -90,6 +100,118 @@ router.post('/database', async (req, res) => {
       success: false,
       error: message
     });
+  }
+});
+
+/** Google Drive backup settings (requires login except OAuth callback). */
+router.get('/google-drive', (req, res) => {
+  try {
+    const data = getPublicDriveSettings();
+    data.redirectUri = getOAuthRedirectUri(req);
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.put('/google-drive', (req, res) => {
+  try {
+    const body = req.body || {};
+    const data = saveDriveSettings({
+      clientId: body.clientId,
+      clientSecret: body.clientSecret,
+      refreshToken: body.refreshToken,
+      clearClientSecret: !!body.clearClientSecret,
+      clearRefreshToken: !!body.clearRefreshToken,
+      folderName: body.folderName,
+      folderId: body.folderId,
+      keepBackups: body.keepBackups
+    });
+    data.redirectUri = getOAuthRedirectUri(req);
+    res.json({ success: true, data, message: 'Google Drive settings saved.' });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/google-drive/oauth/start', (req, res) => {
+  try {
+    const returnUrl = safeReturnUrl(req.body?.returnUrl || req.query.returnUrl, req);
+    const started = buildGoogleAuthUrl(req, returnUrl);
+    res.json({
+      success: true,
+      data: {
+        authUrl: started.authUrl,
+        redirectUri: started.redirectUri,
+        message:
+          'Add this redirect URI in Google Cloud Console → Credentials → your OAuth client → Authorized redirect URIs, then open authUrl.'
+      }
+    });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+function appendReturnQuery(returnUrl, params) {
+  if (returnUrl.includes('#')) {
+    const [beforeHash, afterHash = ''] = returnUrl.split('#');
+    const qIndex = afterHash.indexOf('?');
+    const pathPart = (qIndex >= 0 ? afterHash.slice(0, qIndex) : afterHash) || '/import-export';
+    const search = qIndex >= 0 ? afterHash.slice(qIndex + 1) : '';
+    const sp = new URLSearchParams(search);
+    Object.entries(params).forEach(([k, v]) => sp.set(k, String(v)));
+    return `${beforeHash}#${pathPart}?${sp.toString()}`;
+  }
+  const u = new URL(returnUrl);
+  Object.entries(params).forEach(([k, v]) => u.searchParams.set(k, String(v)));
+  return u.toString();
+}
+
+/** Public — Google redirects here with ?code=&state= (no session required). */
+router.get('/google-drive/oauth/callback', async (req, res) => {
+  const redirectUri = getOAuthRedirectUri(req);
+  const stateEntry = consumeOAuthState(req.query.state);
+  const returnUrl = safeReturnUrl(stateEntry?.returnUrl, req);
+
+  const failRedirect = (msg) =>
+    res.redirect(appendReturnQuery(returnUrl, { gdrive: 'error', gdrive_msg: msg }));
+
+  try {
+    if (req.query.error) {
+      return failRedirect(String(req.query.error_description || req.query.error));
+    }
+    if (!stateEntry) {
+      return failRedirect('OAuth state expired or invalid. Start Connect again from Backup & restore.');
+    }
+    if (!req.query.code) {
+      return failRedirect('Missing authorization code from Google.');
+    }
+
+    const tokens = await exchangeAuthorizationCode(req.query.code, redirectUri);
+    saveDriveSettings({ refreshToken: tokens.refresh_token });
+    return res.redirect(appendReturnQuery(returnUrl, { gdrive: 'connected' }));
+  } catch (error) {
+    console.error('Google Drive OAuth callback failed:', error);
+    return failRedirect(error.message || 'OAuth failed');
+  }
+});
+
+router.post('/google-drive/disconnect', (req, res) => {
+  try {
+    const data = saveDriveSettings({ clearRefreshToken: true });
+    data.redirectUri = getOAuthRedirectUri(req);
+    res.json({ success: true, data, message: 'Google Drive disconnected (refresh token cleared).' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/google-drive/test', async (req, res) => {
+  try {
+    const result = await testDriveConnection();
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(502).json({ success: false, error: error.message });
   }
 });
 
