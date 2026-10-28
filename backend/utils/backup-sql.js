@@ -121,6 +121,31 @@ function resolveLocalBackup(filename) {
   return latest;
 }
 
+/**
+ * Delete a local backup zip after successful Drive upload.
+ * Only allows paths under BACKUP_DIR with *.sql.zip names.
+ */
+function deleteLocalBackup(localBackup) {
+  if (!localBackup?.path || !localBackup?.filename) {
+    return { deleted: false, reason: 'missing path' };
+  }
+  const base = path.basename(String(localBackup.filename));
+  if (!isBackupZipName(base)) {
+    return { deleted: false, reason: 'not a backup zip name' };
+  }
+  const expected = path.join(getBackupDir(), base);
+  const resolved = path.resolve(localBackup.path);
+  if (resolved !== path.resolve(expected)) {
+    return { deleted: false, reason: 'path outside backup dir' };
+  }
+  if (!fs.existsSync(resolved)) {
+    return { deleted: false, reason: 'already missing' };
+  }
+  fs.unlinkSync(resolved);
+  logger.info('Deleted local backup zip after Drive upload', { filename: base });
+  return { deleted: true, filename: base, path: resolved };
+}
+
 module.exports = {
   ZIP_SUFFIX,
   getBackupDir,
@@ -129,5 +154,6 @@ module.exports = {
   listLocalBackupZips,
   getLatestLocalBackup,
   resolveLocalBackup,
+  deleteLocalBackup,
   isBackupZipName
 };

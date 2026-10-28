@@ -1,5 +1,9 @@
 const express = require('express');
-const { resolveLocalBackup, createSqlBackupZip } = require('../utils/backup-sql');
+const {
+  resolveLocalBackup,
+  createSqlBackupZip,
+  deleteLocalBackup
+} = require('../utils/backup-sql');
 const { uploadBackupAndPrune, driveConfig } = require('../utils/google-drive');
 
 const router = express.Router();
@@ -12,6 +16,7 @@ const router = express.Router();
  *
  * Uploads to Google Drive folder PORTFOLIO_BK/ and deletes older *.sql.zip
  * so only the latest GOOGLE_DRIVE_KEEP_BACKUPS (default 4) remain.
+ * On successful upload, the local zip is removed from BACKUP_DIR.
  */
 async function handleUploadDrive(req, res) {
   try {
@@ -33,6 +38,7 @@ async function handleUploadDrive(req, res) {
     }
 
     const result = await uploadBackupAndPrune(local);
+    const localCleanup = deleteLocalBackup(local);
     const cfg = driveConfig();
 
     res.json({
@@ -41,10 +47,14 @@ async function handleUploadDrive(req, res) {
         local: {
           filename: local.filename,
           path: local.path,
-          sizeBytes: local.sizeBytes
+          sizeBytes: local.sizeBytes,
+          deletedAfterUpload: !!localCleanup.deleted
         },
         drive: result,
-        message: `Uploaded to ${result.uploaded.drivePath}; kept latest ${cfg.keepBackups} backup(s), deleted ${result.deleted.length}.`
+        message:
+          `Uploaded to ${result.uploaded.drivePath}; kept latest ${cfg.keepBackups} backup(s), ` +
+          `deleted ${result.deleted.length} old Drive file(s)` +
+          (localCleanup.deleted ? `; removed local ${local.filename}.` : '.')
       }
     });
   } catch (error) {
