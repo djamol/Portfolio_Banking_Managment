@@ -16,6 +16,8 @@ const bankingRoutes = require('./routes/banking');
 const authRoutes = require('./routes/auth');
 const mutualFundRoutes = require('./routes/mutual-funds');
 const cronJobRoutes = require('./routes/cron-job');
+const createBackupRoutes = require('./routes/create-backup');
+const uploadDriveRoutes = require('./routes/upload-drive');
 const fundAnalyticsRoutes = require('./routes/fund-analytics');
 const fdAnalyticsRoutes = require('./routes/fd-analytics');
 
@@ -104,6 +106,8 @@ router.get('/api/health', (req, res) => {
 });
 
 router.use('/api/cron_job', cronJobRoutes);
+router.use('/api/create_backup', createBackupRoutes);
+router.use('/api/upload_drive', uploadDriveRoutes);
 router.use('/api', authGate);
 router.use('/api/auth', authRoutes);
 router.use('/api/mutual-funds', mutualFundRoutes);

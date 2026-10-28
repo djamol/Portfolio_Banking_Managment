@@ -7,13 +7,16 @@ alwaysApply: true
 
 Base: `{apiDomain}/api`. Response shape usually `{ success, data, error? }`. Banking list meta: `{ total, limit, offset, total_debit, total_credit, net_cashflow }`.
 
-**Auth gate**: everything under `/api` needs session cookie except `GET /health`, `POST /auth/login`, `POST /auth/logout`, `GET /config`.
+**Auth gate**: everything under `/api` needs session cookie except `GET /health`, `POST /auth/login`, `POST /auth/logout`, `GET /config`. Mounted **before** `authGate` (no login): `/api/cron_job`, `/api/create_backup`, `/api/upload_drive`.
 
 ## Health / config
 
 | Method | Path | File |
 |--------|------|------|
 | GET | `/health` | `server.js` (dbType, dbOk, uptime) |
+| GET/POST | `/cron_job` | `routes/cron-job.js` — MF NAV sync (no auth) |
+| GET/POST | `/create_backup` | `routes/create-backup.js` — SQL → `*.sql.zip` in `BACKUP_DIR` (no auth) |
+| GET/POST | `/upload_drive` | `routes/upload-drive.js` — zip → Drive `PORTFOLIO_BK/`, keep latest 4 (no auth; `?create=1` builds zip first) |
 | GET | `/config` | `routes/config.js` → ignorePlatforms, dbType, database presets, embeddedMysql |
 | POST | `/config/database` | switch MySQL host at runtime (preset localhost/docker/custom) |
 | POST | `/auth/login` | `{ username, password, rememberMe }` → `pfm_session` cookie |

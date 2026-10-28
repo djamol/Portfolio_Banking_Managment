@@ -31,3 +31,6 @@ logs/
 # Angular
 frontend/.angular/
 data/*.sql
+
+# Local SQL backup zips (created by /api/create_backup)
+backend/backups/

@@ -16,6 +16,8 @@ const mutualFundRoutes = require('./routes/mutual-funds');
 const fundAnalyticsRoutes = require('./routes/fund-analytics');
 const fdAnalyticsRoutes = require('./routes/fd-analytics');
 const cronJobRoutes = require('./routes/cron-job');
+const createBackupRoutes = require('./routes/create-backup');
+const uploadDriveRoutes = require('./routes/upload-drive');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -104,6 +106,8 @@ app.get('/api/health', async (req, res) => {
 });
 
 app.use('/api/cron_job', cronJobRoutes);
+app.use('/api/create_backup', createBackupRoutes);
+app.use('/api/upload_drive', uploadDriveRoutes);
 app.use('/api', authGate);
 app.use('/api/auth', authRoutes);
 app.use('/api/mutual-funds', mutualFundRoutes);
