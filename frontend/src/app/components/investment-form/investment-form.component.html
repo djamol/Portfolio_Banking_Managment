@@ -174,26 +174,31 @@
         placeholder="Enter amount">
     </div>
 
-    <div class="form-row" *ngIf="investment.investment_type === 'Mutual Fund' || investment.investment_type === 'ETF'">
+    <div class="form-row" *ngIf="investment.investment_type === 'Mutual Fund' || investment.investment_type === 'ETF' || investment.investment_type === 'Stock'">
       <div class="form-group">
-        <label for="units">Units</label>
+        <label for="units">{{ investment.investment_type === 'Stock' ? 'Quantity' : 'Units' }}</label>
         <input type="number" id="units" name="units" [(ngModel)]="investment.units" class="form-control" min="0" step="0.0001">
       </div>
       <div class="form-group">
-        <label for="nav_price">NAV/LTP (₹)</label>
+        <label for="nav_price">{{ investment.investment_type === 'Stock' ? 'Current price / LTP (₹)' : 'NAV/LTP (₹)' }}</label>
         <input type="number" id="nav_price" name="nav_price" [(ngModel)]="investment.nav_price" class="form-control" min="0" step="0.0001">
       </div>
     </div>
 
-    <div class="form-row" *ngIf="investment.investment_type === 'Mutual Fund' || investment.investment_type === 'ETF'">
+    <div class="form-row" *ngIf="investment.investment_type === 'Mutual Fund' || investment.investment_type === 'ETF' || investment.investment_type === 'Stock'">
+      <div class="form-group">
+        <label for="avg_buy_price">Avg buy price (₹)</label>
+        <input type="number" id="avg_buy_price" name="avg_buy_price" [(ngModel)]="investment.avg_buy_price" class="form-control" min="0" step="0.0001">
+      </div>
       <div class="form-group">
         <label for="invested_amount">Invested Amount (₹)</label>
         <input type="number" id="invested_amount" name="invested_amount" [(ngModel)]="investment.invested_amount" class="form-control" min="0" step="0.01">
       </div>
-      <div class="form-group">
-        <label for="profit_loss">P&amp;L (₹)</label>
-        <input type="number" id="profit_loss" name="profit_loss" [(ngModel)]="investment.profit_loss" class="form-control" step="0.01">
-      </div>
+    </div>
+
+    <div class="form-group" *ngIf="investment.investment_type === 'Mutual Fund' || investment.investment_type === 'ETF' || investment.investment_type === 'Stock'">
+      <label for="profit_loss">P&amp;L (₹)</label>
+      <input type="number" id="profit_loss" name="profit_loss" [(ngModel)]="investment.profit_loss" class="form-control" step="0.01">
     </div>
 
     <div class="form-group">

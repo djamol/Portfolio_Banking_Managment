@@ -1134,7 +1134,9 @@ export class InvestmentListComponent implements OnInit {
   }
 
   isFundHolding(investment: any): boolean {
-    return investment?.investment_type === 'Mutual Fund' || investment?.investment_type === 'ETF';
+    return investment?.investment_type === 'Mutual Fund'
+      || investment?.investment_type === 'ETF'
+      || investment?.investment_type === 'Stock';
   }
 
   /** Current holding value from stored units * NAV, falling back to the tracked amount. */

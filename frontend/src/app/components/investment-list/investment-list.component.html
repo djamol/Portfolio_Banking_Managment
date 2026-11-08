@@ -580,7 +580,7 @@
               placeholder="Enter amount">
           </div>
 
-          <div class="form-row" *ngIf="currentInvestment.investment_type === 'Mutual Fund' || currentInvestment.investment_type === 'ETF'">
+          <div class="form-row" *ngIf="currentInvestment.investment_type === 'Mutual Fund' || currentInvestment.investment_type === 'ETF' || currentInvestment.investment_type === 'Stock'">
             <div class="form-group">
               <label for="units">Units/Quantity</label>
               <input
@@ -607,7 +607,7 @@
             </div>
           </div>
 
-          <div class="form-row" *ngIf="currentInvestment.investment_type === 'Mutual Fund' || currentInvestment.investment_type === 'ETF'">
+          <div class="form-row" *ngIf="currentInvestment.investment_type === 'Mutual Fund' || currentInvestment.investment_type === 'ETF' || currentInvestment.investment_type === 'Stock'">
             <div class="form-group">
               <label for="avg_buy_price">Avg Buy Price (₹)</label>
               <input
@@ -634,7 +634,7 @@
             </div>
           </div>
 
-          <div class="form-group" *ngIf="currentInvestment.investment_type === 'Mutual Fund' || currentInvestment.investment_type === 'ETF'">
+          <div class="form-group" *ngIf="currentInvestment.investment_type === 'Mutual Fund' || currentInvestment.investment_type === 'ETF' || currentInvestment.investment_type === 'Stock'">
             <label for="profit_loss">P&amp;L (₹)</label>
             <input
               type="number"

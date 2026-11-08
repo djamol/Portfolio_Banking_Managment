@@ -9,7 +9,7 @@
         type="text" 
         id="platform" 
         [(ngModel)]="platform" 
-        placeholder="e.g., Groww, Kuvera, Zerodha Coin"
+        [placeholder]="investmentType === 'Stock' || investmentType === 'ETF' ? 'e.g., Dhan' : 'e.g., Groww, Kuvera, Zerodha Coin'"
         class="form-control">
     </div>
     
@@ -35,6 +35,7 @@
       <label for="csvFile">
         <ng-container *ngIf="investmentType === 'Mutual Fund'">Upload Mutual Fund Statement (CSV) *</ng-container>
         <ng-container *ngIf="investmentType === 'ETF'">Upload Dhan ETF Portfolio (CSV) *</ng-container>
+        <ng-container *ngIf="investmentType === 'Stock'">Upload Dhan equity portfolio (CSV) *</ng-container>
       </label>
       <input 
         type="file" 
@@ -44,6 +45,9 @@
         class="form-control">
       <small class="form-text" *ngIf="investmentType === 'Mutual Fund'">Only CSV files are supported for Mutual Funds</small>
       <small class="form-text" *ngIf="investmentType === 'ETF'">Only Dhan ETF portfolio CSV exports are supported</small>
+      <small class="form-text" *ngIf="investmentType === 'Stock'">
+        Dhan equity export (first line starts with EQ). Quantity, average buy rate, LTP, current value, and P&amp;L are saved. Name, mobile, and email in the file header are not stored.
+      </small>
     </div>
     
     <!-- Optional date selection for CSV imports -->
@@ -350,22 +354,28 @@
                 title="Select or skip visible rows">
             </th>
             <th class="sortable" (click)="sortPreview('folioNo')">Folio No{{ sortIndicator('folioNo') }}</th>
-            <th class="sortable" (click)="sortPreview('originalSchemeName')">Original Scheme Name{{ sortIndicator('originalSchemeName') }}</th>
+            <th class="sortable" (click)="sortPreview('originalSchemeName')">
+              <ng-container *ngIf="investmentType === 'Stock'">Scrip</ng-container>
+              <ng-container *ngIf="investmentType !== 'Stock'">Original Scheme Name</ng-container>
+              {{ sortIndicator('originalSchemeName') }}
+            </th>
             <th class="sortable" (click)="sortPreview('extractedAMC')">
+              <ng-container *ngIf="investmentType === 'Stock'">Holding type (Sub Type)</ng-container>
               <ng-container *ngIf="investmentType === 'ETF'">Extracted Issuer (Sub Type)</ng-container>
-              <ng-container *ngIf="investmentType !== 'ETF'">Extracted AMC (Sub Type)</ng-container>
+              <ng-container *ngIf="investmentType !== 'ETF' && investmentType !== 'Stock'">Extracted AMC (Sub Type)</ng-container>
               <span *ngIf="hasNewAMC" class="new-indicator" title="New issuer not in existing data">*</span>
               {{ sortIndicator('extractedAMC') }}
             </th>
             <th class="sortable" (click)="sortPreview('extractedScheme')">
+              <ng-container *ngIf="investmentType === 'Stock'">Scrip name (Category)</ng-container>
               <ng-container *ngIf="investmentType === 'ETF'">Extracted ETF (Category)</ng-container>
-              <ng-container *ngIf="investmentType !== 'ETF'">Extracted Scheme (Category)</ng-container>
+              <ng-container *ngIf="investmentType !== 'ETF' && investmentType !== 'Stock'">Extracted Scheme (Category)</ng-container>
               <span *ngIf="hasNewScheme" class="new-indicator" title="New category not in existing data">*</span>
               {{ sortIndicator('extractedScheme') }}
             </th>
             <th *ngIf="investmentType === 'Mutual Fund' || investmentType === 'ETF'">MFAPI Scheme</th>
-            <th class="sortable num">Units</th>
-            <th class="sortable num">NAV/LTP</th>
+            <th class="sortable num">{{ investmentType === 'Stock' ? 'Quantity' : 'Units' }}</th>
+            <th class="sortable num">{{ investmentType === 'Stock' ? 'LTP' : 'NAV/LTP' }}</th>
             <th class="sortable num">Invested</th>
             <th class="sortable num">P&amp;L</th>
             <th class="sortable num" (click)="sortPreview('previousValue')">Previous Value{{ sortIndicator('previousValue') }}</th>
@@ -457,6 +467,19 @@
     </div>
   </div>
   
+  <div class="instructions" *ngIf="investmentType === 'Stock'">
+    <h3>Instructions for Stock Imports:</h3>
+    <ul>
+      <li>Upload a <strong>Dhan equity portfolio CSV</strong> exported from the Dhan app (the first line starts with <strong>EQ</strong>)</li>
+      <li>Expected columns: Scrip Name, Quantity, Avg. Buy Rate, Buy Value, LTP, Current Value, P&amp;L, P&amp;L%</li>
+      <li>Quantity is stored as units, LTP as the current price, average buy rate, buy value as invested amount, current value as the holding amount, and P&amp;L</li>
+      <li>Each scrip is saved as sub type <strong>Individual Stock</strong> and category equal to the scrip name (for example HDFC Bank)</li>
+      <li>The portfolio date from the file header (for example "For 08-11-2026") is used as the investment date unless you choose a custom date</li>
+      <li>Re-importing the same platform and scrip updates that holding instead of creating a duplicate</li>
+      <li>Account name, UCC, mobile, and email in the file header are ignored</li>
+    </ul>
+  </div>
+
   <div class="instructions" *ngIf="investmentType === 'ETF'">
     <h3>Instructions for ETF Imports:</h3>
     <ul>

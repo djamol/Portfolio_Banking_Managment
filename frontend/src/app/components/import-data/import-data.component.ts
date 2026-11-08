@@ -45,7 +45,7 @@ export class ImportDataComponent implements OnInit {
   private mfSearchTimers: { [key: string]: ReturnType<typeof setTimeout> } = {};
 
   get supportsCsvImport(): boolean {
-    return this.investmentType === 'Mutual Fund' || this.investmentType === 'ETF';
+    return this.investmentType === 'Mutual Fund' || this.investmentType === 'ETF' || this.investmentType === 'Stock';
   }
 
   // --- Deposit (FD / Bond / PPF / EPF) statement import ---
@@ -288,7 +288,7 @@ export class ImportDataComponent implements OnInit {
     }
 
     if (!this.supportsCsvImport) {
-      this.showMessage('Currently only Mutual Fund and ETF imports are supported.', 'error');
+      this.showMessage('Currently only Mutual Fund, ETF, and Stock CSV imports are supported.', 'error');
       return;
     }
 
@@ -442,7 +442,7 @@ export class ImportDataComponent implements OnInit {
     }
 
     if (!this.supportsCsvImport) {
-      this.showMessage('Currently only Mutual Fund and ETF imports are supported.', 'error');
+      this.showMessage('Currently only Mutual Fund, ETF, and Stock CSV imports are supported.', 'error');
       return;
     }
 
@@ -518,30 +518,51 @@ export class ImportDataComponent implements OnInit {
     this.parsedData = [];
     this.csvPortfolioDate = null;
 
-    const isDhanEtfFormat = lines[0]?.trim().toLowerCase().startsWith('etf,') ||
-      (csvText.toLowerCase().includes('scrip name') && csvText.toLowerCase().includes('avg. buy rate'));
+    const firstLine = lines[0]?.trim().toLowerCase() || '';
+    const lowerText = csvText.toLowerCase();
+    const isDhanEqFile = firstLine.startsWith('eq,');
+    const isDhanEtfFile = firstLine.startsWith('etf,');
+    const hasScripColumns = lowerText.includes('scrip name') && lowerText.includes('avg. buy rate');
+    const isDhanEtfFormat = isDhanEtfFile || (!isDhanEqFile && hasScripColumns);
+
+    if (this.investmentType === 'Stock') {
+      if (isDhanEtfFile) {
+        this.showMessage('This file is a Dhan ETF export. Select investment type ETF.', 'error');
+        return;
+      }
+      if (isDhanEqFile || (hasScripColumns && lowerText.includes('quantity') && lowerText.includes('ltp'))) {
+        this.parseDhanScripFormat(lines, 'stock');
+      } else {
+        this.showMessage('Unsupported stock CSV. Upload a Dhan equity portfolio export (the first line starts with EQ).', 'error');
+      }
+      return;
+    }
 
     if (this.investmentType === 'ETF') {
+      if (isDhanEqFile) {
+        this.showMessage('This file is a Dhan equity export. Select investment type Stock.', 'error');
+        return;
+      }
       if (isDhanEtfFormat) {
-        this.parseDhanEtfFormat(lines);
+        this.parseDhanScripFormat(lines, 'etf');
       } else {
         this.showMessage('Unsupported ETF CSV format. Please upload a Dhan ETF portfolio export.', 'error');
       }
       return;
     }
 
-    const isDhanMfPortfolioFormat = lines[0]?.trim().toLowerCase().startsWith('mf,');
+    const isDhanMfPortfolioFormat = firstLine.startsWith('mf,');
 
     const isMfPortfolioFormat = !isDhanMfPortfolioFormat &&
-      csvText.toLowerCase().includes('fund') &&
-      csvText.toLowerCase().includes('scheme') &&
-      csvText.toLowerCase().includes('value at cost');
+      lowerText.includes('fund') &&
+      lowerText.includes('scheme') &&
+      lowerText.includes('value at cost');
 
-    const isDhanAppFormat = !isDhanEtfFormat && !isDhanMfPortfolioFormat &&
-      csvText.toLowerCase().includes('name') &&
-      csvText.toLowerCase().includes('current value') &&
-      csvText.toLowerCase().includes('nav') &&
-      !csvText.toLowerCase().includes('folio no');
+    const isDhanAppFormat = !isDhanEtfFormat && !isDhanEqFile && !isDhanMfPortfolioFormat &&
+      lowerText.includes('name') &&
+      lowerText.includes('current value') &&
+      lowerText.includes('nav') &&
+      !lowerText.includes('folio no');
 
     if (isDhanMfPortfolioFormat || isDhanAppFormat) {
       this.parseDhanAppFormat(lines);
@@ -563,7 +584,8 @@ export class ImportDataComponent implements OnInit {
     return null;
   }
 
-  private parseDhanEtfFormat(lines: string[]) {
+  /** Dhan equity (EQ) and ETF portfolio exports share the scrip-name column layout. */
+  private parseDhanScripFormat(lines: string[], kind: 'stock' | 'etf') {
     this.csvPortfolioDate = this.extractDhanPortfolioDate(lines);
 
     let headerIndex = -1;
@@ -576,7 +598,12 @@ export class ImportDataComponent implements OnInit {
     }
 
     if (headerIndex === -1) {
-      this.showMessage('Could not find the expected ETF header row in the CSV.', 'error');
+      this.showMessage(
+        kind === 'stock'
+          ? 'Could not find the expected stock header row in the CSV.'
+          : 'Could not find the expected ETF header row in the CSV.',
+        'error'
+      );
       return;
     }
 
@@ -586,7 +613,11 @@ export class ImportDataComponent implements OnInit {
     const quantityColIndex = headers.findIndex(h => h.toLowerCase().includes('quantity'));
     const avgBuyRateColIndex = headers.findIndex(h => h.toLowerCase().includes('avg. buy rate') || h.toLowerCase().includes('avg buy rate'));
     const buyValueColIndex = headers.findIndex(h => h.toLowerCase().includes('buy value'));
-    const ltpColIndex = headers.findIndex(h => h.toLowerCase() === 'ltp');
+    const ltpColIndex = headers.findIndex(h => h.toLowerCase().trim() === 'ltp');
+    const plColIndex = headers.findIndex(h => {
+      const name = h.toLowerCase().trim();
+      return name.startsWith('p&l') && !name.includes('%');
+    });
 
     for (let i = headerIndex + 1; i < lines.length; i++) {
       const line = lines[i].trim();
@@ -607,19 +638,32 @@ export class ImportDataComponent implements OnInit {
       const avgBuyRateNum = avgBuyRateColIndex >= 0 ? this.parseNumericField(fields[avgBuyRateColIndex]) : null;
       const buyValueNum = buyValueColIndex >= 0 ? this.parseNumericField(fields[buyValueColIndex]) : null;
       const ltpNum = ltpColIndex >= 0 ? this.parseNumericField(fields[ltpColIndex]) : null;
+      const profitLossNum = plColIndex >= 0
+        ? this.parseNumericField(fields[plColIndex])
+        : (buyValueNum != null ? currentValueNum - buyValueNum : null);
 
-      const { amcName, schemeNameWithoutAMC } = this.extractAMCAndScheme(scripName, true);
+      let subTypeName: string;
+      let subTypeCategory: string;
+      if (kind === 'stock') {
+        subTypeName = 'Individual Stock';
+        subTypeCategory = scripName;
+      } else {
+        const { amcName, schemeNameWithoutAMC } = this.extractAMCAndScheme(scripName, true);
+        subTypeName = amcName || 'Unknown Issuer';
+        subTypeCategory = schemeNameWithoutAMC || scripName;
+      }
 
       this.parsedData.push({
         folioNo: '',
         originalSchemeName: scripName,
         schemeName: scripName,
         presentValue: currentValueNum,
-        subTypeName: amcName || 'Unknown Issuer',
-        subTypeCategory: schemeNameWithoutAMC || scripName,
+        subTypeName,
+        subTypeCategory,
         units: quantityNum,
         avgBuyPrice: avgBuyRateNum,
         investedAmount: buyValueNum,
+        profitLoss: profitLossNum,
         navPrice: ltpNum ?? (quantityNum ? currentValueNum / quantityNum : null)
       });
     }
@@ -1387,7 +1431,9 @@ export class ImportDataComponent implements OnInit {
       investment_date: this.getInvestmentDate(),
       notes: this.investmentType === 'ETF'
         ? `Imported from Dhan ETF CSV on ${new Date().toLocaleDateString()}`
-        : `Imported from CSV on ${new Date().toLocaleDateString()} - Aggregated value from ${record.count || 1} folio${(record.count || 1) > 1 ? 's' : ''}: ${record.folioNo}`
+        : this.investmentType === 'Stock'
+          ? `Imported from Dhan equity CSV on ${new Date().toLocaleDateString()}`
+          : `Imported from CSV on ${new Date().toLocaleDateString()} - Aggregated value from ${record.count || 1} folio${(record.count || 1) > 1 ? 's' : ''}: ${record.folioNo}`
     };
 
     try {
