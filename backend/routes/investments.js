@@ -101,7 +101,8 @@ function fdInvestmentPayload(deposit, defaults) {
     compounding: payoutFrequency === 'at-maturity' ? (defaults.compounding || 'quarterly') : null,
     external_ref: fdRef(deposit.account_no),
     investment_date: deposit.start_date || todayYmd(),
-    notes: fdNotes(deposit)
+    notes: fdNotes(deposit),
+    ...(defaults.portfolio_id ? { portfolio_id: defaults.portfolio_id } : {})
   };
 }
 
@@ -116,7 +117,9 @@ router.post('/import/fd/preview', upload.single('file'), async (req, res) => {
       filename: req.file.originalname,
       password: req.body.password || ''
     });
-    const investments = await store.getAllInvestments();
+    const wantedPortfolio = Number(req.body.portfolio_id);
+    const investments = (await store.getAllInvestments()).filter((row) =>
+      !wantedPortfolio || Number(row.portfolio_id) === wantedPortfolio);
 
     const deposits = parsed.deposits.map((deposit) => {
       const ref = fdRef(deposit.account_no);
@@ -164,10 +167,12 @@ router.post('/import/fd', async (req, res) => {
       investment_type: req.body.investment_type || 'FD',
       sub_type_name: req.body.sub_type_name || 'Bank FD',
       payout_frequency: req.body.payout_frequency || 'quarterly',
-      compounding: req.body.compounding || 'quarterly'
+      compounding: req.body.compounding || 'quarterly',
+      portfolio_id: Number(req.body.portfolio_id) || null
     };
 
-    const investments = await store.getAllInvestments();
+    const investments = (await store.getAllInvestments()).filter((row) =>
+      !defaults.portfolio_id || Number(row.portfolio_id) === defaults.portfolio_id);
     let imported = 0;
     let updated = 0;
     const errors = [];

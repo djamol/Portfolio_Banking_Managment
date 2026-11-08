@@ -7,6 +7,7 @@ import { MutualFundScheme, MutualFundService } from '../../services/mutual-fund.
 import { CategoryService, SubTypeName, Category } from '../../services/category.service';
 import { FdImportService, FdStatementDeposit, FdStatementPreview } from '../../services/fd-import.service';
 import { PayoutFrequency } from '../../services/fd-analytics.service';
+import { ACTIVE_PORTFOLIO_KEY, PortfolioService, WorkspacePortfolio } from '../../services/portfolio.service';
 import { formatIndianFull } from '../../utils/indian-number.util';
 
 @Component({
@@ -16,7 +17,11 @@ import { formatIndianFull } from '../../utils/indian-number.util';
   standalone: false
 })
 export class ImportDataComponent implements OnInit {
-  platform = '';
+  portfolios: WorkspacePortfolio[] = [];
+  portfolioId: number | null = null;
+  platforms: string[] = [];
+  platformChoice = '';
+  customPlatform = '';
   investmentType = '';
   selectedFile: File | null = null;
   uploadProgress = 0;
@@ -43,6 +48,12 @@ export class ImportDataComponent implements OnInit {
   mfSearchQueries: { [key: string]: string } = {};
   mfSearchResults: { [key: string]: MutualFundScheme[] } = {};
   private mfSearchTimers: { [key: string]: ReturnType<typeof setTimeout> } = {};
+
+  /** Selected platform, or the typed name when Custom is chosen. */
+  get platform(): string {
+    if (this.platformChoice === '__custom__') return this.customPlatform.trim();
+    return (this.platformChoice || '').trim();
+  }
 
   get supportsCsvImport(): boolean {
     return this.investmentType === 'Mutual Fund' || this.investmentType === 'ETF' || this.investmentType === 'Stock';
@@ -104,10 +115,11 @@ export class ImportDataComponent implements OnInit {
     this.message = 'Reading FD statement...';
     this.messageType = 'info';
     try {
-      const preview = await firstValueFrom(this.fdImportService.preview(this.selectedFile, this.fdPassword));
+      const preview = await this.usingSelectedPortfolio(() =>
+        firstValueFrom(this.fdImportService.preview(this.selectedFile!, this.fdPassword, this.portfolioId)));
       preview.deposits.forEach((row) => { row.selected = row.status !== 'unchanged'; });
       this.fdPreview = preview;
-      if (!this.platform.trim() && preview.bank) this.platform = preview.bank;
+      if (!this.platform && preview.bank) this.applyDetectedPlatform(preview.bank);
       const skipNote = preview.skipped ? ` ${preview.skipped} non-deposit row(s) ignored.` : '';
       this.showMessage(`Found ${preview.count} deposit(s) totalling ${this.formatCurrency(preview.total_principal)}.${skipNote}`, 'success');
     } catch (error: any) {
@@ -119,8 +131,12 @@ export class ImportDataComponent implements OnInit {
   }
 
   async importFdData() {
-    if (!this.platform.trim()) {
-      this.showMessage('Please enter a platform/bank name.', 'error');
+    if (!this.portfolioId) {
+      this.showMessage('Please select a portfolio.', 'error');
+      return;
+    }
+    if (!this.platform) {
+      this.showMessage('Please select a platform, or choose Custom and enter a new name.', 'error');
       return;
     }
     const deposits = (this.fdPreview?.deposits || []).filter((row) => row.selected);
@@ -133,14 +149,15 @@ export class ImportDataComponent implements OnInit {
     this.message = `Importing ${deposits.length} deposit(s)...`;
     this.messageType = 'info';
     try {
-      const result = await firstValueFrom(this.fdImportService.import({
-        platform: this.platform.trim(),
+      const result = await this.usingSelectedPortfolio(() => firstValueFrom(this.fdImportService.import({
+        platform: this.platform,
         investment_type: this.investmentType,
         sub_type_name: this.fdSubTypeName,
         payout_frequency: this.fdPayoutFrequency,
         compounding: this.fdCompounding,
+        portfolio_id: this.portfolioId,
         deposits
-      }));
+      })));
       const errorNote = result.errors.length ? ` ${result.errors.length} row(s) failed.` : '';
       this.showMessage(`${result.imported} added, ${result.updated} updated.${errorNote}`, result.errors.length ? 'info' : 'success');
       this.fdPreview = null;
@@ -238,19 +255,67 @@ export class ImportDataComponent implements OnInit {
     private investmentService: InvestmentService,
     private categoryService: CategoryService,
     private mutualFundService: MutualFundService,
-    private fdImportService: FdImportService
+    private fdImportService: FdImportService,
+    private portfolioService: PortfolioService
   ) {}
 
   async ngOnInit() {
+    try {
+      const context = await firstValueFrom(this.portfolioService.loadContext());
+      this.portfolios = context?.data?.portfolios || [];
+      const active = this.portfolioService.activeId;
+      const preferred = active !== 'all' ? Number(active) : context?.data?.writePortfolioId;
+      this.portfolioId = this.portfolios.some((item) => item.id === preferred)
+        ? (preferred ?? null)
+        : (this.portfolios[0]?.id ?? null);
+    } catch (error) {
+      console.error('Error loading portfolios:', error);
+    }
     await this.loadExistingData();
+  }
+
+  onPortfolioChange() {
+    this.fdPreview = null;
+    this.resetPreviewState();
+    void this.loadExistingData();
+  }
+
+  /** Point API calls at the portfolio chosen on this form, then restore the nav selection. */
+  private async usingSelectedPortfolio<T>(work: () => Promise<T>): Promise<T> {
+    if (!this.portfolioId) return work();
+    const previous = localStorage.getItem(ACTIVE_PORTFOLIO_KEY);
+    localStorage.setItem(ACTIVE_PORTFOLIO_KEY, String(this.portfolioId));
+    try {
+      return await work();
+    } finally {
+      if (previous == null) localStorage.removeItem(ACTIVE_PORTFOLIO_KEY);
+      else localStorage.setItem(ACTIVE_PORTFOLIO_KEY, previous);
+    }
+  }
+
+  private applyDetectedPlatform(name: string) {
+    const trimmed = (name || '').trim();
+    if (!trimmed) return;
+    const match = this.platforms.find((item) => item.toLowerCase() === trimmed.toLowerCase());
+    if (match) {
+      this.platformChoice = match;
+      this.customPlatform = '';
+    } else {
+      this.platformChoice = '__custom__';
+      this.customPlatform = trimmed;
+    }
   }
 
   async loadExistingData() {
     try {
-      const existingInvestments = await this.investmentService.getAll().toPromise();
+      const existingInvestments = await this.usingSelectedPortfolio(() =>
+        this.investmentService.getAll().toPromise());
+      const names = new Set<string>();
+      this.existingAMCs = new Set();
+      this.existingSchemeCategories = new Set();
       if (existingInvestments) {
-        // Populate existing AMCs and scheme categories
         existingInvestments.forEach(investment => {
+          if (investment.website_app_name) names.add(investment.website_app_name);
           if (investment.sub_type_name) {
             this.existingAMCs.add(investment.sub_type_name);
           }
@@ -259,9 +324,12 @@ export class ImportDataComponent implements OnInit {
           }
         });
       }
+      this.platforms = [...names].sort((a, b) => a.localeCompare(b));
+      if (this.platformChoice && this.platformChoice !== '__custom__' && !this.platforms.includes(this.platformChoice)) {
+        this.platformChoice = '';
+      }
     } catch (error) {
       console.error('Error loading existing data:', error);
-      // Continue without existing data if there's an error
     }
   }
 
@@ -282,8 +350,13 @@ export class ImportDataComponent implements OnInit {
       return;
     }
 
+    if (!this.portfolioId) {
+      this.showMessage('Please select a portfolio.', 'error');
+      return;
+    }
+
     if (!this.platform.trim()) {
-      this.showMessage('Please enter a platform/website/app name.', 'error');
+      this.showMessage('Please select a platform, or choose Custom and enter a new name.', 'error');
       return;
     }
 
@@ -303,10 +376,10 @@ export class ImportDataComponent implements OnInit {
       this.originalRecordCount = this.parsedData.length;
       
       if (this.parsedData.length > 0) {
-        const [existingInvestments, existingCategoriesResp] = await Promise.all([
+        const [existingInvestments, existingCategoriesResp] = await this.usingSelectedPortfolio(() => Promise.all([
           this.investmentService.getAll().toPromise(),
           this.categoryService.getCategories(this.investmentType).toPromise()
-        ]);
+        ]));
         const typeAmcs = new Set<string>();
         const typeSchemes = new Set<string>();
         existingInvestments
@@ -436,8 +509,13 @@ export class ImportDataComponent implements OnInit {
       return;
     }
 
+    if (!this.portfolioId) {
+      this.showMessage('Please select a portfolio.', 'error');
+      return;
+    }
+
     if (!this.platform.trim()) {
-      this.showMessage('Please select a platform/website/app name.', 'error');
+      this.showMessage('Please select a platform, or choose Custom and enter a new name.', 'error');
       return;
     }
 
@@ -461,8 +539,9 @@ export class ImportDataComponent implements OnInit {
     this.uploadProgress = 0;
 
     try {
-      await this.processParsedData(recordsToImport);
-      // Refresh existing data after import
+      await this.usingSelectedPortfolio(async () => {
+        await this.processParsedData(recordsToImport);
+      });
       await this.loadExistingData();
       const skipped = this.parsedData.length - recordsToImport.length;
       const skipNote = skipped > 0 ? ` ${skipped} unselected row${skipped === 1 ? '' : 's'} skipped.` : '';
@@ -478,7 +557,8 @@ export class ImportDataComponent implements OnInit {
   }
 
   private resetForm() {
-    this.platform = '';
+    this.platformChoice = '';
+    this.customPlatform = '';
     this.selectedFile = null;
     this.parsedData = [];
     this.originalRecordCount = 0;
@@ -1416,6 +1496,7 @@ export class ImportDataComponent implements OnInit {
   private async createInvestment(record: any) {
     const newInvestment = {
       website_app_name: this.platform,
+      portfolio_id: this.portfolioId,
       investment_type: this.investmentType,
       sub_type_name: record.subTypeName,
       sub_type_category: record.subTypeCategory,

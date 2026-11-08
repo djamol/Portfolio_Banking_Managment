@@ -39,6 +39,7 @@ export interface FdImportRequest {
   sub_type_name?: string;
   payout_frequency?: PayoutFrequency;
   compounding?: string;
+  portfolio_id?: number | null;
   deposits: FdStatementDeposit[];
 }
 
@@ -60,10 +61,11 @@ interface ApiResponse<T> {
 export class FdImportService {
   constructor(private http: HttpClient) {}
 
-  preview(file: File, password = ''): Observable<FdStatementPreview> {
+  preview(file: File, password = '', portfolioId?: number | null): Observable<FdStatementPreview> {
     const form = new FormData();
     form.append('file', file);
     if (password) form.append('password', password);
+    if (portfolioId) form.append('portfolio_id', String(portfolioId));
     return this.http
       .post<ApiResponse<FdStatementPreview>>(`${getApiBaseUrl()}/investments/import/fd/preview`, form)
       .pipe(map((response) => response.data));

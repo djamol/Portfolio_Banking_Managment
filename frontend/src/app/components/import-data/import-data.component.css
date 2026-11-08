@@ -24,6 +24,10 @@
   margin-bottom: 20px;
 }
 
+.custom-platform {
+  margin-top: 8px;
+}
+
 .form-group label {
   display: block;
   margin-bottom: 6px;

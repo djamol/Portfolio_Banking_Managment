@@ -4,13 +4,39 @@
   
   <div class="import-form">
     <div class="form-group">
-      <label for="platform">Platform/Website/App *</label>
-      <input 
-        type="text" 
-        id="platform" 
-        [(ngModel)]="platform" 
-        [placeholder]="investmentType === 'Stock' || investmentType === 'ETF' ? 'e.g., Dhan' : 'e.g., Groww, Kuvera, Zerodha Coin'"
+      <label for="portfolio">Portfolio *</label>
+      <select
+        id="portfolio"
+        name="portfolio"
+        [(ngModel)]="portfolioId"
+        (ngModelChange)="onPortfolioChange()"
         class="form-control">
+        <option [ngValue]="null">Select portfolio</option>
+        <option *ngFor="let item of portfolios" [ngValue]="item.id">
+          {{ item.name }}<ng-container *ngIf="item.owner_name"> · {{ item.owner_name }}</ng-container>
+        </option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="platform">Platform/Website/App *</label>
+      <select
+        id="platform"
+        name="platform"
+        [(ngModel)]="platformChoice"
+        class="form-control">
+        <option value="">Select platform</option>
+        <option *ngFor="let name of platforms" [value]="name">{{ name }}</option>
+        <option value="__custom__">Custom</option>
+      </select>
+      <input
+        *ngIf="platformChoice === '__custom__'"
+        type="text"
+        id="customPlatform"
+        name="customPlatform"
+        [(ngModel)]="customPlatform"
+        [placeholder]="investmentType === 'Stock' || investmentType === 'ETF' ? 'e.g., Dhan' : 'e.g., Groww, Kuvera, Zerodha Coin'"
+        class="form-control custom-platform">
     </div>
     
     <div class="form-group">
@@ -147,7 +173,7 @@
       <button
         type="button"
         (click)="previewFdImport()"
-        [disabled]="!selectedFile || isUploading"
+        [disabled]="!portfolioId || !selectedFile || isUploading"
         class="btn btn-secondary"
         style="margin-right: 10px;">
         Preview statement
@@ -155,7 +181,7 @@
       <button
         type="button"
         (click)="importFdData()"
-        [disabled]="!platform || !fdPreview || isUploading || fdSelectedCount === 0"
+        [disabled]="!portfolioId || !platform || !fdPreview || isUploading || fdSelectedCount === 0"
         class="btn btn-primary">
         <span *ngIf="!isUploading">Import {{ fdSelectedCount }} deposit(s)</span>
         <span *ngIf="isUploading">Working...</span>
@@ -166,7 +192,7 @@
       <button 
         type="button" 
         (click)="previewDataImport()" 
-        [disabled]="!platform || !investmentType || !selectedFile || isUploading"
+        [disabled]="!portfolioId || !platform || !investmentType || !selectedFile || isUploading"
         class="btn btn-secondary"
         style="margin-right: 10px;">
         Preview Data
@@ -174,7 +200,7 @@
       <button 
         type="button" 
         (click)="importData()" 
-        [disabled]="!platform || !investmentType || !selectedFile || isUploading || !showPreview || selectedPreviewCount === 0"
+        [disabled]="!portfolioId || !platform || !investmentType || !selectedFile || isUploading || !showPreview || selectedPreviewCount === 0"
         class="btn btn-primary">
         <span *ngIf="!isUploading && !showPreview">Import Data</span>
         <span *ngIf="!isUploading && showPreview">Import {{ selectedPreviewCount }} selected</span>
