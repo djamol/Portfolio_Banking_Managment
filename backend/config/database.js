@@ -1,6 +1,7 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 const logger = require('../utils/logger');
+const { installMysqlPortfolioScope } = require('../utils/portfolio-scope');
 
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
@@ -84,7 +85,7 @@ const getPool = () => {
   if (!pool) {
     pool = mysql.createPool(dbConfig);
   }
-  return pool;
+  return installMysqlPortfolioScope(pool);
 };
 
 async function closePool() {
@@ -511,6 +512,9 @@ const createTables = async () => {
     } catch (err) {
       logger.logError('MySQL: real-estate reclassify skipped', err);
     }
+
+    const { ensureMysqlFoundation } = require('../db/workspace');
+    await ensureMysqlFoundation(connection);
 
     logger.info('MySQL: tables ready');
   } catch (error) {

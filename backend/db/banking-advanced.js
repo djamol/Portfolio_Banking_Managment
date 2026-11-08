@@ -1,4 +1,5 @@
 const { isMongoDb, getPool, getMongoDb } = require('../config/index');
+const { resolveWritablePortfolioId } = require('../utils/portfolio-scope');
 const {
   extractPayee,
   buildFingerprint,
@@ -66,15 +67,17 @@ async function mysqlGetCategoryRules() {
 async function mysqlCreateCategoryRule(data) {
   const pool = getPool();
   const [result] = await pool.query(
-    `INSERT INTO bank_category_rules (pattern, match_field, category, priority, account_id, is_active)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO bank_category_rules (pattern, match_field, category, priority, account_id, is_active, portfolio_id)
+     VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT portfolio_id FROM bank_accounts WHERE id = ?), ?))`,
     [
       data.pattern,
       data.match_field || 'narration',
       data.category,
       num(data.priority, 100),
       data.account_id || null,
-      data.is_active === false || data.is_active === 0 ? 0 : 1
+      data.is_active === false || data.is_active === 0 ? 0 : 1,
+      data.account_id || null,
+      resolveWritablePortfolioId(data.portfolio_id)
     ]
   );
   const [rows] = await pool.query('SELECT * FROM bank_category_rules WHERE id = ?', [result.insertId]);
@@ -221,8 +224,9 @@ async function mysqlCreateTransaction(data) {
   const [result] = await pool.query(
     `INSERT INTO bank_transactions
       (account_id, txn_date, value_date, narration, ref_no, withdrawal, deposit, balance,
-       category, category_source, payee, txn_type, fingerprint, raw_bank, tags, notes, import_batch_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       category, category_source, payee, txn_type, fingerprint, raw_bank, tags, notes, import_batch_id, portfolio_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+       (SELECT portfolio_id FROM bank_accounts WHERE id = ?))`,
     [
       accountId,
       txnDate,
@@ -240,7 +244,8 @@ async function mysqlCreateTransaction(data) {
       data.raw_bank || 'MANUAL',
       data.tags || null,
       data.notes || null,
-      null
+      null,
+      accountId
     ]
   );
   const [rows] = await pool.query('SELECT * FROM bank_transactions WHERE id = ?', [result.insertId]);
@@ -501,8 +506,17 @@ async function mysqlUpsertBudget(data) {
     return rows[0];
   }
   const [result] = await pool.query(
-    `INSERT INTO bank_budgets (category, amount, period_month, account_id, notes) VALUES (?, ?, ?, ?, ?)`,
-    [data.category, num(data.amount), data.period_month || null, data.account_id || null, data.notes || null]
+    `INSERT INTO bank_budgets (category, amount, period_month, account_id, notes, portfolio_id)
+     VALUES (?, ?, ?, ?, ?, COALESCE((SELECT portfolio_id FROM bank_accounts WHERE id = ?), ?))`,
+    [
+      data.category,
+      num(data.amount),
+      data.period_month || null,
+      data.account_id || null,
+      data.notes || null,
+      data.account_id || null,
+      resolveWritablePortfolioId(data.portfolio_id)
+    ]
   );
   const [rows] = await pool.query('SELECT * FROM bank_budgets WHERE id = ?', [result.insertId]);
   return rows[0];

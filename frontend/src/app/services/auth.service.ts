@@ -1,10 +1,11 @@
-import { Injectable } from '@angular/core';
+import { Injectable, Injector } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { Observable, map, of, catchError, tap, from, switchMap, shareReplay, finalize } from 'rxjs';
 import { getApiBaseUrl, normalizeApiDomain } from '../utils/api-url.util';
 import { decryptJson, encryptJson } from '../utils/storage-crypto.util';
 import { deleteCookie, getCookie, setCookie } from '../utils/cookie.util';
+import { PortfolioService } from './portfolio.service';
 
 const REMEMBER_COOKIE = 'pfm_remember';
 const REMEMBER_MAX_AGE_SEC = 365 * 24 * 60 * 60;
@@ -24,7 +25,8 @@ export class AuthService {
 
   constructor(
     private router: Router,
-    private http: HttpClient
+    private http: HttpClient,
+    private injector: Injector
   ) {}
 
   isAuthenticated(): boolean {
@@ -160,6 +162,7 @@ export class AuthService {
     sessionStorage.removeItem('loginTime');
     sessionStorage.removeItem('authUsername');
     this.username = null;
+    this.injector.get(PortfolioService).clear();
     const base = getApiBaseUrl();
     this.http.post(`${base}/auth/logout`, {}, { withCredentials: true }).subscribe({
       error: () => undefined

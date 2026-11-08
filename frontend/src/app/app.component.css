@@ -202,4 +202,34 @@
     width: 100%;
     text-align: left;
   }
+
+  .portfolio-switch-label {
+    width: 100%;
+  }
+
+  .portfolio-switch-label select {
+    width: 100%;
+  }
+}
+
+.portfolio-switch-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--app-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0 0.4rem;
+}
+
+.portfolio-switch-label select {
+  border: none;
+  background: var(--app-surface);
+  color: var(--app-ink);
+  border-radius: var(--app-radius-sm);
+  box-shadow: var(--app-shadow-out-sm);
+  padding: 0.45rem 0.7rem;
+  font: inherit;
+  font-size: 0.85rem;
+  max-width: 240px;
 }

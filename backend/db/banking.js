@@ -1,4 +1,5 @@
 const { isMongoDb, getPool, getMongoDb } = require('../config/index');
+const { resolveWritablePortfolioId } = require('../utils/portfolio-scope');
 const {
   suggestCategory,
   resolvePayee,
@@ -180,8 +181,8 @@ async function mysqlCreateAccount(data) {
   const pool = getPool();
   const [result] = await pool.query(
     `INSERT INTO bank_accounts
-      (bank_name, account_name, account_number, branch, ifsc, account_type, currency, opening_balance, notes, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (bank_name, account_name, account_number, branch, ifsc, account_type, currency, opening_balance, notes, is_active, portfolio_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.bank_name,
       data.account_name,
@@ -192,7 +193,8 @@ async function mysqlCreateAccount(data) {
       data.currency || 'INR',
       num(data.opening_balance),
       data.notes || null,
-      data.is_active === false || data.is_active === 0 ? 0 : 1
+      data.is_active === false || data.is_active === 0 ? 0 : 1,
+      resolveWritablePortfolioId(data.portfolio_id)
     ]
   );
   return mysqlGetAccountById(result.insertId);
@@ -240,8 +242,9 @@ async function mysqlImportTransactions(accountId, transactions, importBatchId) {
         const [result] = await conn.query(
           `INSERT IGNORE INTO bank_transactions
             (account_id, txn_date, value_date, narration, ref_no, withdrawal, deposit, balance,
-             category, category_source, payee, txn_type, fingerprint, raw_bank, tags, notes, import_batch_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             category, category_source, payee, txn_type, fingerprint, raw_bank, tags, notes, import_batch_id, portfolio_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+             (SELECT portfolio_id FROM bank_accounts WHERE id = ?))`,
           [
             accountId,
             txn.txn_date,
@@ -259,7 +262,8 @@ async function mysqlImportTransactions(accountId, transactions, importBatchId) {
             txn.raw_bank || null,
             txn.tags || null,
             txn.notes || null,
-            importBatchId || null
+            importBatchId || null,
+            accountId
           ]
         );
         if (result.affectedRows > 0) inserted += 1;
@@ -960,6 +964,7 @@ async function mongoCreateAccount(data) {
     opening_balance: num(data.opening_balance),
     notes: data.notes || null,
     is_active: data.is_active === false || data.is_active === 0 ? 0 : 1,
+    portfolio_id: resolveWritablePortfolioId(data.portfolio_id),
     created_at: new Date(),
     updated_at: new Date()
   };
@@ -1564,8 +1569,9 @@ async function mysqlImportTransactionBackup(rows, importBatchId) {
         const [result] = await conn.query(
           `INSERT IGNORE INTO bank_transactions
             (account_id, txn_date, value_date, narration, ref_no, withdrawal, deposit, balance,
-             category, category_source, payee, txn_type, fingerprint, raw_bank, tags, notes, import_batch_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             category, category_source, payee, txn_type, fingerprint, raw_bank, tags, notes, import_batch_id, portfolio_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+             (SELECT portfolio_id FROM bank_accounts WHERE id = ?))`,
           [
             accountId,
             row.txn_date,
@@ -1583,7 +1589,8 @@ async function mysqlImportTransactionBackup(rows, importBatchId) {
             row.raw_bank || null,
             row.tags || null,
             row.notes || null,
-            importBatchId || row.import_batch_id || null
+            importBatchId || row.import_batch_id || null,
+            accountId
           ]
         );
         if (result.affectedRows > 0) inserted += 1;

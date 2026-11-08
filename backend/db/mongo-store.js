@@ -1,4 +1,5 @@
 const { getDb } = require('../config/mongodb');
+const { resolveWritablePortfolioId, runUnrestricted } = require('../utils/portfolio-scope');
 const mutualFundNavStore = require('./mutual-fund-nav-store');
 
 const INVESTMENT_TYPES = [
@@ -136,6 +137,7 @@ async function createInvestment(data) {
     external_ref: data.external_ref || null,
     investment_date: toDateString(data.investment_date),
     notes: data.notes || null,
+    portfolio_id: resolveWritablePortfolioId(data.portfolio_id),
     created_at: now,
     updated_at: now
   };
@@ -185,6 +187,9 @@ async function updateInvestment(id, data) {
     notes: data.notes || null,
     updated_at: now
   };
+  if (data.portfolio_id != null && data.portfolio_id !== '') {
+    update.portfolio_id = resolveWritablePortfolioId(data.portfolio_id);
+  }
 
   await getDb().collection('investments').updateOne({ id: numId }, { $set: update });
 
@@ -212,6 +217,15 @@ async function updateInvestment(id, data) {
       change_type: 'updated',
       notes: data.notes || null
     });
+  }
+
+  if (update.portfolio_id != null && Number(update.portfolio_id) !== Number(existing.portfolio_id)) {
+    const db = getDb();
+    const moved = { portfolio_id: update.portfolio_id };
+    await db.collection('investment_history').updateMany({ investment_id: numId }, { $set: moved });
+    await db.collection('investment_transactions').updateMany({ investment_id: numId }, { $set: moved });
+    await db.collection('mutual_fund_nav_history').updateMany({ investment_id: numId }, { $set: moved });
+    return runUnrestricted(() => getInvestmentById(numId));
   }
 
   return getInvestmentById(numId);

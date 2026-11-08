@@ -2,12 +2,14 @@
   <div class="dash-header">
     <div>
       <h2>Dashboard</h2>
-      <p class="subtitle">Net worth home — composition, bank cash, last-month flow &amp; movers</p>
+      <p class="subtitle">Net worth across the portfolios you select above — composition, bank cash, last-month flow &amp; movers</p>
     </div>
     <button type="button" class="refresh-btn" (click)="refresh()" [disabled]="loading">
       {{ loading ? 'Loading…' : 'Refresh' }}
     </button>
   </div>
+
+  <app-workspace-panel></app-workspace-panel>
 
   <div *ngIf="errorMessage" class="error-banner">{{ errorMessage }}</div>
   <div *ngIf="bankCashError" class="warn-banner">{{ bankCashError }}</div>

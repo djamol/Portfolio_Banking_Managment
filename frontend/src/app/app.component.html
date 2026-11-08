@@ -38,6 +38,17 @@
           <li><a routerLink="/import-export" routerLinkActive="active" class="nav-link" (click)="closeMenu()">Backup &amp; restore</a></li>
         </ul>
       </li>
+      <li class="nav-item portfolio-switch" *ngIf="portfolios.length">
+        <label class="portfolio-switch-label">
+          <span>Portfolio</span>
+          <select [value]="activePortfolioId" (change)="onPortfolioChange($event)" aria-label="Active portfolio">
+            <option value="all">All portfolios</option>
+            <option *ngFor="let portfolio of portfolios" [value]="portfolio.id">
+              {{ portfolio.name }} · {{ portfolio.owner_name || portfolio.owner_username }}
+            </option>
+          </select>
+        </label>
+      </li>
       <li class="nav-item">
         <button type="button" (click)="logout()" class="logout-btn">Logout</button>
       </li>

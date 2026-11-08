@@ -3,9 +3,10 @@ import { RouterModule } from '@angular/router';
 import { SharedModule } from '../../shared/shared.module';
 import { AppChartsModule } from '../../shared/charts.module';
 import { DashboardComponent } from './dashboard.component';
+import { WorkspacePanelComponent } from './workspace-panel.component';
 
 @NgModule({
-  declarations: [DashboardComponent],
+  declarations: [DashboardComponent, WorkspacePanelComponent],
   imports: [
     SharedModule,
     AppChartsModule,

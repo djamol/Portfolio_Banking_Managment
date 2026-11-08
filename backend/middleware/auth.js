@@ -35,6 +35,18 @@ function scryptHash(password, salt) {
   return `scrypt$${s}$${hash}`;
 }
 
+function verifyStoredHash(password, stored) {
+  if (!stored || !String(stored).startsWith('scrypt$')) return false;
+  const [, salt, expected] = String(stored).split('$');
+  if (!salt || !expected) return false;
+  const actual = crypto.scryptSync(String(password), salt, 64).toString('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(actual, 'hex'), Buffer.from(expected, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
 function verifyPassword(password) {
   const hashEnv = process.env.APP_PASSWORD_HASH;
   const plain = process.env.APP_PASSWORD;
@@ -70,11 +82,14 @@ function verifyPassword(password) {
   return password === fallbackPass && fallbackUser === getAppUser();
 }
 
-function createSession(username, rememberMe = false) {
+function createSession(user, rememberMe = false) {
+  const username = typeof user === 'string' ? user : user.username;
+  const userId = typeof user === 'string' ? null : user.id;
+  const role = typeof user === 'string' ? 'admin' : (user.role || 'member');
   const id = crypto.randomBytes(24).toString('hex');
   const ttl = rememberMe ? REMEMBER_TTL_MS : SESSION_TTL_MS;
   const expiresAt = Date.now() + ttl;
-  sessions.set(id, { username, expiresAt, rememberMe: !!rememberMe });
+  sessions.set(id, { username, userId, role, expiresAt, rememberMe: !!rememberMe });
   return { id, expiresAt, rememberMe: !!rememberMe };
 }
 
@@ -119,7 +134,11 @@ function requireAuth(req, res, next) {
   if (!session) {
     return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
-  req.user = { username: session.username };
+  req.user = {
+    username: session.username,
+    userId: session.userId || null,
+    role: session.role || 'admin'
+  };
   req.sessionId = session.id;
   next();
 }
@@ -183,6 +202,7 @@ function requireFreshInstallConfirm(req, res, next) {
 module.exports = {
   SESSION_COOKIE,
   scryptHash,
+  verifyStoredHash,
   verifyPassword,
   getAppUser,
   createSession,

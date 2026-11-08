@@ -11,7 +11,7 @@ import { routes } from './app.routes';
   imports: [
     BrowserModule,
     HttpClientModule,
-    RouterModule.forRoot(routes, { useHash: true })
+    RouterModule.forRoot(routes, { useHash: true, onSameUrlNavigation: 'reload' })
   ],
   providers: [
     { provide: HTTP_INTERCEPTORS, useClass: AuthInterceptor, multi: true }

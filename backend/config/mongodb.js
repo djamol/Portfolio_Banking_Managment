@@ -1,6 +1,7 @@
 const { MongoClient } = require('mongodb');
 require('dotenv').config();
 const logger = require('../utils/logger');
+const { installMongoPortfolioScope } = require('../utils/portfolio-scope');
 
 const COLLECTIONS = [
   'sub_type_names',
@@ -36,6 +37,7 @@ const getDb = () => {
   if (!db) {
     throw new Error('MongoDB not initialized. Call initializeDatabase() first.');
   }
+  installMongoPortfolioScope(db);
   return db;
 };
 
@@ -100,6 +102,8 @@ async function initializeDatabaseOnce() {
   logger.info('MongoDB: ping successful', { database: mongoConfig.database });
 
   await ensureIndexes(db);
+  const { ensureMongoFoundation } = require('../db/workspace');
+  await ensureMongoFoundation(db);
   logger.info('MongoDB: initialization complete', getConnectionSummary());
 }
 

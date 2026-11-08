@@ -1,4 +1,5 @@
 const { getPool } = require('../config/database');
+const { resolveWritablePortfolioId, runUnrestricted } = require('../utils/portfolio-scope');
 
 let columnCache = new Map();
 let columnCachePool = null;
@@ -121,17 +122,48 @@ async function getInvestmentById(id) {
 }
 
 async function createInvestment(data) {
-  const result = await insertRow('investments', investmentRow(data));
-  await insertRow('investment_history', historyRow(result.insertId, data, data.investment_date, 'added'));
+  const row = investmentRow(data);
+  row.portfolio_id = resolveWritablePortfolioId(data.portfolio_id);
+  const result = await insertRow('investments', row);
+  const history = historyRow(result.insertId, data, data.investment_date, 'added');
+  history.portfolio_id = row.portfolio_id;
+  await insertRow('investment_history', history);
   return getInvestmentById(result.insertId);
+}
+
+async function readInvestmentAny(id) {
+  const pool = getPool();
+  return runUnrestricted(async () => {
+    const [rows] = await pool.query('SELECT * FROM investments WHERE id = ?', [id]);
+    return rows[0] || null;
+  });
+}
+
+async function moveInvestmentTree(id, portfolioId) {
+  const pool = getPool();
+  const tables = ['investment_history', 'investment_transactions', 'mutual_fund_nav_history'];
+  for (const table of tables) {
+    try {
+      await pool.query(`UPDATE \`${table}\` SET portfolio_id = ? WHERE investment_id = ?`, [portfolioId, id]);
+    } catch (err) {
+      if (err && err.code === 'ER_BAD_FIELD_ERROR') continue;
+      throw err;
+    }
+  }
 }
 
 async function updateInvestment(id, data) {
   const pool = getPool();
-  const [oldInvestment] = await pool.query('SELECT amount, units, nav_price, invested_amount FROM investments WHERE id = ?', [id]);
+  const [oldInvestment] = await pool.query('SELECT amount, units, nav_price, invested_amount, portfolio_id FROM investments WHERE id = ?', [id]);
   if (!oldInvestment.length) return null;
 
-  await updateRow('investments', investmentRow(data), id);
+  const row = investmentRow(data);
+  let nextPortfolio = null;
+  if (data.portfolio_id != null && data.portfolio_id !== '') {
+    nextPortfolio = resolveWritablePortfolioId(data.portfolio_id);
+    row.portfolio_id = nextPortfolio;
+  }
+  await updateRow('investments', row, id);
 
   const amountChanged = Number(oldInvestment[0].amount) !== Number(data.amount);
   const valuationChanged = ['units', 'nav_price', 'invested_amount'].some(
@@ -148,9 +180,15 @@ async function updateInvestment(id, data) {
       const latestDate = latest[0]?.d ? String(latest[0].d).slice(0, 10) : null;
       if (latestDate && latestDate > changeDate) changeDate = latestDate;
     }
-    await insertRow('investment_history', historyRow(id, data, changeDate, 'updated'));
+    const history = historyRow(id, data, changeDate, 'updated');
+    history.portfolio_id = nextPortfolio || oldInvestment[0].portfolio_id || null;
+    await insertRow('investment_history', history);
   }
 
+  if (nextPortfolio != null && Number(nextPortfolio) !== Number(oldInvestment[0].portfolio_id)) {
+    await moveInvestmentTree(id, nextPortfolio);
+    return readInvestmentAny(id);
+  }
   return getInvestmentById(id);
 }
 

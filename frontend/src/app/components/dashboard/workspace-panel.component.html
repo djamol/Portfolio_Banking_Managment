@@ -1,0 +1,128 @@
+<section class="workspace">
+  <div class="workspace-head">
+    <div>
+      <h3>People &amp; portfolios</h3>
+      <p>
+        One dashboard for every person and portfolio you can open.
+        Choose a portfolio to filter investments, banking, and charts.
+        With <strong>All portfolios</strong> selected, new holdings are saved to {{ writeName }}.
+      </p>
+    </div>
+    <button type="button" class="text-btn" (click)="reload()" [disabled]="loading">Refresh list</button>
+  </div>
+
+  <p class="workspace-error" *ngIf="error">{{ error }}</p>
+  <p class="workspace-ok" *ngIf="message">{{ message }}</p>
+
+  <div class="pf-grid" *ngIf="!loading">
+    <article class="pf-card all" [class.active]="isActive('all')">
+      <button type="button" class="pf-open" (click)="select('all')">
+        <span class="pf-kicker">Combined</span>
+        <strong class="pf-title">All portfolios</strong>
+        <span class="pf-total">₹{{ grandTotal | number:'1.0-0' }}</span>
+        <span class="pf-meta">{{ cards.length }} portfolio{{ cards.length === 1 ? '' : 's' }}</span>
+      </button>
+    </article>
+
+    <article class="pf-card" *ngFor="let card of cards" [class.active]="isActive(card.id)">
+      <button type="button" class="pf-open" (click)="select(card.id)">
+        <span class="swatch" [style.background]="card.color"></span>
+        <span class="pf-kicker">{{ card.owner_name || card.owner_username }}</span>
+        <strong class="pf-title">{{ card.name }}</strong>
+        <span class="pf-total">₹{{ (card.investment_total || 0) | number:'1.0-0' }}</span>
+        <span class="pf-meta">
+          {{ card.investment_count || 0 }} holdings · {{ card.account_count || 0 }} accounts
+          <span *ngIf="card.is_default"> · default</span>
+        </span>
+      </button>
+      <div class="pf-edit">
+        <input [(ngModel)]="drafts[card.id]" [attr.aria-label]="'Rename ' + card.name" />
+        <button type="button" (click)="saveName(card)">Save</button>
+        <button type="button" *ngIf="!card.is_default && card.owner_user_id === user?.id" (click)="makeDefault(card)">Make default</button>
+        <button type="button" class="danger" (click)="remove(card)">Delete</button>
+      </div>
+    </article>
+  </div>
+
+  <div class="workspace-forms">
+    <form class="mini-form" (ngSubmit)="createPortfolio()">
+      <h4>New portfolio</h4>
+      <label>
+        Name
+        <input name="pfName" [(ngModel)]="portfolioForm.name" required maxlength="128" />
+      </label>
+      <label>
+        Note
+        <input name="pfNote" [(ngModel)]="portfolioForm.description" maxlength="255" />
+      </label>
+      <label>
+        Color
+        <select name="pfColor" [(ngModel)]="portfolioForm.color">
+          <option *ngFor="let color of colors" [value]="color">{{ color }}</option>
+        </select>
+      </label>
+      <label *ngIf="isAdmin">
+        Owner
+        <select name="pfOwner" [(ngModel)]="portfolioForm.owner_user_id">
+          <option *ngFor="let person of users" [ngValue]="person.id">{{ person.display_name }}</option>
+        </select>
+      </label>
+      <button type="submit" [disabled]="!portfolioForm.name.trim()">Create portfolio</button>
+    </form>
+
+    <form class="mini-form" *ngIf="isAdmin" (ngSubmit)="createUser()">
+      <h4>New user</h4>
+      <label>
+        Username
+        <input name="username" [(ngModel)]="userForm.username" required maxlength="64" autocomplete="off" />
+      </label>
+      <label>
+        Display name
+        <input name="displayName" [(ngModel)]="userForm.display_name" maxlength="128" />
+      </label>
+      <label>
+        Password
+        <input name="password" type="password" [(ngModel)]="userForm.password" required minlength="4" autocomplete="new-password" />
+      </label>
+      <label>
+        Role
+        <select name="role" [(ngModel)]="userForm.role">
+          <option value="member">Member</option>
+          <option value="admin">Admin</option>
+        </select>
+      </label>
+      <button type="submit">Add user</button>
+    </form>
+  </div>
+
+  <div class="user-table" *ngIf="isAdmin && users.length">
+    <h4>Users</h4>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Username</th>
+          <th>Role</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let person of users">
+          <td>{{ person.display_name }}</td>
+          <td>{{ person.username }}</td>
+          <td>
+            <select [ngModel]="person.role" (ngModelChange)="setRole(person, $event)" [name]="'role' + person.id">
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+            </select>
+          </td>
+          <td>
+            <button type="button" (click)="toggleActive(person)" [disabled]="person.id === user?.id">
+              {{ person.is_active === 0 ? 'Enable' : 'Disable' }}
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
