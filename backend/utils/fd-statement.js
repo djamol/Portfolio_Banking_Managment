@@ -23,8 +23,10 @@ const COLUMN_RULES = [
   { field: 'maturity_amount', match: (h) => /maturity/.test(h) && /(amount|value|amt)/.test(h) },
   { field: 'start_date', match: (h) => /(start|open|issue|deposit|value)/.test(h) && /date/.test(h) },
   { field: 'interest_rate', match: (h) => /(rate of interest|interest rate|roi|rate)/.test(h) },
-  { field: 'principal', match: (h) => /(principal|deposit amount|invested|amount)/.test(h) },
+  { field: 'principal', match: (h) => !/maturity/.test(h) && /(principal|deposit amount|invested|\bbalance\b|amount)/.test(h) },
   { field: 'payout_frequency', match: (h) => /(payout|interest frequency|frequency|interest payment)/.test(h) },
+  { field: 'fd_type', match: (h) => /deposit type|fd type/.test(h) },
+  { field: 'auto_renewal', match: (h) => /auto\s*renew/.test(h) },
   { field: 'tenure', match: (h) => /(tenure|period|term)/.test(h) },
   { field: 'serial', match: (h) => /^sr\.?\s*no/.test(h) || /^s\.?\s*no/.test(h) || /^#$/.test(h) }
 ];
@@ -57,6 +59,15 @@ function parseDate(value) {
 
   const iso = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
   if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
+
+  const monthFirst = text.match(/^([A-Za-z]{3,})\s+(\d{1,2}),?\s+(\d{2,4})$/);
+  if (monthFirst) {
+    const month = MONTHS[monthFirst[1].slice(0, 3).toLowerCase()];
+    if (month) {
+      const year = monthFirst[3].length === 2 ? 2000 + Number(monthFirst[3]) : Number(monthFirst[3]);
+      return `${year}-${String(month).padStart(2, '0')}-${monthFirst[2].padStart(2, '0')}`;
+    }
+  }
 
   const named = text.match(/^(\d{1,2})[\s-]*([A-Za-z]{3,})[\s-]*(\d{2,4})$/);
   if (named) {
@@ -124,8 +135,11 @@ function findHeaderRow(rows) {
   return null;
 }
 
-function detectBank(rows) {
-  const header = rows.slice(0, 6).map((row) => (row || []).map(clean).join(' ')).join(' ');
+function detectBank(rows, filename = '') {
+  const file = String(filename).toLowerCase();
+  if (/icici|customdprevamp/.test(file)) return 'ICICI Bank';
+  const header = rows.slice(0, 12).map((row) => (row || []).map(clean).join(' ')).join(' ');
+  if (/fixed deposit number/i.test(header) && /fd account summary/i.test(header)) return 'ICICI Bank';
   const known = ['HDFC', 'ICICI', 'SBI', 'AXIS', 'KOTAK', 'DCB', 'YES', 'IDFC', 'BANK OF BARODA', 'PNB', 'CANARA'];
   const upper = header.toUpperCase();
   const match = known.find((bank) => upper.includes(bank));
@@ -186,7 +200,7 @@ async function parseFdStatement({ buffer, filename = '', password = '' }) {
   }
 
   const { mapping } = header;
-  const bank = detectBank(rows);
+  const bank = detectBank(rows, filename);
   const holder = detectHolder(rows);
   const at = (cells, field) => (mapping[field] === undefined ? '' : cells[mapping[field]]);
 
@@ -226,6 +240,8 @@ async function parseFdStatement({ buffer, filename = '', password = '' }) {
       interest_rate: rate,
       payout_frequency: normalisePayout(at(cells, 'payout_frequency'))
         || (cumulative ? 'at-maturity' : null),
+      fd_type: clean(at(cells, 'fd_type')) || null,
+      auto_renewal: clean(at(cells, 'auto_renewal')) || null,
       cumulative,
       tenure_category: tenureCategory(startDate, maturityDate)
     });

@@ -80,7 +80,9 @@ function fdNotes(deposit) {
     deposit.account_no ? fdRef(deposit.account_no) : null,
     deposit.branch ? `branch:${deposit.branch}` : null,
     deposit.maturity_date ? `maturity:${deposit.maturity_date}` : null,
-    deposit.interest_rate ? `rate:${deposit.interest_rate}` : null
+    deposit.interest_rate ? `rate:${deposit.interest_rate}` : null,
+    deposit.fd_type ? `type:${deposit.fd_type}` : null,
+    deposit.auto_renewal ? `renewal:${deposit.auto_renewal}` : null
   ].filter(Boolean).join('\n');
 }
 
@@ -91,7 +93,9 @@ function fdInvestmentPayload(deposit, defaults) {
     website_app_name: deposit.platform || defaults.platform,
     investment_type: defaults.investment_type || 'FD',
     sub_type_name: deposit.sub_type_name || defaults.sub_type_name || 'Bank FD',
-    sub_type_category: deposit.sub_type_category || deposit.tenure_category || null,
+    ...(deposit.sub_type_category || deposit.tenure_category
+      ? { sub_type_category: deposit.sub_type_category || deposit.tenure_category }
+      : {}),
     amount: deposit.principal,
     invested_amount: deposit.principal,
     interest_rate: deposit.interest_rate ?? null,
@@ -100,7 +104,7 @@ function fdInvestmentPayload(deposit, defaults) {
     payout_frequency: payoutFrequency,
     compounding: payoutFrequency === 'at-maturity' ? (defaults.compounding || 'quarterly') : null,
     external_ref: fdRef(deposit.account_no),
-    investment_date: deposit.start_date || todayYmd(),
+    ...(deposit.start_date ? { investment_date: deposit.start_date } : {}),
     notes: fdNotes(deposit),
     ...(defaults.portfolio_id ? { portfolio_id: defaults.portfolio_id } : {})
   };
@@ -179,8 +183,8 @@ router.post('/import/fd', async (req, res) => {
 
     for (const deposit of deposits) {
       try {
-        if (!deposit.principal || !deposit.start_date) {
-          errors.push(`Skipped ${deposit.account_no || 'row'}: missing principal or start date`);
+        if (!deposit.principal || (!deposit.start_date && !deposit.maturity_date)) {
+          errors.push(`Skipped ${deposit.account_no || 'row'}: missing principal or dates`);
           continue;
         }
         const payload = fdInvestmentPayload(deposit, defaults);
@@ -189,6 +193,7 @@ router.post('/import/fd', async (req, res) => {
           await store.updateInvestment(existing.id, mergeInvestment(existing, payload));
           updated += 1;
         } else {
+          if (!payload.investment_date) payload.investment_date = todayYmd();
           await store.createInvestment(payload);
           imported += 1;
         }
