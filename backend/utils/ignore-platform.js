@@ -2,7 +2,10 @@
  * IGNORE_PLATFORM=PLOT,RealEstate
  * Comma-separated platform names excluded by default from charts/tables
  * unless the user explicitly selects platforms.
+ * When the variable is omitted, PLOT and RealEstate stay hidden.
+ * Set IGNORE_PLATFORM= (empty) to include every platform.
  */
+const DEFAULT_IGNORE_PLATFORMS = ['PLOT', 'RealEstate'];
 
 function normalizePlatformKey(name) {
   return String(name || '')
@@ -10,8 +13,11 @@ function normalizePlatformKey(name) {
     .replace(/[\s_-]+/g, '');
 }
 
-function parseIgnorePlatforms(raw = process.env.IGNORE_PLATFORM) {
-  if (raw === undefined || raw === null || String(raw).trim() === '') {
+function parseIgnorePlatforms(raw) {
+  if (raw === undefined || raw === null) {
+    return DEFAULT_IGNORE_PLATFORMS.slice();
+  }
+  if (String(raw).trim() === '') {
     return [];
   }
   return String(raw)
@@ -21,7 +27,7 @@ function parseIgnorePlatforms(raw = process.env.IGNORE_PLATFORM) {
 }
 
 function getIgnorePlatforms() {
-  return parseIgnorePlatforms();
+  return parseIgnorePlatforms(process.env.IGNORE_PLATFORM);
 }
 
 function getIgnorePlatformKeys() {

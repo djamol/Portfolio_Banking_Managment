@@ -1580,7 +1580,7 @@ export class AssetTrackerComponent implements OnInit {
 
   private loadCashflows() {
     this.cashflowLoading = true;
-    this.analyticsService.getCashflowsByMonth().subscribe({
+    this.analyticsService.getCashflowsByMonth(this.getAnalyticsFilters()).subscribe({
       next: (response) => {
         this.cashflowsByMonth.clear();
         for (const row of response.data || []) {

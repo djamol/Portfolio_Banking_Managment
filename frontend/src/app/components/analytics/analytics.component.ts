@@ -1042,7 +1042,7 @@ export class AnalyticsComponent implements OnInit {
     });
 
     // Cashflows by month (inflow / outflow / net)
-    this.analyticsService.getCashflowsByMonth().subscribe({
+    this.analyticsService.getCashflowsByMonth(this.getAnalyticsFilters()).subscribe({
       next: (response) => {
         const rows = response.data || [];
         if (rows.length) {

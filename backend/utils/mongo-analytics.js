@@ -273,10 +273,14 @@ async function getGrowth() {
   });
 }
 
-async function getCashflowsByMonth() {
-  const { transactions } = await loadCoreData();
+async function getCashflowsByMonth(query = {}) {
+  const { transactions, investmentsById } = await loadCoreData();
+  const visible = transactions.filter((txn) => {
+    const investment = investmentsById[txn.investment_id];
+    return investment && matchesFilters(investment, query || {});
+  });
   return groupBy(
-    transactions,
+    visible,
     (t) => toDateString(t.txn_date).slice(0, 7),
     (month, items) => {
       const net = items.reduce((s, t) => s + Number(t.cashflow_amount), 0);

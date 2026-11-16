@@ -648,20 +648,25 @@ router.get('/delta', async (req, res) => {
 router.get('/cashflows-by-month', async (req, res) => {
   try {
     if (isMongoDb()) {
-      return res.json({ success: true, data: await mongoAnalytics.getCashflowsByMonth() });
+      return res.json({ success: true, data: await mongoAnalytics.getCashflowsByMonth(req.query) });
     }
 
     const pool = getPool();
+    const params = [];
+    const where = buildInvestmentFilterClauses(req.query, params, 'i');
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const [rows] = await pool.query(`
       SELECT
-        DATE_FORMAT(txn_date, '%Y-%m') AS month,
-        SUM(cashflow_amount) AS net_cashflow,
-        SUM(CASE WHEN cashflow_amount < 0 THEN -cashflow_amount ELSE 0 END) AS outflow,
-        SUM(CASE WHEN cashflow_amount > 0 THEN cashflow_amount ELSE 0 END) AS inflow
-      FROM investment_transactions
-      GROUP BY DATE_FORMAT(txn_date, '%Y-%m')
+        DATE_FORMAT(t.txn_date, '%Y-%m') AS month,
+        SUM(t.cashflow_amount) AS net_cashflow,
+        SUM(CASE WHEN t.cashflow_amount < 0 THEN -t.cashflow_amount ELSE 0 END) AS outflow,
+        SUM(CASE WHEN t.cashflow_amount > 0 THEN t.cashflow_amount ELSE 0 END) AS inflow
+      FROM investment_transactions t
+      JOIN investments i ON i.id = t.investment_id
+      ${whereSql}
+      GROUP BY DATE_FORMAT(t.txn_date, '%Y-%m')
       ORDER BY month ASC
-    `);
+    `, params);
     res.json({ success: true, data: rows });
   } catch (error) {
     console.error('Error fetching cashflows:', error);

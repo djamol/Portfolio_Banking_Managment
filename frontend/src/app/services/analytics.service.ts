@@ -160,8 +160,11 @@ export class AnalyticsService {
     return this.http.get<{ success: boolean; meta: { from: string; to: string }; data: DeltaRow[] }>(`${this.getApiUrl()}/analytics/delta?${params}`);
   }
 
-  getCashflowsByMonth(): Observable<{ success: boolean; data: CashflowByMonthRow[] }> {
-    return this.http.get<{ success: boolean; data: CashflowByMonthRow[] }>(`${this.getApiUrl()}/analytics/cashflows-by-month`);
+  getCashflowsByMonth(filters: AnalyticsFilters = {}): Observable<{ success: boolean; data: CashflowByMonthRow[] }> {
+    const qs = new URLSearchParams();
+    appendAnalyticsFilters(qs, filters);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return this.http.get<{ success: boolean; data: CashflowByMonthRow[] }>(`${this.getApiUrl()}/analytics/cashflows-by-month${suffix}`);
   }
 
   getInsights(filters: AnalyticsFilters = {}): Observable<{ success: boolean; data: InsightsResponse }> {
