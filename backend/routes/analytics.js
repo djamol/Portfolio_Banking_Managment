@@ -251,18 +251,23 @@ router.get('/growth', async (req, res) => {
     const ignore = defaultIgnoreWhere('curr');
     const [rows] = await pool.query(
       `
-      SELECT 
-        DATE_FORMAT(curr.investment_date, '%Y-%m') as month,
-        SUM(curr.amount) OVER (ORDER BY DATE_FORMAT(curr.investment_date, '%Y-%m') ASC) as cumulative_amount
+      SELECT
+        month,
+        SUM(month_amount) OVER (ORDER BY month ASC) AS cumulative_amount
       FROM (
         SELECT
-          i.investment_date,
-          i.website_app_name,
-          ${currentAmountSubquery('i')} AS amount
-        FROM investments i
-      ) curr
-      ${ignore.sql}
-      GROUP BY DATE_FORMAT(curr.investment_date, '%Y-%m')
+          DATE_FORMAT(curr.investment_date, '%Y-%m') AS month,
+          SUM(curr.amount) AS month_amount
+        FROM (
+          SELECT
+            i.investment_date,
+            i.website_app_name,
+            ${currentAmountSubquery('i')} AS amount
+          FROM investments i
+        ) curr
+        ${ignore.sql}
+        GROUP BY DATE_FORMAT(curr.investment_date, '%Y-%m')
+      ) grouped
       ORDER BY month ASC
       `,
       ignore.params
@@ -286,18 +291,6 @@ router.get('/value-series', async (req, res) => {
     const breakdown = resolveSeriesBreakdown(req.query);
 
     const pool = getPool();
-    const snapshotWhere = [];
-    const snapshotParams = [];
-
-    if (from) {
-      snapshotWhere.push('sd.change_date >= ?');
-      snapshotParams.push(from);
-    }
-    if (to) {
-      snapshotWhere.push('sd.change_date <= ?');
-      snapshotParams.push(to);
-    }
-
     const investmentParams = [];
     const investmentWhere = buildInvestmentFilterClauses(req.query, investmentParams);
     const investmentSql = investmentWhere.length
@@ -305,45 +298,100 @@ router.get('/value-series', async (req, res) => {
       : '';
 
     const amountParams = [];
-    const amountWhere = buildAmountFilterClauses(req.query, amountParams, 'vals.amount_at_date');
-    const outerWhere = [...snapshotWhere, ...amountWhere];
-    const outerSql = outerWhere.length ? `WHERE ${outerWhere.join(' AND ')}` : '';
+    const amountWhere = buildAmountFilterClauses(req.query, amountParams, 'o.amount');
+    const hasAmountBand = amountWhere.some((clause) => clause.includes('>=') || clause.includes('<='));
 
-    const seriesSelect = breakdown
-      ? `${breakdown.seriesExpr} AS series_name,`
-      : '';
-    const groupBySeries = breakdown ? ', vals.series_name' : '';
-    const selectSeries = breakdown ? 'vals.series_name,' : '';
+    const dateParams = [];
+    const dateWhere = [];
+    if (from) {
+      dateWhere.push('s.change_date >= ?');
+      dateParams.push(from);
+    }
+    if (to) {
+      dateWhere.push('s.change_date <= ?');
+      dateParams.push(to);
+    }
+    const dateSql = dateWhere.length ? `WHERE ${dateWhere.join(' AND ')}` : '';
 
-    const [rows] = await pool.query(
-      `
-      SELECT
-        DATE_FORMAT(sd.change_date, '%Y-%m-%d') AS change_date,
-        ${selectSeries}
-        SUM(vals.amount_at_date) AS total_value
-      FROM (
-        SELECT DISTINCT change_date
-        FROM investment_history
-      ) sd
-      JOIN (
+    const seriesCol = breakdown ? `${breakdown.seriesExpr} AS series_name,` : '';
+    const seriesOut = breakdown ? 'series_name,' : '';
+    const seriesGroup = breakdown ? 'series_name, ' : '';
+    const seriesPartition = breakdown ? 'PARTITION BY series_name ' : '';
+    const seriesOrder = breakdown ? ', series_name ASC' : '';
+
+    // Step changes from history. A cross join of every date × every holding
+    // ran a correlated lookup ~36M times and took over a minute.
+    let sql;
+    let params;
+    if (!hasAmountBand) {
+      sql = `
         SELECT
-          i.id,
-          sd2.change_date,
-          ${seriesSelect}
-          ${amountAsOfSubquery('i', 'sd2.change_date')} AS amount_at_date
+          DATE_FORMAT(s.change_date, '%Y-%m-%d') AS change_date,
+          ${seriesOut}
+          s.total_value
         FROM (
-          SELECT DISTINCT change_date
-          FROM investment_history
-        ) sd2
-        CROSS JOIN investments i
-        ${investmentSql}
-      ) vals ON vals.change_date = sd.change_date
-      ${outerSql}
-      GROUP BY sd.change_date${groupBySeries}
-      ORDER BY sd.change_date ASC${breakdown ? ', vals.series_name ASC' : ''}
-      `,
-      [...investmentParams, ...snapshotParams, ...amountParams]
-    );
+          SELECT
+            ${seriesOut}
+            change_date,
+            SUM(delta) OVER (${seriesPartition}ORDER BY change_date) AS total_value
+          FROM (
+            SELECT ${seriesGroup}change_date, SUM(delta) AS delta
+            FROM (
+              SELECT
+                ${seriesCol}
+                ih.change_date,
+                ih.amount - COALESCE(
+                  LAG(ih.amount) OVER (PARTITION BY ih.investment_id ORDER BY ih.change_date, ih.id),
+                  0
+                ) AS delta
+              FROM investment_history ih
+              JOIN investments i ON i.id = ih.investment_id
+              ${investmentSql}
+            ) steps
+            GROUP BY ${seriesGroup}change_date
+          ) daily
+        ) s
+        ${dateSql}
+        ORDER BY s.change_date ASC${seriesOrder}
+      `;
+      params = [...investmentParams, ...dateParams];
+    } else {
+      const bandSql = amountWhere.length ? `AND ${amountWhere.join(' AND ')}` : '';
+      const bandDateSql = dateWhere.length
+        ? `WHERE ${dateWhere.map((clause) => clause.replace('s.change_date', 'd.change_date')).join(' AND ')}`
+        : '';
+      sql = `
+        SELECT
+          DATE_FORMAT(d.change_date, '%Y-%m-%d') AS change_date,
+          ${breakdown ? 'o.series_name,' : ''}
+          SUM(o.amount) AS total_value
+        FROM (
+          SELECT DISTINCT change_date FROM investment_history
+        ) d
+        JOIN (
+          SELECT
+            ih.investment_id,
+            ih.change_date,
+            ih.amount,
+            ${seriesCol}
+            LEAD(ih.change_date) OVER (
+              PARTITION BY ih.investment_id ORDER BY ih.change_date, ih.id
+            ) AS next_date
+          FROM investment_history ih
+          JOIN investments i ON i.id = ih.investment_id
+          ${investmentSql}
+        ) o
+          ON o.change_date <= d.change_date
+         AND (o.next_date IS NULL OR d.change_date < o.next_date)
+         ${bandSql}
+        ${bandDateSql}
+        GROUP BY d.change_date${breakdown ? ', o.series_name' : ''}
+        ORDER BY d.change_date ASC${breakdown ? ', o.series_name ASC' : ''}
+      `;
+      params = [...investmentParams, ...amountParams, ...dateParams];
+    }
+
+    const [rows] = await pool.query(sql, params);
 
     if (breakdown) {
       return res.json({

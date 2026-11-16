@@ -42,7 +42,7 @@ function formatInTimeZone(date, { label, zone }) {
   };
 }
 
-router.get('/', async (req, res) => {
+async function handleCronJob(req, res) {
   let tz;
   try {
     tz = resolveTimeZone(req.query.tz);
@@ -69,6 +69,11 @@ router.get('/', async (req, res) => {
     console.error('Error running mutual fund NAV cron job:', error);
     res.status(502).json({ success: false, error: error.message });
   }
-});
+}
+
+// GET and POST both stay on this router. An unmatched method would fall through
+// to authGate and return 401 even though this endpoint is public.
+router.get('/', handleCronJob);
+router.post('/', handleCronJob);
 
 module.exports = router;
