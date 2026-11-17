@@ -29,7 +29,7 @@ export class LoginComponent implements OnInit {
   username: string = '';
   password: string = '';
   rememberMe: boolean = false;
-  apiDomain: string = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+  apiDomain: string = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3080';
   errorMessage: string = '';
   loading: boolean = false;
 
@@ -209,7 +209,7 @@ export class LoginComponent implements OnInit {
             .catch((err: Error) => {
               this.errorMessage =
                 err?.message ||
-                `Cannot connect to ${this.apiDomain}. Use full URL with protocol and port, e.g. http://your-domain.com:3000`;
+                `Cannot connect to ${this.apiDomain}. Use full URL with protocol and port, e.g. http://your-domain.com:3080`;
               this.loading = false;
             });
         },
