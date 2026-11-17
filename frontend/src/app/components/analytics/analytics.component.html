@@ -17,6 +17,7 @@
   <nav class="analytics-tabs">
     <button type="button" class="analytics-tab" [class.active]="activeTab==='overview'" (click)="setAnalyticsTab('overview')">Overview</button>
     <button type="button" class="analytics-tab" [class.active]="activeTab==='allocation'" (click)="setAnalyticsTab('allocation')">Allocation &amp; rebalance</button>
+    <button type="button" class="analytics-tab" [class.active]="activeTab==='breakdown'" (click)="setAnalyticsTab('breakdown')">Breakdown</button>
     <button type="button" class="analytics-tab" [class.active]="activeTab==='delta'" (click)="setAnalyticsTab('delta')">Delta</button>
     <button type="button" class="analytics-tab" [class.active]="activeTab==='cashflows'" (click)="setAnalyticsTab('cashflows')">Cashflows</button>
   </nav>
@@ -151,8 +152,8 @@
   </div>
   </ng-container>
 
-  <div class="card" style="margin-top: 20px;" *ngIf="activeTab === 'overview' || activeTab === 'allocation' || activeTab === 'delta'">
-    <h3>Advance Analytics</h3>
+  <div class="card" style="margin-top: 20px;" *ngIf="activeTab === 'overview' || activeTab === 'allocation' || activeTab === 'breakdown' || activeTab === 'delta'">
+    <h3>{{ activeTab === 'breakdown' ? 'Holdings breakdown' : 'Advance Analytics' }}</h3>
 
     <div *ngIf="advanceErrorMessage" style="background: #fff7ed; color: #9a3412; padding: 12px; border-radius: 6px; margin-bottom: 16px;">
       <strong>Note:</strong> {{ advanceErrorMessage }}
@@ -248,6 +249,19 @@
         </div>
       </div>
     </div>
+
+    <app-portfolio-breakdown
+      *ngIf="activeTab === 'breakdown'"
+      [holdings]="filterSummaryData"
+      [platforms]="filterPlatforms"
+      [types]="filterTypes"
+      [subTypes]="filterSubTypes"
+      [categories]="filterCategories"
+      [minAmount]="filterMinAmount"
+      [maxAmount]="filterMaxAmount"
+      [ignoreZero]="filterIgnoreZero"
+      [loading]="loading">
+    </app-portfolio-breakdown>
 
     <ng-container *ngIf="activeTab === 'overview' || activeTab === 'allocation'">
     <div class="advance-grid">

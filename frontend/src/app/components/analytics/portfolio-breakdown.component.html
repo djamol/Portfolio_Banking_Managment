@@ -1,0 +1,136 @@
+<div class="breakdown">
+  <div class="breakdown-head">
+    <div>
+      <h4>Portfolio breakdown</h4>
+      <p class="section-hint">
+        Current value, drawn the way a holding is grouped: portfolio, platform, investment type, sub type, then category.
+        Amounts default to lakh. Click a box to focus that branch. Date range does not change this chart.
+      </p>
+    </div>
+    <div class="breakdown-actions">
+      <button type="button" class="mini-btn" (click)="toggleChartFilters()">
+        Chart filters
+      </button>
+      <button type="button" class="mini-btn" (click)="resetChartFilters()">Reset chart</button>
+    </div>
+  </div>
+
+  <div class="chart-filters" *ngIf="showChartFilters">
+    <label>
+      Grouping
+      <select [(ngModel)]="orderId" (ngModelChange)="onOrderChange()">
+        <option *ngFor="let order of orders" [value]="order.id">{{ order.label }}</option>
+      </select>
+    </label>
+    <label>
+      Depth
+      <select [(ngModel)]="depthSelection">
+        <option *ngFor="let choice of depthChoices" [ngValue]="choice">{{ depthLabel(choice) }}</option>
+      </select>
+    </label>
+    <label>
+      Top branches
+      <select [(ngModel)]="topN" (ngModelChange)="onChartFilterChange()">
+        <option [ngValue]="5">5</option>
+        <option [ngValue]="8">8</option>
+        <option [ngValue]="12">12</option>
+        <option [ngValue]="20">20</option>
+      </select>
+    </label>
+    <label>
+      Hide under
+      <select [(ngModel)]="minPct" (ngModelChange)="onChartFilterChange()">
+        <option [ngValue]="0">Off</option>
+        <option [ngValue]="1">1% of parent</option>
+        <option [ngValue]="2">2% of parent</option>
+        <option [ngValue]="5">5% of parent</option>
+        <option [ngValue]="10">10% of parent</option>
+      </select>
+    </label>
+    <label>
+      Amount unit
+      <select [(ngModel)]="unit" (ngModelChange)="onChartFilterChange()">
+        <option value="lakh">Lakh</option>
+        <option value="crore">Crore</option>
+        <option value="rupee">Rupees</option>
+      </select>
+    </label>
+    <label class="search-field">
+      Highlight
+      <input type="search" [(ngModel)]="search" (ngModelChange)="onChartFilterChange()" placeholder="Platform, type, category…">
+    </label>
+    <label class="checkbox-line">
+      <input type="checkbox" [(ngModel)]="hideZeroAmounts" (ngModelChange)="onChartFilterChange()">
+      Hide zero amounts
+    </label>
+    <p class="search-miss" *ngIf="layout?.searchMiss">No visible box matches. Increase depth or clear the highlight.</p>
+  </div>
+
+  <div class="crumb-row" *ngIf="layout">
+    <button type="button" class="crumb" [class.active]="!focusPath.length" (click)="clearFocus()">Portfolio</button>
+    <ng-container *ngFor="let crumb of focusPath; let i = index">
+      <span class="crumb-sep" aria-hidden="true">/</span>
+      <button type="button" class="crumb" [class.active]="i === focusPath.length - 1" (click)="focusTo(i)">{{ crumb }}</button>
+    </ng-container>
+    <span class="crumb-total" *ngIf="layout.holdingCount">{{ portfolioSummary }}</span>
+  </div>
+
+  <div *ngIf="(!ready || loading) && (!layout || !layout.holdingCount)" class="breakdown-empty">
+    Loading holdings…
+  </div>
+  <div *ngIf="ready && !loading && (!layout || !layout.holdingCount)" class="breakdown-empty">
+    Nothing matches the current filters.
+  </div>
+
+  <ng-container *ngIf="layout && layout.holdingCount">
+    <div class="tree-scroll">
+      <svg
+        [attr.width]="layout.width"
+        [attr.height]="layout.height"
+        [attr.viewBox]="'0 0 ' + layout.width + ' ' + layout.height"
+        role="img"
+        [attr.aria-label]="ariaLabel">
+        <path *ngFor="let link of layout.links" class="tree-link" [attr.d]="link.d"></path>
+        <g
+          *ngFor="let node of layout.nodes"
+          class="tree-node"
+          [class.is-dim]="node.dim"
+          [class.is-match]="node.directMatch"
+          [class.is-others]="node.collapsedOthers"
+          [class.is-clickable]="!node.collapsedOthers && node.level !== 'portfolio'"
+          [attr.role]="node.collapsedOthers || node.level === 'portfolio' ? null : 'button'"
+          [attr.tabindex]="node.collapsedOthers || node.level === 'portfolio' ? null : 0"
+          (click)="onNodeClick(node)"
+          (keydown.enter)="onNodeKey($event, node)">
+          <title>{{ node.tooltip }}</title>
+          <rect class="node-box" [attr.x]="node.x" [attr.y]="node.y" [attr.width]="node.width" [attr.height]="node.height" rx="10"></rect>
+          <rect class="node-stripe" [attr.x]="node.x" [attr.y]="node.y" width="5" [attr.height]="node.height" [attr.fill]="node.stripe" rx="2"></rect>
+          <text class="node-title" [attr.x]="node.x + 16" [attr.y]="node.y + 26">{{ node.label.length > 22 ? (node.label.slice(0, 21) + '…') : node.label }}</text>
+          <text class="node-meta" [attr.x]="node.x + 16" [attr.y]="node.y + 46">{{ node.amountLabel }} · {{ node.metaLabel }}</text>
+        </g>
+      </svg>
+    </div>
+
+    <div class="level-legend">
+      <span><i class="swatch" style="background:#4a7c9b"></i> Portfolio</span>
+      <span><i class="swatch" style="background:#3b6f8f"></i> Platform</span>
+      <span><i class="swatch" style="background:#3d8b6e"></i> Type</span>
+      <span><i class="swatch" style="background:#b8860b"></i> Sub type</span>
+      <span><i class="swatch" style="background:#6d5b8a"></i> Category</span>
+      <span><i class="swatch" style="background:#64748b"></i> Others</span>
+    </div>
+
+    <div class="branch-chart" *ngIf="layout.childRows.length">
+      <h5>This branch</h5>
+      <p class="section-hint">Direct children of the focused box. Smaller branches roll into Others when they fall outside Top branches or Hide under.</p>
+      <div class="chart-container branch-chart-canvas" [style.height.px]="barHeight">
+        <canvas baseChart
+          [data]="barData"
+          [options]="barOptions"
+          [type]="'bar'">
+        </canvas>
+      </div>
+    </div>
+    <p class="section-hint" *ngIf="!layout.childRows.length">This box is the last level in the current grouping.</p>
+  </ng-container>
+</div>
