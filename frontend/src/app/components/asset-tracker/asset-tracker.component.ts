@@ -139,6 +139,8 @@ export interface HeatmapCell {
   monthShort: string;
   changePercent: number | null;
   change: number | null;
+  endAmount: number | null;
+  bookLabel: string | null;
   changeLakhLabel: string | null;
   freshLakhLabel: string | null;
   freshCount: number;
@@ -1560,12 +1562,15 @@ export class AssetTrackerComponent implements OnInit {
         const sign = row.changePercent >= 0 ? '+' : '';
         const freshLabel = fresh && fresh.count > 0 ? this.formatLakhSigned(fresh.amount) : null;
         const yoyLabel = yoy == null ? null : this.formatLakhSigned(yoy);
+        const bookLabel = this.formatCrore(row.endAmount);
         return {
           monthKey,
           monthIndex,
           monthShort,
           changePercent: row.changePercent,
           change: row.change,
+          endAmount: row.endAmount,
+          bookLabel,
           changeLakhLabel: this.formatLakhSigned(row.change),
           freshLakhLabel: freshLabel,
           freshCount: fresh?.count || 0,
@@ -1576,7 +1581,7 @@ export class AssetTrackerComponent implements OnInit {
           isBest: monthKey === bestKey,
           isWorst: monthKey === worstKey && worstKey !== bestKey,
           title: [
-            `${row.monthLabel}: ${sign}${row.changePercent.toFixed(2)}% · ${this.formatSignedAmount(row.change)}`,
+            `${row.monthLabel}: book ${bookLabel} (${this.formatFullInr(row.endAmount)}) · ${sign}${row.changePercent.toFixed(2)}% · ${this.formatSignedAmount(row.change)}`,
             freshLabel ? `New holdings: ${freshLabel} (${fresh?.count} first ${fresh?.count === 1 ? 'entry' : 'entries'})` : '',
             yoyLabel ? `Vs ${monthShort} ${Number(year) - 1}: ${yoyLabel}` : '',
             `${row.snapshotCount} snapshot(s)`
@@ -1595,12 +1600,15 @@ export class AssetTrackerComponent implements OnInit {
         const sign = yearRow.changePercent >= 0 ? '+' : '';
         const freshLabel = fresh.count > 0 ? this.formatLakhSigned(fresh.amount) : null;
         const yoyLabel = yoy == null ? null : this.formatLakhSigned(yoy);
+        const bookLabel = this.formatCrore(yearRow.endAmount);
         yearly = {
           monthKey: `${year}-Y`,
           monthIndex: 12,
           monthShort: 'Yearly',
           changePercent: yearRow.changePercent,
           change: yearRow.change,
+          endAmount: yearRow.endAmount,
+          bookLabel,
           changeLakhLabel: this.formatLakhSigned(yearRow.change),
           freshLakhLabel: freshLabel,
           freshCount: fresh.count,
@@ -1611,7 +1619,7 @@ export class AssetTrackerComponent implements OnInit {
           isBest: false,
           isWorst: false,
           title: [
-            `${year}: ${sign}${yearRow.changePercent.toFixed(2)}% · ${this.formatSignedAmount(yearRow.change)}`,
+            `${year}: book ${bookLabel} (${this.formatFullInr(yearRow.endAmount)}) · ${sign}${yearRow.changePercent.toFixed(2)}% · ${this.formatSignedAmount(yearRow.change)}`,
             freshLabel ? `New holdings: ${freshLabel} (${fresh.count})` : '',
             yoyLabel ? `Vs ${Number(year) - 1}: ${yoyLabel}` : '',
             `${yearRow.snapshotCount} snapshot(s)`
@@ -1630,6 +1638,8 @@ export class AssetTrackerComponent implements OnInit {
       monthShort,
       changePercent: null,
       change: null,
+      endAmount: null,
+      bookLabel: null,
       changeLakhLabel: null,
       freshLakhLabel: null,
       freshCount: 0,
@@ -1641,6 +1651,10 @@ export class AssetTrackerComponent implements OnInit {
       isWorst: false,
       title
     };
+  }
+
+  formatCrore(value: number): string {
+    return `${(value / 10000000).toFixed(2)} CR`;
   }
 
   formatLakhSigned(value: number): string {
