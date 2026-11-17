@@ -1,4 +1,6 @@
 import { Component, OnInit } from '@angular/core';
+import { forkJoin, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 import { AnalyticsFilters, AnalyticsService } from '../../services/analytics.service';
 import { BankTransactionsService } from '../../services/banking/bank-transactions.service';
 import { ChartConfiguration, ChartOptions } from 'chart.js';
@@ -137,8 +139,15 @@ export interface HeatmapCell {
   monthShort: string;
   changePercent: number | null;
   change: number | null;
+  changeLakhLabel: string | null;
+  freshLakhLabel: string | null;
+  freshCount: number;
+  yoyLakh: number | null;
+  yoyLakhLabel: string | null;
   snapshotCount: number;
   intensityClass: string;
+  isBest: boolean;
+  isWorst: boolean;
   title: string;
 }
 
@@ -277,6 +286,7 @@ export class AssetTrackerComponent implements OnInit {
   private salaryCredits: Array<{ date: string; amount: number }> = [];
   heatmapYears: HeatmapYearRow[] = [];
   heatmapMonthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  private freshByMonth = new Map<string, { amount: number; count: number }>();
   cashflowSummary: CashflowDecomposeSummary | null = null;
   cashflowMonthPoints: CashflowMonthPoint[] = [];
   cashflowLoading = false;
@@ -749,8 +759,22 @@ export class AssetTrackerComponent implements OnInit {
     const filters = this.getAnalyticsFilters();
     const hasScopedFilters = this.hasScopedFilters();
 
-    this.analyticsService.getValueSeriesFiltered(filters).subscribe({
-      next: (response) => {
+    forkJoin({
+      series: this.analyticsService.getValueSeriesFiltered(filters),
+      fresh: this.analyticsService.getFreshEntries(filters).pipe(
+        catchError(() => of({ success: false, data: [] as Array<{ month: string; fresh_amount: number | string; fresh_count: number | string }> }))
+      )
+    }).subscribe({
+      next: ({ series: response, fresh }) => {
+        this.freshByMonth = new Map();
+        for (const row of fresh.data || []) {
+          const month = String(row.month || '').slice(0, 7);
+          if (!month) continue;
+          this.freshByMonth.set(month, {
+            amount: this.toNumber(row.fresh_amount),
+            count: this.toNumber(row.fresh_count)
+          });
+        }
         const rawRows = response.data?.rows || [];
         const byDate = new Map<string, number>();
 
@@ -1495,6 +1519,17 @@ export class AssetTrackerComponent implements OnInit {
     return found;
   }
 
+  private freshForKey(prefix: string): { amount: number; count: number } {
+    let amount = 0;
+    let count = 0;
+    for (const [month, row] of this.freshByMonth) {
+      if (!month.startsWith(prefix)) continue;
+      amount += row.amount;
+      count += row.count;
+    }
+    return { amount, count };
+  }
+
   private buildHeatmap() {
     if (!this.monthlyReport.length) {
       this.heatmapYears = [];
@@ -1509,66 +1544,113 @@ export class AssetTrackerComponent implements OnInit {
       ...this.yearlyReport.map((y) => y.changePercent)
     ].filter((p) => Number.isFinite(p));
     const maxAbs = percents.length ? Math.max(...percents.map((p) => Math.abs(p)), 1) : 1;
+    const bestKey = this.bestMonthKey;
+    const worstKey = this.worstMonthKey;
 
     this.heatmapYears = years.map((year) => {
       const cells: HeatmapCell[] = this.heatmapMonthLabels.map((monthShort, monthIndex) => {
         const monthKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
         const row = byMonth.get(monthKey);
+        const fresh = this.freshByMonth.get(monthKey);
+        const prev = byMonth.get(`${Number(year) - 1}-${String(monthIndex + 1).padStart(2, '0')}`);
         if (!row) {
-          return {
-            monthKey,
-            monthIndex,
-            monthShort,
-            changePercent: null,
-            change: null,
-            snapshotCount: 0,
-            intensityClass: 'hm-empty',
-            title: `${monthShort} ${year}: no snapshots`
-          };
+          return this.emptyHeatCell(monthKey, monthIndex, monthShort, `${monthShort} ${year}: no snapshots`);
         }
-        const intensityClass = this.heatmapIntensityClass(row.changePercent, maxAbs);
+        const yoy = prev ? row.endAmount - prev.endAmount : null;
         const sign = row.changePercent >= 0 ? '+' : '';
+        const freshLabel = fresh && fresh.count > 0 ? this.formatLakhSigned(fresh.amount) : null;
+        const yoyLabel = yoy == null ? null : this.formatLakhSigned(yoy);
         return {
           monthKey,
           monthIndex,
           monthShort,
           changePercent: row.changePercent,
           change: row.change,
+          changeLakhLabel: this.formatLakhSigned(row.change),
+          freshLakhLabel: freshLabel,
+          freshCount: fresh?.count || 0,
+          yoyLakh: yoy,
+          yoyLakhLabel: yoyLabel,
           snapshotCount: row.snapshotCount,
-          intensityClass,
-          title: `${row.monthLabel}: ${sign}${row.changePercent.toFixed(2)}% · ${this.formatSignedAmount(row.change)} · ${row.snapshotCount} snapshot(s)`
+          intensityClass: this.heatmapIntensityClass(row.changePercent, maxAbs),
+          isBest: monthKey === bestKey,
+          isWorst: monthKey === worstKey && worstKey !== bestKey,
+          title: [
+            `${row.monthLabel}: ${sign}${row.changePercent.toFixed(2)}% · ${this.formatSignedAmount(row.change)}`,
+            freshLabel ? `New holdings: ${freshLabel} (${fresh?.count} first ${fresh?.count === 1 ? 'entry' : 'entries'})` : '',
+            yoyLabel ? `Vs ${monthShort} ${Number(year) - 1}: ${yoyLabel}` : '',
+            `${row.snapshotCount} snapshot(s)`
+          ].filter(Boolean).join(' · ')
         };
       });
 
       const yearRow = byYear.get(year);
       let yearly: HeatmapCell;
       if (!yearRow) {
-        yearly = {
-          monthKey: `${year}-Y`,
-          monthIndex: 12,
-          monthShort: 'Yearly',
-          changePercent: null,
-          change: null,
-          snapshotCount: 0,
-          intensityClass: 'hm-empty',
-          title: `${year}: no yearly data`
-        };
+        yearly = this.emptyHeatCell(`${year}-Y`, 12, 'Yearly', `${year}: no yearly data`);
       } else {
+        const prevYear = byYear.get(String(Number(year) - 1));
+        const yoy = prevYear ? yearRow.endAmount - prevYear.endAmount : null;
+        const fresh = this.freshForKey(year);
         const sign = yearRow.changePercent >= 0 ? '+' : '';
+        const freshLabel = fresh.count > 0 ? this.formatLakhSigned(fresh.amount) : null;
+        const yoyLabel = yoy == null ? null : this.formatLakhSigned(yoy);
         yearly = {
           monthKey: `${year}-Y`,
           monthIndex: 12,
           monthShort: 'Yearly',
           changePercent: yearRow.changePercent,
           change: yearRow.change,
+          changeLakhLabel: this.formatLakhSigned(yearRow.change),
+          freshLakhLabel: freshLabel,
+          freshCount: fresh.count,
+          yoyLakh: yoy,
+          yoyLakhLabel: yoyLabel,
           snapshotCount: yearRow.snapshotCount,
           intensityClass: this.heatmapIntensityClass(yearRow.changePercent, maxAbs),
-          title: `${year} yearly: ${sign}${yearRow.changePercent.toFixed(2)}% · ${this.formatSignedAmount(yearRow.change)} · ${yearRow.snapshotCount} snapshot(s)`
+          isBest: false,
+          isWorst: false,
+          title: [
+            `${year}: ${sign}${yearRow.changePercent.toFixed(2)}% · ${this.formatSignedAmount(yearRow.change)}`,
+            freshLabel ? `New holdings: ${freshLabel} (${fresh.count})` : '',
+            yoyLabel ? `Vs ${Number(year) - 1}: ${yoyLabel}` : '',
+            `${yearRow.snapshotCount} snapshot(s)`
+          ].filter(Boolean).join(' · ')
         };
       }
 
       return { year, cells, yearly };
     });
+  }
+
+  private emptyHeatCell(monthKey: string, monthIndex: number, monthShort: string, title: string): HeatmapCell {
+    return {
+      monthKey,
+      monthIndex,
+      monthShort,
+      changePercent: null,
+      change: null,
+      changeLakhLabel: null,
+      freshLakhLabel: null,
+      freshCount: 0,
+      yoyLakh: null,
+      yoyLakhLabel: null,
+      snapshotCount: 0,
+      intensityClass: 'hm-empty',
+      isBest: false,
+      isWorst: false,
+      title
+    };
+  }
+
+  formatLakhSigned(value: number): string {
+    const lakhs = value / 100000;
+    const abs = Math.abs(lakhs);
+    const digits = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
+    const body = abs.toFixed(digits);
+    if (lakhs > 0) return `+${body}L`;
+    if (lakhs < 0) return `-${body}L`;
+    return '0L';
   }
 
   private heatmapIntensityClass(changePercent: number, maxAbs: number): string {

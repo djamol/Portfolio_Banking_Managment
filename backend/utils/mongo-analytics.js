@@ -291,6 +291,43 @@ async function getCashflowsByMonth(query = {}) {
   ).sort((a, b) => a.month.localeCompare(b.month));
 }
 
+async function getFreshEntries(query = {}) {
+  const { investments, history } = await loadCoreData();
+  const allowed = new Set(
+    investments.filter((investment) => matchesFilters(investment, query || {})).map((investment) => investment.id)
+  );
+  const firstByInvestment = new Map();
+  for (const row of history) {
+    if (!allowed.has(row.investment_id)) continue;
+    const date = toDateString(row.change_date);
+    if (!date) continue;
+    const prev = firstByInvestment.get(row.investment_id);
+    const id = Number(row.id) || 0;
+    if (!prev || date < prev.date || (date === prev.date && id < prev.id)) {
+      firstByInvestment.set(row.investment_id, {
+        date,
+        id,
+        amount: Number(row.amount) || 0
+      });
+    }
+  }
+  const byMonth = new Map();
+  for (const row of firstByInvestment.values()) {
+    const month = row.date.slice(0, 7);
+    const current = byMonth.get(month) || { month, fresh_amount: 0, fresh_count: 0 };
+    current.fresh_amount += row.amount;
+    current.fresh_count += 1;
+    byMonth.set(month, current);
+  }
+  return [...byMonth.values()]
+    .map((row) => ({
+      month: row.month,
+      fresh_amount: Math.round(row.fresh_amount * 100) / 100,
+      fresh_count: row.fresh_count
+    }))
+    .sort((a, b) => a.month.localeCompare(b.month));
+}
+
 async function getInvestmentHistory(investmentId) {
   const db = getDb();
   const rows = await db.collection('investment_history')
@@ -506,6 +543,7 @@ module.exports = {
   getBySubTypeCategory,
   getGrowth,
   getCashflowsByMonth,
+  getFreshEntries,
   getInvestmentHistory,
   getSummaryTable,
   getValueSeries,

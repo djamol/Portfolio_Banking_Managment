@@ -802,6 +802,42 @@ router.get('/summary-table', async (req, res) => {
   }
 });
 
+router.get('/fresh-entries', async (req, res) => {
+  try {
+    if (isMongoDb()) {
+      return res.json({ success: true, data: await mongoAnalytics.getFreshEntries(req.query) });
+    }
+
+    const pool = getPool();
+    const params = [];
+    const where = buildInvestmentFilterClauses(req.query, params, 'i');
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const [rows] = await pool.query(
+      `
+      SELECT
+        DATE_FORMAT(h.change_date, '%Y-%m') AS month,
+        ROUND(SUM(h.amount), 2) AS fresh_amount,
+        COUNT(*) AS fresh_count
+      FROM investment_history h
+      JOIN (
+        SELECT investment_id, MIN(id) AS first_id
+        FROM investment_history
+        GROUP BY investment_id
+      ) first_row ON first_row.first_id = h.id
+      JOIN investments i ON i.id = h.investment_id
+      ${whereSql}
+      GROUP BY DATE_FORMAT(h.change_date, '%Y-%m')
+      ORDER BY month ASC
+      `,
+      params
+    );
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Error fetching fresh entries:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.get('/investment-history/:id', async (req, res) => {
   try {
     if (isMongoDb()) {

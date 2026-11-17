@@ -137,6 +137,15 @@ export class AnalyticsService {
     return this.http.get<{ success: boolean; data: PortfolioValueSeriesPoint[] }>(`${this.getApiUrl()}/analytics/value-series`);
   }
 
+  getFreshEntries(filters: AnalyticsFilters = {}): Observable<{ success: boolean; data: Array<{ month: string; fresh_amount: number | string; fresh_count: number | string }> }> {
+    const qs = new URLSearchParams();
+    appendAnalyticsFilters(qs, filters);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return this.http.get<{ success: boolean; data: Array<{ month: string; fresh_amount: number | string; fresh_count: number | string }> }>(
+      `${this.getApiUrl()}/analytics/fresh-entries${suffix}`
+    );
+  }
+
   getValueSeriesFiltered(filters: AnalyticsFilters = {}): Observable<{ success: boolean; data: ValueSeriesResponse }> {
     const qs = new URLSearchParams();
     appendAnalyticsFilters(qs, filters);

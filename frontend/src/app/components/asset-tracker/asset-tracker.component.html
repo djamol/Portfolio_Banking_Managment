@@ -650,7 +650,7 @@
       <div class="table-header">
         <div>
           <h3>Return calendar</h3>
-          <p class="chart-hint">Year · Jan–Dec · Yearly total (first vs last snapshot in the year)</p>
+          <p class="chart-hint">% and lakhs are the first-to-last snapshot move. new is money from holdings that first appear in that period. yoy is this period’s ending value minus the same month (or year) last year.</p>
         </div>
         <div class="heatmap-legend">
           <span class="hm-legend-neg">Loss</span>
@@ -676,7 +676,7 @@
               [ngClass]="cell.intensityClass"
               [title]="cell.title"
               [attr.aria-label]="cell.title">
-              <span *ngIf="cell.changePercent !== null">{{ cell.changePercent | number:'1.0-0' }}%</span>
+              <ng-container *ngTemplateOutlet="heatCell; context: { $implicit: cell }"></ng-container>
             </button>
             <button
               type="button"
@@ -684,11 +684,21 @@
               [ngClass]="yearRow.yearly.intensityClass"
               [title]="yearRow.yearly.title"
               [attr.aria-label]="yearRow.yearly.title">
-              <span *ngIf="yearRow.yearly.changePercent !== null">{{ yearRow.yearly.changePercent | number:'1.0-0' }}%</span>
+              <ng-container *ngTemplateOutlet="heatCell; context: { $implicit: yearRow.yearly }"></ng-container>
             </button>
           </ng-container>
         </div>
       </div>
+      <ng-template #heatCell let-cell>
+        <ng-container *ngIf="cell.changePercent !== null">
+          <span class="hm-pct">{{ cell.changePercent > 0 ? '+' : '' }}{{ cell.changePercent | number:'1.0-0' }}%</span>
+          <span class="hm-amt">{{ cell.changeLakhLabel }}</span>
+          <span class="hm-new" *ngIf="cell.freshLakhLabel">new {{ cell.freshLakhLabel }}</span>
+          <span class="hm-yoy" *ngIf="cell.yoyLakhLabel" [class.up]="(cell.yoyLakh || 0) > 0" [class.down]="(cell.yoyLakh || 0) < 0">yoy {{ cell.yoyLakhLabel }}</span>
+          <span class="hm-mark" *ngIf="cell.isBest">best</span>
+          <span class="hm-mark worst" *ngIf="cell.isWorst">worst</span>
+        </ng-container>
+      </ng-template>
     </div>
 
     <!-- Monthly performance report -->

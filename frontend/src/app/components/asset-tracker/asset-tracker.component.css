@@ -1142,6 +1142,21 @@
   padding: 16px 18px;
 }
 
+.calendar-card .table-header {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.calendar-card .table-header > div:first-child {
+  flex: 1;
+  min-width: 220px;
+}
+
+.calendar-card .heatmap-legend {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
 .return-mode-toggle {
   display: flex;
   flex-wrap: wrap;
@@ -1246,9 +1261,9 @@
 
 .heatmap-grid {
   display: grid;
-  grid-template-columns: 52px repeat(12, minmax(44px, 1fr)) minmax(56px, 1.1fr);
+  grid-template-columns: 52px repeat(12, minmax(78px, 1fr)) minmax(92px, 1.15fr);
   gap: 4px;
-  min-width: 700px;
+  min-width: 1100px;
   align-items: stretch;
 }
 
@@ -1283,17 +1298,60 @@
 
 .hm-cell {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 36px;
+  gap: 1px;
+  min-height: 78px;
   border: none;
   border-radius: var(--app-radius-sm);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  line-height: 1.15;
   cursor: default;
   color: var(--app-ink);
-  padding: 0;
+  padding: 4px 2px;
+}
+
+.hm-pct {
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.hm-amt,
+.hm-new,
+.hm-yoy {
+  font-size: 0.62rem;
+  font-weight: 600;
+  opacity: 0.92;
+}
+
+.hm-new {
+  font-weight: 700;
+}
+
+.hm-yoy.up {
+  color: var(--app-success);
+}
+
+.hm-yoy.down {
+  color: var(--app-danger);
+}
+
+.hm-pos-3 .hm-yoy.up,
+.hm-pos-4 .hm-yoy,
+.hm-neg-3 .hm-yoy.down,
+.hm-neg-4 .hm-yoy {
+  color: inherit;
+}
+
+.hm-mark {
+  font-size: 0.55rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 800;
+  opacity: 0.85;
 }
 
 .hm-cell:focus-visible {
