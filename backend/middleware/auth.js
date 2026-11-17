@@ -6,7 +6,8 @@ const SESSION_COOKIE = 'pfm_session';
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 /** Persistent session when Remember me is on — until explicit logout */
 const REMEMBER_TTL_MS = 365 * 24 * 60 * 60 * 1000;
-const sessions = new Map();
+/** Tokens revoked by logout. Survives only for this process; the cookie itself is also cleared. */
+const revokedSessions = new Set();
 
 function getSessionSecret() {
   return process.env.SESSION_SECRET || process.env.APP_PASSWORD || 'dev-session-secret-change-me';
@@ -82,32 +83,67 @@ function verifyPassword(password) {
   return password === fallbackPass && fallbackUser === getAppUser();
 }
 
+function signSession(payload) {
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', getSessionSecret()).update(body).digest('base64url');
+  return `${body}.${sig}`;
+}
+
+function readSignedSession(token) {
+  if (!token || typeof token !== 'string') return null;
+  const dot = token.lastIndexOf('.');
+  if (dot <= 0) return null;
+  const body = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  const expected = crypto.createHmac('sha256', getSessionSecret()).update(body).digest('base64url');
+  const actualBuf = Buffer.from(sig);
+  const expectedBuf = Buffer.from(expected);
+  if (actualBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(actualBuf, expectedBuf)) {
+    return null;
+  }
+  try {
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    if (!payload || !payload.u || !payload.exp || payload.exp < Date.now()) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 function createSession(user, rememberMe = false) {
   const username = typeof user === 'string' ? user : user.username;
   const userId = typeof user === 'string' ? null : user.id;
   const role = typeof user === 'string' ? 'admin' : (user.role || 'member');
-  const id = crypto.randomBytes(24).toString('hex');
   const ttl = rememberMe ? REMEMBER_TTL_MS : SESSION_TTL_MS;
   const expiresAt = Date.now() + ttl;
-  sessions.set(id, { username, userId, role, expiresAt, rememberMe: !!rememberMe });
+  const id = signSession({
+    u: username,
+    uid: userId,
+    r: role,
+    exp: expiresAt,
+    rm: !!rememberMe
+  });
   return { id, expiresAt, rememberMe: !!rememberMe };
 }
 
 function destroySession(id) {
-  if (id) sessions.delete(id);
+  if (id) revokedSessions.add(id);
 }
 
 function getSession(req) {
   const cookies = parseCookies(req);
   const id = cookies[SESSION_COOKIE];
-  if (!id) return null;
-  const session = sessions.get(id);
-  if (!session) return null;
-  if (session.expiresAt < Date.now()) {
-    sessions.delete(id);
-    return null;
-  }
-  return { id, ...session };
+  if (!id || revokedSessions.has(id)) return null;
+  const payload = readSignedSession(id);
+  if (!payload) return null;
+  return {
+    id,
+    username: payload.u,
+    userId: payload.uid || null,
+    role: payload.r || 'admin',
+    expiresAt: payload.exp,
+    rememberMe: !!payload.rm
+  };
 }
 
 function setSessionCookie(res, sessionId, expiresAt, rememberMe = false) {
