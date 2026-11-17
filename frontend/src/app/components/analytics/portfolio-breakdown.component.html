@@ -4,7 +4,7 @@
       <h4>Portfolio breakdown</h4>
       <p class="section-hint">
         Current value, drawn the way a holding is grouped: portfolio, platform, investment type, sub type, then category.
-        Amounts default to lakh. Click a box to focus that branch. Date range does not change this chart.
+        Amounts default to lakh. Click a box to open those holdings on Investments. Others is every branch that did not fit Top branches or Hide under. Date range does not change this chart.
       </p>
     </div>
     <div class="breakdown-actions">
@@ -97,9 +97,9 @@
           [class.is-dim]="node.dim"
           [class.is-match]="node.directMatch"
           [class.is-others]="node.collapsedOthers"
-          [class.is-clickable]="!node.collapsedOthers && node.level !== 'portfolio'"
-          [attr.role]="node.collapsedOthers || node.level === 'portfolio' ? null : 'button'"
-          [attr.tabindex]="node.collapsedOthers || node.level === 'portfolio' ? null : 0"
+          [class.is-clickable]="node.level !== 'portfolio'"
+          [attr.role]="node.level === 'portfolio' ? null : 'button'"
+          [attr.tabindex]="node.level === 'portfolio' ? null : 0"
           (click)="onNodeClick(node)"
           (keydown.enter)="onNodeKey($event, node)">
           <title>{{ node.tooltip }}</title>

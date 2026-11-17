@@ -1,4 +1,5 @@
 import { Component, Input, OnChanges, OnInit, SimpleChanges } from '@angular/core';
+import { Router } from '@angular/router';
 import { ChartConfiguration, ChartOptions } from 'chart.js';
 import { ConfigService } from '../../services/config.service';
 import { matchesPlatformFilter } from '../../utils/ignore-platform.util';
@@ -6,6 +7,7 @@ import {
   BreakdownHolding,
   BreakdownLayout,
   BreakdownLevel,
+  LayoutNode,
   BreakdownUnit,
   buildBreakdownLayout,
   formatBreakdownAmount,
@@ -92,7 +94,10 @@ export class PortfolioBreakdownComponent implements OnInit, OnChanges {
     }
   };
 
-  constructor(private configService: ConfigService) {}
+  constructor(
+    private configService: ConfigService,
+    private router: Router
+  ) {}
 
   ngOnInit(): void {
     this.configService.ensureLoaded().subscribe((platforms) => {
@@ -185,16 +190,47 @@ export class PortfolioBreakdownComponent implements OnInit, OnChanges {
     this.rebuild();
   }
 
-  onNodeClick(node: { path: string[]; collapsedOthers: boolean; level: string }): void {
-    if (node.collapsedOthers || node.level === 'portfolio' || !node.path.length) return;
-    if (node.path.join('\u0001') === this.focusPath.join('\u0001')) return;
-    this.focusPath = [...node.path];
-    this.rebuild();
+  onNodeClick(node: LayoutNode): void {
+    if (node.level === 'portfolio') return;
+    const selected = {
+      platform: [...(this.platforms || [])],
+      type: [...(this.types || [])],
+      subType: [...(this.subTypes || [])],
+      category: [...(this.categories || [])]
+    };
+    node.path.forEach((label, index) => {
+      const level = this.currentOrder.levels[index];
+      if (!level) return;
+      selected[this.paramKey(level)] = [label];
+    });
+    if (node.collapsedOthers) {
+      selected[this.paramKey(node.level)] = [...node.members];
+    }
+    const queryParams: Record<string, string> = {};
+    (Object.keys(selected) as Array<keyof typeof selected>).forEach((key) => {
+      const values = selected[key].map((value) => value === 'Unspecified' ? '__blank__' : value).filter((value) => value.length);
+      if (values.length) queryParams[key] = values.join('|');
+    });
+    if (this.hideZeroAmounts || this.ignoreZero) queryParams['ignoreZero'] = '1';
+    if (this.minAmount !== null && this.minAmount !== undefined && !Number.isNaN(this.minAmount)) {
+      queryParams['min'] = String(this.minAmount);
+    }
+    if (this.maxAmount !== null && this.maxAmount !== undefined && !Number.isNaN(this.maxAmount)) {
+      queryParams['max'] = String(this.maxAmount);
+    }
+    this.router.navigate(['/investments'], { queryParams });
   }
 
-  onNodeKey(event: Event, node: { path: string[]; collapsedOthers: boolean; level: string }): void {
+  onNodeKey(event: Event, node: LayoutNode): void {
     event.preventDefault();
     this.onNodeClick(node);
+  }
+
+  private paramKey(level: BreakdownLevel): 'platform' | 'type' | 'subType' | 'category' {
+    if (level === 'platform') return 'platform';
+    if (level === 'type') return 'type';
+    if (level === 'subType') return 'subType';
+    return 'category';
   }
 
   private rebuild(): void {

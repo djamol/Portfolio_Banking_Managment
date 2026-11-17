@@ -19,6 +19,8 @@ export type BreakdownNode = {
   pctOfPortfolio: number;
   pctOfParent: number;
   collapsedOthers: boolean;
+  /** Labels rolled into this box. One name for a normal box, several for Others. */
+  members: string[];
   directMatch: boolean;
   dim: boolean;
   children: BreakdownNode[];
@@ -139,6 +141,7 @@ function makeNode(
   portfolioAmount: number,
   parentAmount: number,
   collapsedOthers: boolean,
+  members: string[],
   children: BreakdownNode[]
 ): BreakdownNode {
   return {
@@ -151,6 +154,7 @@ function makeNode(
     pctOfPortfolio: portfolioAmount ? (amount / portfolioAmount) * 100 : 0,
     pctOfParent: parentAmount ? (amount / parentAmount) * 100 : 0,
     collapsedOthers,
+    members,
     directMatch: false,
     dim: false,
     children,
@@ -204,6 +208,7 @@ function buildChildren(
       portfolioAmount,
       parentAmount,
       false,
+      [group.label],
       buildChildren(group.rows, levels, depth + 1, depthLeft - 1, nextPath, portfolioAmount, topN, minPct)
     );
   });
@@ -221,6 +226,7 @@ function buildChildren(
       portfolioAmount,
       parentAmount,
       true,
+      rest.map((group) => group.label),
       []
     ));
   }
@@ -272,12 +278,15 @@ function place(
     amountLabel: formatBreakdownAmount(node.amount, unit),
     metaLabel: `${node.pctOfPortfolio.toFixed(1)}% · ${node.count} holding${node.count === 1 ? '' : 's'}`,
     tooltip: [
-      node.label,
+      node.collapsedOthers
+        ? `Others combines ${node.members.join(', ')} because they fell outside Top branches or Hide under`
+        : node.label,
       formatBreakdownAmount(node.amount, 'rupee'),
       `${node.pctOfPortfolio.toFixed(1)}% of portfolio`,
       `${node.pctOfParent.toFixed(1)}% of parent`,
-      `${node.count} holding${node.count === 1 ? '' : 's'}`
-    ].join(' · '),
+      `${node.count} holding${node.count === 1 ? '' : 's'}`,
+      node.level === 'portfolio' ? '' : 'Click to open these holdings'
+    ].filter(Boolean).join(' · '),
     stripe: node.collapsedOthers ? LEVEL_STRIPE.others : LEVEL_STRIPE[node.level]
   });
 
@@ -351,6 +360,7 @@ export function buildBreakdownLayout(options: {
     portfolioAmount,
     portfolioAmount,
     false,
+    [],
     children
   );
   const searchHit = markSearch(root, options.search);

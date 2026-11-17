@@ -1,4 +1,5 @@
 import { Component, ElementRef, HostListener, OnInit, ViewChild } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { InvestmentService, InvestmentReturn, InvestmentReturnsResponse } from '../../services/investment.service';
 import { MutualFundScheme, MutualFundService, NavRefreshCandidate, NavRefreshChoice } from '../../services/mutual-fund.service';
@@ -6,7 +7,7 @@ import { AnalyticsService } from '../../services/analytics.service';
 import { CategoryService, SubTypeName, Category } from '../../services/category.service';
 import { ConfigService } from '../../services/config.service';
 import { INVESTMENT_TYPES, INVESTMENT_SUB_TYPES } from '../../constants/investment-types.constants';
-import { hasMultiSelectFilter, matchesMultiSelect, pruneSelections } from '../../utils/advanced-filter.util';
+import { hasMultiSelectFilter, pruneSelections } from '../../utils/advanced-filter.util';
 import { matchesPlatformFilter } from '../../utils/ignore-platform.util';
 import { getApiDomain } from '../../utils/api-url.util';
 import { formatIndianFull, getIndianAmountBreakdown } from '../../utils/indian-number.util';
@@ -134,10 +135,13 @@ export class InvestmentListComponent implements OnInit {
     private categoryService: CategoryService,
     private analyticsService: AnalyticsService,
     private configService: ConfigService,
-    private mutualFundService: MutualFundService
+    private mutualFundService: MutualFundService,
+    private route: ActivatedRoute,
+    private router: Router
   ) {}
 
   ngOnInit() {
+    this.readRouteFilters();
     this.configService.ensureLoaded().subscribe(() => {
       this.loadDatabaseOptions();
       this.loadInvestments();
@@ -464,23 +468,27 @@ export class InvestmentListComponent implements OnInit {
     });
 
     if (this.selectedTypes.length) {
-      result = result.filter(item => this.selectedTypes.includes(item.investment_type));
+      result = result.filter(item => this.matchesSelection(this.selectedTypes, item.investment_type));
     }
 
-    result = result.filter(item =>
-      matchesPlatformFilter(
-        item.website_app_name,
-        this.selectedPlatforms,
-        this.configService.getIgnorePlatforms()
-      )
-    );
+    if (this.selectedPlatforms.length) {
+      result = result.filter(item => this.matchesSelection(this.selectedPlatforms, item.website_app_name));
+    } else {
+      result = result.filter(item =>
+        matchesPlatformFilter(
+          item.website_app_name,
+          this.selectedPlatforms,
+          this.configService.getIgnorePlatforms()
+        )
+      );
+    }
 
     if (this.selectedSubTypes.length) {
-      result = result.filter(item => matchesMultiSelect(this.selectedSubTypes, item.sub_type_name));
+      result = result.filter(item => this.matchesSelection(this.selectedSubTypes, item.sub_type_name));
     }
 
     if (this.selectedCategories.length) {
-      result = result.filter(item => matchesMultiSelect(this.selectedCategories, item.sub_type_category));
+      result = result.filter(item => this.matchesSelection(this.selectedCategories, item.sub_type_category));
     }
 
     if (this.ignoreZeroAmount) {
@@ -591,6 +599,44 @@ export class InvestmentListComponent implements OnInit {
     return this.sortDirection === 'asc' ? '↑' : '↓';
   }
 
+  private readRouteFilters(): void {
+    const params = this.route.snapshot.queryParamMap;
+    const read = (key: string) => (params.get(key) || '')
+      .split('|')
+      .map((part) => part.trim())
+      .filter((part) => part.length);
+    const platforms = read('platform');
+    const types = read('type');
+    const subTypes = read('subType');
+    const categories = read('category');
+    if (platforms.length) this.selectedPlatforms = platforms;
+    if (types.length) this.selectedTypes = types;
+    if (subTypes.length) this.selectedSubTypes = subTypes;
+    if (categories.length) this.selectedCategories = categories;
+    if (params.get('ignoreZero') === '1') this.ignoreZeroAmount = true;
+    const min = params.get('min');
+    const max = params.get('max');
+    if (min !== null && min !== '' && !Number.isNaN(Number(min))) this.minAmount = Number(min);
+    if (max !== null && max !== '' && !Number.isNaN(Number(max))) this.maxAmount = Number(max);
+    const label = (value: string) => value === '__blank__' ? 'Unspecified' : value;
+    const parts = [
+      ...platforms.map(label),
+      ...types.map(label),
+      ...subTypes.map(label),
+      ...categories.map(label)
+    ];
+    if (parts.length) {
+      this.showAdvancedFilters = true;
+      this.flashType = 'info';
+      this.flashMessage = `Showing investments for ${parts.join(' · ')}`;
+    }
+  }
+
+  private matchesSelection(selected: string[], value: string | null | undefined): boolean {
+    const text = (value || '').trim();
+    return selected.some((item) => item === '__blank__' ? !text : item === text);
+  }
+
   clearFilters() {
     this.searchTerm = '';
     this.selectedTypes = [];
@@ -602,6 +648,8 @@ export class InvestmentListComponent implements OnInit {
     this.dateFrom = '';
     this.dateTo = '';
     this.ignoreZeroAmount = false;
+    this.flashMessage = '';
+    this.router.navigate([], { relativeTo: this.route, queryParams: {}, replaceUrl: true });
     this.sortBy = 'investment_date';
     this.sortDirection = 'desc';
     this.currentPage = 1;
