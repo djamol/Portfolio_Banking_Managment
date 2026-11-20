@@ -6,6 +6,7 @@
  */
 
 const { AsyncLocalStorage } = require('async_hooks');
+const { rewriteMutationTarget, setScopeRegistrar } = require('./writable-table');
 
 const als = new AsyncLocalStorage();
 const MARK = '/*pf-scoped*/';
@@ -20,6 +21,8 @@ const SCOPED = new Set([
   'bank_category_rules',
   'bank_budgets'
 ]);
+
+setScopeRegistrar((name) => SCOPED.add(String(name).toLowerCase()));
 
 const CHILD_PARENT = {
   investment_history: { field: 'investment_id', parent: 'investments' },
@@ -207,17 +210,24 @@ function wrapQueryFn(obj, method) {
   if (!obj || typeof obj[method] !== 'function' || obj[`__pf_${method}`]) return;
   const orig = obj[method].bind(obj);
   obj[method] = function portfolioScopedQuery(sql, values, cb) {
+    let text = sql;
+    let params = values;
+    let callback = cb;
+    let queryObject = null;
     if (sql && typeof sql === 'object' && typeof sql.sql === 'string') {
-      const scoped = applyPortfolioSql(sql.sql, sql.values);
-      return orig({ ...sql, sql: scoped.sql, values: scoped.params });
+      queryObject = sql;
+      text = sql.sql;
+      params = sql.values;
+    } else if (typeof values === 'function') {
+      callback = values;
+      params = [];
     }
-    if (typeof values === 'function') {
-      const scoped = applyPortfolioSql(sql, []);
-      return orig(scoped.sql, scoped.params, values);
-    }
-    const scoped = applyPortfolioSql(sql, values);
-    if (typeof cb === 'function') return orig(scoped.sql, scoped.params, cb);
-    return orig(scoped.sql, scoped.params);
+    return rewriteMutationTarget(orig, text).then((nextSql) => {
+      const scoped = applyPortfolioSql(nextSql, Array.isArray(params) ? params : []);
+      if (queryObject) return orig({ ...queryObject, sql: scoped.sql, values: scoped.params });
+      if (typeof callback === 'function') return orig(scoped.sql, scoped.params, callback);
+      return orig(scoped.sql, scoped.params);
+    });
   };
   obj[`__pf_${method}`] = true;
 }

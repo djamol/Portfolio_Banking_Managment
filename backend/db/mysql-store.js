@@ -1,5 +1,6 @@
 const { getPool } = require('../config/database');
 const { resolveWritablePortfolioId, runUnrestricted } = require('../utils/portfolio-scope');
+const { resolveWritableTable } = require('../utils/writable-table');
 
 let columnCache = new Map();
 let columnCachePool = null;
@@ -20,10 +21,11 @@ async function tableColumns(table) {
 
 async function insertRow(table, values) {
   const pool = getPool();
-  const columns = await tableColumns(table);
-  const fields = Object.keys(values).filter((field) => columns.has(field));
+  const target = await resolveWritableTable(pool, table);
+  const columns = await tableColumns(target);
+  const fields = Object.keys(values).filter((field) => columns.has(field) && values[field] !== undefined);
   const [result] = await pool.query(
-    `INSERT INTO \`${table}\` (${fields.map((f) => `\`${f}\``).join(', ')})
+    `INSERT INTO \`${target}\` (${fields.map((f) => `\`${f}\``).join(', ')})
      VALUES (${fields.map(() => '?').join(', ')})`,
     fields.map((field) => values[field])
   );
@@ -32,10 +34,12 @@ async function insertRow(table, values) {
 
 async function updateRow(table, values, id) {
   const pool = getPool();
-  const columns = await tableColumns(table);
-  const fields = Object.keys(values).filter((field) => columns.has(field));
+  const target = await resolveWritableTable(pool, table);
+  const columns = await tableColumns(target);
+  const fields = Object.keys(values).filter((field) => columns.has(field) && values[field] !== undefined);
+  if (!fields.length) return;
   await pool.query(
-    `UPDATE \`${table}\` SET ${fields.map((f) => `\`${f}\` = ?`).join(', ')} WHERE id = ?`,
+    `UPDATE \`${target}\` SET ${fields.map((f) => `\`${f}\` = ?`).join(', ')} WHERE id = ?`,
     [...fields.map((field) => values[field]), id]
   );
 }
