@@ -495,7 +495,7 @@ export class ImportDataComponent implements OnInit {
         const existingRecord = aggregatedMap.get(key);
         existingRecord.presentValue += record.presentValue;
         if (record.units != null) {
-          existingRecord.units = (existingRecord.units || 0) + record.units;
+          existingRecord.units = this.roundUnits((existingRecord.units || 0) + record.units);
         }
         if (record.investedAmount != null) {
           existingRecord.investedAmount = (existingRecord.investedAmount || 0) + record.investedAmount;
@@ -1045,6 +1045,10 @@ export class ImportDataComponent implements OnInit {
     return fields;
   }
 
+  private roundUnits(value: number): number {
+    return Math.round((Number(value) || 0) * 10000) / 10000;
+  }
+
   private parseNumericField(value: string | undefined | null): number | null {
     if (value == null) return null;
     const trimmed = String(value).trim();
@@ -1194,6 +1198,16 @@ export class ImportDataComponent implements OnInit {
     
     // Define patterns and their normalized equivalents
     const normalizationPatterns: { [key: string]: string } = {
+      // Large & Mid Cap must be listed before plain Mid Cap so "large and midcap" is not swallowed by "midcap"
+      'large and midcap fund': 'Large & Mid Cap Fund',
+      'large and mid cap fund': 'Large & Mid Cap Fund',
+      'large & midcap fund': 'Large & Mid Cap Fund',
+      'large & mid cap fund': 'Large & Mid Cap Fund',
+      'large and midcap fund - regular plan': 'Large & Mid Cap Fund',
+      'large and mid cap fund - regular plan': 'Large & Mid Cap Fund',
+      'large & midcap fund - regular plan': 'Large & Mid Cap Fund',
+      'large & mid cap fund - regular plan': 'Large & Mid Cap Fund',
+
       // Mid Cap variations
       'mid cap fund': 'Mid Cap Fund',
       'midcap fund': 'Mid Cap Fund',
@@ -1327,14 +1341,31 @@ export class ImportDataComponent implements OnInit {
     if (normalizationPatterns[lowerSchemeName]) {
       return normalizationPatterns[lowerSchemeName];
     }
-    
-    // Check for partial matches within the scheme name
+
+    // Match the longest category phrase that starts the scheme name.
+    // A shorter phrase later in the name (midcap inside "large and midcap") is a different fund.
+    let bestPattern = '';
+    let bestNormalized = '';
     for (const [pattern, normalized] of Object.entries(normalizationPatterns)) {
-      if (lowerSchemeName.includes(pattern)) {
-        // Return the normalized version of the matched pattern
-        return normalized;
+      const index = lowerSchemeName.indexOf(pattern);
+      if (index < 0) continue;
+      const before = index === 0 ? '' : lowerSchemeName[index - 1];
+      const afterIndex = index + pattern.length;
+      const after = afterIndex < lowerSchemeName.length ? lowerSchemeName[afterIndex] : '';
+      const startsOnBoundary = index === 0 || /[^a-z0-9]/.test(before);
+      const endsOnBoundary = after === '' || /[^a-z0-9]/.test(after);
+      if (!startsOnBoundary || !endsOnBoundary) continue;
+      // A real word before the phrase means a different scheme
+      // ("large and midcap", "nasdaq 100 index"), not the shorter category inside it.
+      const prefixWords = lowerSchemeName.slice(0, index).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+      const filler = new Set(['direct', 'regular', 'growth', 'plan', 'option', 'india', 'and', 'the', 'of']);
+      if (prefixWords.some((word) => !filler.has(word))) continue;
+      if (pattern.length > bestPattern.length) {
+        bestPattern = pattern;
+        bestNormalized = normalized;
       }
     }
+    if (bestPattern) return bestNormalized;
     
     // If no specific pattern matched, try to normalize based on common endings
     if (lowerSchemeName.endsWith(' - regular plan') || lowerSchemeName.endsWith(' - direct plan') ||

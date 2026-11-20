@@ -455,7 +455,7 @@
                 </div>
               </ng-container>
             </td>
-            <td class="num">{{ record.units != null ? record.units : '—' }}</td>
+            <td class="num">{{ record.units != null ? (record.units | number:'1.0-4') : '—' }}</td>
             <td class="num">{{ record.navPrice != null ? formatInr(record.navPrice) : '—' }}</td>
             <td class="num">{{ record.investedAmount != null ? formatInr(record.investedAmount) : '—' }}</td>
             <td class="num" [ngClass]="record.profitLoss >= 0 ? 'positive' : 'negative'">
