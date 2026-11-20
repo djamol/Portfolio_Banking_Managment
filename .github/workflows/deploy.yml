@@ -6,17 +6,19 @@
 # Name: githubactions
 # Secret body example:
 #
-#   DA_HOST=patilweb.com
-#   DA_USER=patilweb
-#   DA_LOGIN_KEY=your-login-key-value
+#   DA_HOST=ftp.patilweb.com
+#   DA_USER=ftp@patilweb.com
+#   DA_LOGIN_KEY=your-ftp-password
 #   DA_PORT=21
-#   DA_FE_PATH=/domains/patilweb.com/public_html/mgmt
-#   DA_BE_PATH=/domains/patilweb.com/public_html/mgmt/api2/v8
+#   DA_FE_PATH=/
+#   DA_BE_PATH=/api2/v8
 #   DA_URL=https://us4.limitlesshost.us:2222
 #   DA_APP_DOMAIN=patilweb.com
 #   DA_HEALTH_URL=https://patilweb.com/v1/api/health
 #
-# Login Key tips: Allow HTM off; ALL_USER only; rotate if the value was shared.
+# DA_HOST must be the server hostname (us4.limitlesshost.us), NOT patilweb.com
+# (Cloudflare proxies HTTP only — FTP to the CDN IP times out).
+# Prefer a jailed FTP account rooted at public_html/mgmt so FE=/ and BE=/api2/v8.
 # Never commit .env or this secret. CI does not upload .env.
 # -----------------------------------------------------------------------------
 
