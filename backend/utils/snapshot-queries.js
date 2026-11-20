@@ -191,6 +191,22 @@ function parseAnalyticsFilters(query) {
 }
 
 function resolveSeriesBreakdown(query) {
+  const raw = query && query.breakdown != null ? String(query.breakdown).trim() : '';
+  // Asset tracker asks for a single portfolio total even when platforms are filtered.
+  if (raw === 'none' || raw === 'false' || raw === '0') return null;
+
+  const explicit = {
+    platform: { breakdown: 'platform', seriesExpr: 'i.website_app_name' },
+    type: { breakdown: 'type', seriesExpr: 'i.investment_type' },
+    subType: { breakdown: 'subType', seriesExpr: 'i.sub_type_name' },
+    category: { breakdown: 'category', seriesExpr: 'i.sub_type_category' },
+    website_app_name: { breakdown: 'platform', seriesExpr: 'i.website_app_name' },
+    investment_type: { breakdown: 'type', seriesExpr: 'i.investment_type' },
+    sub_type_name: { breakdown: 'subType', seriesExpr: 'i.sub_type_name' },
+    sub_type_category: { breakdown: 'category', seriesExpr: 'i.sub_type_category' }
+  };
+  if (raw && explicit[raw]) return explicit[raw];
+
   const platforms = parseListParam(query.platform);
   const types = parseListParam(query.type);
   const subTypes = parseListParam(query.subType);

@@ -15,6 +15,8 @@ export type AnalyticsFilters = {
   ignoreZero?: boolean;
   /** Include IGNORE_PLATFORM holdings (e.g. PLOT / Real Estate) in totals and series. */
   includeIgnored?: boolean;
+  /** Force value-series mode: `none` = one portfolio total (needed when platforms are selected). */
+  breakdown?: 'none' | 'platform' | 'type' | 'subType' | 'category';
 };
 
 function appendAnalyticsFilters(qs: URLSearchParams, filters: AnalyticsFilters = {}) {
@@ -32,6 +34,7 @@ function appendAnalyticsFilters(qs: URLSearchParams, filters: AnalyticsFilters =
   }
   if (filters.ignoreZero) qs.set('ignoreZero', 'true');
   if (filters.includeIgnored) qs.set('includeIgnored', 'true');
+  if (filters.breakdown) qs.set('breakdown', filters.breakdown);
 }
 
 export type PortfolioValueSeriesPoint = {

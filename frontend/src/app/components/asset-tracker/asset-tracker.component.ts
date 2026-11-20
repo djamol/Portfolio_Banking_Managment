@@ -708,7 +708,9 @@ export class AssetTrackerComponent implements OnInit {
       category: this.filterCategories,
       minAmount: this.filterMinAmount,
       maxAmount: this.filterMaxAmount,
-      ignoreZero: this.filterIgnoreZero
+      ignoreZero: this.filterIgnoreZero,
+      // Keep one portfolio total; auto platform breakdown undercounts CR cells.
+      breakdown: 'none'
     };
   }
 
@@ -778,15 +780,7 @@ export class AssetTrackerComponent implements OnInit {
           });
         }
         const rawRows = response.data?.rows || [];
-        const byDate = new Map<string, number>();
-
-        for (const row of rawRows) {
-          if (!row.change_date) continue;
-          const dateKey = this.normalizeDateKey(row.change_date);
-          if (!dateKey) continue;
-          const amount = this.toNumber(row.total_value);
-          byDate.set(dateKey, (byDate.get(dateKey) ?? 0) + amount);
-        }
+        const byDate = this.portfolioTotalsByDate(response.data?.mode, rawRows);
 
         const sortedDates = [...byDate.keys()].sort(
           (a, b) => this.parseDateKey(a).getTime() - this.parseDateKey(b).getTime()
@@ -2031,6 +2025,58 @@ export class AssetTrackerComponent implements OnInit {
     if (this.filterIgnoreExtremePercent && value > this.extremePercentLimit) return true;
     if (this.filterIgnoreFloorPercent && value <= this.floorPercentLimit) return true;
     return false;
+  }
+
+  /**
+   * Build portfolio totals by date. In `series` mode each row is a running total for
+   * one series on a change day — sum those rows directly and days are undercounted.
+   * Forward-fill each series, then sum across series for every date.
+   */
+  private portfolioTotalsByDate(
+    mode: string | null | undefined,
+    rows: Array<{ change_date?: string | null; total_value?: number | string | null; series_name?: string | null }>
+  ): Map<string, number> {
+    const byDate = new Map<string, number>();
+    if (!rows?.length) return byDate;
+
+    if (mode !== 'series') {
+      for (const row of rows) {
+        if (!row.change_date) continue;
+        const dateKey = this.normalizeDateKey(row.change_date);
+        if (!dateKey) continue;
+        byDate.set(dateKey, (byDate.get(dateKey) ?? 0) + this.toNumber(row.total_value));
+      }
+      return byDate;
+    }
+
+    const dates = [...new Set(
+      rows.map((row) => this.normalizeDateKey(row.change_date)).filter(Boolean)
+    )].sort((a, b) => this.parseDateKey(a).getTime() - this.parseDateKey(b).getTime());
+
+    const seriesNames = [...new Set(
+      rows.map((row) => row.series_name || 'Total').filter(Boolean)
+    )] as string[];
+
+    const points = new Map<string, Map<string, number>>();
+    for (const row of rows) {
+      const dateKey = this.normalizeDateKey(row.change_date);
+      if (!dateKey) continue;
+      const name = row.series_name || 'Total';
+      if (!points.has(name)) points.set(name, new Map());
+      points.get(name)!.set(dateKey, this.toNumber(row.total_value));
+    }
+
+    const last = new Map<string, number>();
+    for (const dateKey of dates) {
+      let total = 0;
+      for (const name of seriesNames) {
+        const hit = points.get(name)?.get(dateKey);
+        if (hit !== undefined) last.set(name, hit);
+        total += last.get(name) ?? 0;
+      }
+      byDate.set(dateKey, total);
+    }
+    return byDate;
   }
 
   private toNumber(value: unknown): number {
