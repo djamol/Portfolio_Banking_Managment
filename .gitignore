@@ -7,6 +7,7 @@ yarn-error.log*
 # Environment variables
 .env
 backend/.env
+github-actions-secrets.txt
 
 # Build outputs
 dist/

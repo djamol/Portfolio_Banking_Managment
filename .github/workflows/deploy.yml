@@ -1,0 +1,235 @@
+# Deploy to DirectAdmin (patilweb.com) via FTPS + Login Key.
+#
+# -----------------------------------------------------------------------------
+# GitHub Secret (one secret — multiline KEY=VALUE)
+# -----------------------------------------------------------------------------
+# Name: githubactions
+# Secret body example:
+#
+#   DA_HOST=patilweb.com
+#   DA_USER=patilweb
+#   DA_LOGIN_KEY=your-login-key-value
+#   DA_PORT=21
+#   DA_FE_PATH=/domains/patilweb.com/public_html/mgmt
+#   DA_BE_PATH=/domains/patilweb.com/public_html/mgmt/api2/v8
+#   DA_URL=https://us4.limitlesshost.us:2222
+#   DA_APP_DOMAIN=patilweb.com
+#   DA_HEALTH_URL=https://patilweb.com/v1/api/health
+#
+# Login Key tips: Allow HTM off; ALL_USER only; rotate if the value was shared.
+# Never commit .env or this secret. CI does not upload .env.
+# -----------------------------------------------------------------------------
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip_restart:
+        description: Skip DirectAdmin/CloudLinux restart API (still uploads tmp/restart.txt)
+        type: boolean
+        default: false
+      skip_frontend:
+        description: Skip frontend (/mgmt) FTPS upload
+        type: boolean
+        default: false
+      skip_backend:
+        description: Skip backend FTPS upload
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Load deploy config from secret githubactions
+        env:
+          GITHUBACTIONS_SECRET: ${{ secrets.githubactions }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GITHUBACTIONS_SECRET:-}" ]; then
+            echo "::error::Missing repository secret 'githubactions' (multiline KEY=VALUE)."
+            exit 1
+          fi
+          while IFS= read -r line || [ -n "$line" ]; do
+            # trim CR, skip blanks/comments
+            line="${line%$'\r'}"
+            case "$line" in
+              ''|\#*) continue ;;
+            esac
+            if [[ "$line" != *=* ]]; then
+              echo "::error::Invalid line in githubactions secret (expected KEY=VALUE): $line"
+              exit 1
+            fi
+            key="${line%%=*}"
+            value="${line#*=}"
+            case "$key" in
+              DA_HOST|DA_USER|DA_LOGIN_KEY|DA_PORT|DA_FE_PATH|DA_BE_PATH|DA_URL|DA_APP_DOMAIN|DA_APP_ROOT|DA_HEALTH_URL)
+                echo "${key}=${value}" >> "$GITHUB_ENV"
+                # Register value for log masking when possible
+                echo "::add-mask::${value}"
+                ;;
+              *)
+                echo "::warning::Ignoring unknown key: ${key}"
+                ;;
+            esac
+          done <<< "$GITHUBACTIONS_SECRET"
+
+          # Defaults (GITHUB_ENV applies to later steps only)
+          if ! grep -q "^DA_PORT=" "$GITHUB_ENV"; then
+            echo "DA_PORT=21" >> "$GITHUB_ENV"
+          fi
+          if ! grep -q "^DA_HEALTH_URL=" "$GITHUB_ENV"; then
+            echo "DA_HEALTH_URL=https://patilweb.com/v1/api/health" >> "$GITHUB_ENV"
+          fi
+
+          required=(DA_HOST DA_USER DA_LOGIN_KEY DA_FE_PATH DA_BE_PATH)
+          for k in "${required[@]}"; do
+            if ! grep -q "^${k}=" "$GITHUB_ENV"; then
+              echo "::error::githubactions secret missing required key: ${k}"
+              exit 1
+            fi
+          done
+          echo "Deploy config loaded (keys masked)."
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend (base-href /mgmt/)
+        working-directory: frontend
+        run: npx ng build --configuration production --base-href /mgmt/
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          CI: 'true'
+
+      - name: Stage deploy trees
+        run: |
+          set -euo pipefail
+          mkdir -p deploy/mgmt deploy/backend/public deploy/backend/tmp
+
+          cp -a frontend/dist/portfolio-frontend/. deploy/mgmt/
+
+          rsync -a \
+            --exclude 'node_modules/' \
+            --exclude '.env' \
+            --exclude '.env.*' \
+            --exclude 'public/' \
+            --exclude '*.sql' \
+            --exclude '*.sql.zip' \
+            --exclude 'data/' \
+            --exclude 'tmp/' \
+            --exclude '.git/' \
+            backend/ deploy/backend/
+
+          cp -a frontend/dist/portfolio-frontend/. deploy/backend/public/
+
+          date -u +'%Y-%m-%dT%H:%M:%SZ' > deploy/backend/tmp/restart.txt
+
+          echo "Frontend artifact:"
+          du -sh deploy/mgmt
+          echo "Backend artifact:"
+          du -sh deploy/backend
+          ls -la deploy/backend/DirectAdmin_run.js deploy/backend/package.json deploy/backend/tmp/restart.txt
+
+      - name: Deploy frontend to /mgmt (FTPS)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.skip_frontend != true }}
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ env.DA_HOST }}
+          username: ${{ env.DA_USER }}
+          password: ${{ env.DA_LOGIN_KEY }}
+          port: ${{ env.DA_PORT }}
+          protocol: ftps
+          local-dir: ./deploy/mgmt/
+          server-dir: ${{ env.DA_FE_PATH }}/
+          dangerous-clean-slate: false
+          log-level: standard
+
+      - name: Deploy backend to Node app root (FTPS)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.skip_backend != true }}
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ env.DA_HOST }}
+          username: ${{ env.DA_USER }}
+          password: ${{ env.DA_LOGIN_KEY }}
+          port: ${{ env.DA_PORT }}
+          protocol: ftps
+          local-dir: ./deploy/backend/
+          server-dir: ${{ env.DA_BE_PATH }}/
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/.env
+            **/.env.*
+            **/*.sql
+            **/*.sql.zip
+          log-level: standard
+
+      - name: Restart Node app (DirectAdmin / CloudLinux API)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.skip_restart != true }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DA_URL:-}" ] || [ -z "${DA_USER:-}" ] || [ -z "${DA_LOGIN_KEY:-}" ]; then
+            echo "DA_URL not set — relying on tmp/restart.txt only."
+            exit 0
+          fi
+
+          APP_ROOT="${DA_APP_ROOT:-}"
+          if [ -z "$APP_ROOT" ]; then
+            APP_ROOT="${DA_BE_PATH#/}"
+          fi
+
+          echo "Attempting Node.js restart via DirectAdmin plugin…"
+          RESP_FILE="$(mktemp)"
+          HTTP_CODE=$(curl -skS -o "$RESP_FILE" -w "%{http_code}" \
+            --user "${DA_USER}:${DA_LOGIN_KEY}" \
+            -X POST \
+            --data-urlencode "command=restart" \
+            --data-urlencode "app-root=${APP_ROOT}" \
+            --data-urlencode "interpreter=nodejs" \
+            --data-urlencode "domain=${DA_APP_DOMAIN:-}" \
+            "${DA_URL%/}/CMD_PLUGINS/nodejs_selector/index.raw" || true)
+
+          echo "Restart HTTP status: ${HTTP_CODE}"
+          head -c 800 "$RESP_FILE" || true
+          echo
+          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "302" ]; then
+            echo "::warning::Node restart API returned ${HTTP_CODE}. Files are uploaded; restart manually in DirectAdmin Node.js if health stays stale."
+          fi
+
+      - name: Health check
+        run: |
+          set -euo pipefail
+          URL="${DA_HEALTH_URL:-https://patilweb.com/v1/api/health}"
+          echo "Waiting for ${URL} …"
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS --max-time 20 "$URL"; then
+              echo
+              echo "Health OK"
+              exit 0
+            fi
+            echo "Attempt ${i} failed; sleeping 10s…"
+            sleep 10
+          done
+          echo "::error::Health check failed after deploy. Restart the Node app in DirectAdmin and confirm DA_BE_PATH / DA_HEALTH_URL."
+          exit 1
