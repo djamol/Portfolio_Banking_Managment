@@ -1,6 +1,6 @@
 const { getPool } = require('../config/database');
 const { resolveWritablePortfolioId, runUnrestricted } = require('../utils/portfolio-scope');
-const { resolveWritableTable, completeLookupIds } = require('../utils/writable-table');
+const { resolveWritableTable, completeLookupIds, findDuplicateId } = require('../utils/writable-table');
 
 let columnCache = new Map();
 let columnCachePool = null;
@@ -25,12 +25,23 @@ async function insertRow(table, values) {
   const prepared = await runUnrestricted(() => completeLookupIds(pool, target, values, true));
   const columns = await tableColumns(target);
   const fields = Object.keys(prepared).filter((field) => columns.has(field) && prepared[field] !== undefined);
-  const [result] = await pool.query(
-    `INSERT INTO \`${target}\` (${fields.map((f) => `\`${f}\``).join(', ')})
-     VALUES (${fields.map(() => '?').join(', ')})`,
-    fields.map((field) => prepared[field])
-  );
-  return result;
+  try {
+    const [result] = await pool.query(
+      `INSERT INTO \`${target}\` (${fields.map((f) => `\`${f}\``).join(', ')})
+       VALUES (${fields.map(() => '?').join(', ')})`,
+      fields.map((field) => prepared[field])
+    );
+    return result;
+  } catch (error) {
+    if (error && error.code === 'ER_DUP_ENTRY') {
+      const existingId = await runUnrestricted(() => findDuplicateId(pool, target, prepared, error));
+      if (existingId != null) {
+        await updateRow(table, prepared, existingId);
+        return { insertId: existingId, affectedRows: 1 };
+      }
+    }
+    throw error;
+  }
 }
 
 async function updateRow(table, values, id) {
@@ -242,10 +253,10 @@ async function getSubTypeNamesByType(investmentType) {
 
 async function createSubTypeName(data) {
   const pool = getPool();
-  const [result] = await pool.query(
-    'INSERT INTO sub_type_names (name, investment_type) VALUES (?, ?)',
-    [data.name, data.investment_type]
-  );
+  const result = await insertRow('sub_type_names', {
+    name: data.name,
+    investment_type: data.investment_type
+  });
   const [rows] = await pool.query('SELECT * FROM sub_type_names WHERE id = ?', [result.insertId]);
   return rows[0];
 }
@@ -277,10 +288,12 @@ async function getCategories(investmentType, subTypeNameId) {
 
 async function createCategory(data) {
   const pool = getPool();
-  const [result] = await pool.query(
-    'INSERT INTO sub_type_categories (category, sub_type_name_id, investment_type) VALUES (?, ?, ?)',
-    [data.category, data.sub_type_name_id || null, data.investment_type]
-  );
+  const result = await insertRow('sub_type_categories', {
+    category: data.category,
+    name: data.category,
+    sub_type_name_id: data.sub_type_name_id || null,
+    investment_type: data.investment_type
+  });
   const [rows] = await pool.query(
     'SELECT c.*, s.name as sub_type_name FROM sub_type_categories c LEFT JOIN sub_type_names s ON c.sub_type_name_id = s.id WHERE c.id = ?',
     [result.insertId]

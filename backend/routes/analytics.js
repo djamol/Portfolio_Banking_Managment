@@ -772,16 +772,22 @@ router.get('/summary-table', async (req, res) => {
         i.invested_amount,
         i.profit_loss,
         i.mutual_fund_scheme_code,
-        COALESCE(
-          (
+        CASE
+          WHEN COALESCE((
             SELECT h.amount
             FROM investment_history h
             WHERE h.investment_id = i.id
             ORDER BY h.change_date DESC, h.id DESC
             LIMIT 1
-          ),
-          i.amount
-        ) AS amount,
+          ), i.amount) = 0 AND i.amount <> 0 THEN i.amount
+          ELSE COALESCE((
+            SELECT h.amount
+            FROM investment_history h
+            WHERE h.investment_id = i.id
+            ORDER BY h.change_date DESC, h.id DESC
+            LIMIT 1
+          ), i.amount)
+        END AS amount,
         i.investment_date,
         i.notes,
         COALESCE(h.history_count, 0) as history_count

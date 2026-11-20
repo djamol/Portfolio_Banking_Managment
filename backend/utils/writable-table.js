@@ -99,13 +99,24 @@ async function resolveWritableTable(poolOrQuery, table) {
         if (candidateType !== 'BASE TABLE') continue;
         const cols = await columnSet(query, candidate);
         if (!cols.has('id')) continue;
-        let score = 0;
-        for (const field of viewCols) if (cols.has(field)) score += 1;
-        if (cols.has('website_app_name')) score += 100;
-        if (cols.has('investment_type')) score += 50;
+        if (!candidateMatchesRole(key, cols)) continue;
+        let score = scoreWritableCandidate(key, viewCols, cols);
         if (score > bestScore) {
           bestScore = score;
           best = { name: candidate, cols };
+        }
+      }
+      if (wantsHoldingTable(key) && (!best || !isHoldingTable(best.cols))) {
+        const discovered = await findHoldingTables(query);
+        for (const candidate of discovered) {
+          if (candidates.some((item) => item.toLowerCase() === candidate.toLowerCase())) continue;
+          const cols = await columnSet(query, candidate);
+          if (!isHoldingTable(cols)) continue;
+          const score = scoreWritableCandidate(key, viewCols, cols);
+          if (score > bestScore) {
+            bestScore = score;
+            best = { name: candidate, cols };
+          }
         }
       }
       if (best) {
@@ -122,11 +133,75 @@ async function resolveWritableTable(poolOrQuery, table) {
   return target;
 }
 
+function wantsHoldingTable(name) {
+  return String(name || '').toLowerCase() === 'investments';
+}
+
+function wantsLookupTable(name) {
+  const key = String(name || '').toLowerCase();
+  return key.includes('sub_type') || key.includes('categor');
+}
+
+function isHoldingTable(cols) {
+  return cols.has('id') && cols.has('amount') && cols.has('investment_date') && cols.has('website_app_name');
+}
+
+function candidateMatchesRole(viewName, cols) {
+  if (wantsHoldingTable(viewName)) return isHoldingTable(cols);
+  if (wantsLookupTable(viewName)) return !isHoldingTable(cols);
+  if (String(viewName || '').toLowerCase() === 'investment_history' && isHoldingTable(cols)) return false;
+  return true;
+}
+
+function scoreWritableCandidate(viewName, viewCols, cols) {
+  let score = 0;
+  for (const field of viewCols) if (cols.has(field)) score += 1;
+  if (isHoldingTable(cols) && wantsHoldingTable(viewName)) score += 500;
+  if (cols.has('website_app_name')) score += 100;
+  if (cols.has('investment_type') || cols.has('investment_type_id')) score += 50;
+  if (cols.has('name') && wantsLookupTable(viewName)) score += 80;
+  if (cols.has('category') && wantsLookupTable(viewName)) score += 80;
+  return score;
+}
+
+async function findHoldingTables(query) {
+  const [rows] = await query(
+    `SELECT c.TABLE_NAME AS table_name
+     FROM information_schema.COLUMNS c
+     INNER JOIN information_schema.TABLES t
+       ON t.TABLE_SCHEMA = c.TABLE_SCHEMA AND t.TABLE_NAME = c.TABLE_NAME AND t.TABLE_TYPE = 'BASE TABLE'
+     WHERE c.TABLE_SCHEMA = DATABASE()
+       AND c.COLUMN_NAME IN ('id', 'amount', 'investment_date', 'website_app_name')
+     GROUP BY c.TABLE_NAME
+     HAVING COUNT(DISTINCT c.COLUMN_NAME) = 4`
+  );
+  return (rows || [])
+    .map((row) => row.table_name)
+    .filter((name) => !/history|backup|temp|_log/i.test(String(name)));
+}
+
+function mutationColumns(sql) {
+  const insert = /insert\s+into\s+`?[A-Za-z_][\w]*`?\s*\(([^)]+)\)/i.exec(sql);
+  if (insert) {
+    return insert[1].split(',').map((part) => part.replace(/`/g, '').trim()).filter(Boolean);
+  }
+  const update = /update\s+`?[A-Za-z_][\w]*`?\s+set\s+([\s\S]+?)\s+where\s+/i.exec(sql);
+  if (!update) return [];
+  return [...update[1].matchAll(/`?([A-Za-z_][\w]*)`?\s*=/g)].map((match) => match[1]);
+}
+
 async function rewriteMutationTarget(poolOrQuery, sql) {
   if (typeof sql !== 'string') return sql;
   const match = /^\s*(?:update|insert\s+into|delete\s+from)\s+`?([A-Za-z_][\w]*)`?/i.exec(sql);
   if (!match) return sql;
   const target = await resolveWritableTable(poolOrQuery, match[1]);
+  if (target.toLowerCase() === match[1].toLowerCase()) return sql;
+  const query = asQuery(poolOrQuery);
+  const used = mutationColumns(sql);
+  if (used.length) {
+    const cols = await columnSet(query, target);
+    if (used.some((column) => !cols.has(column))) return sql;
+  }
   return retargetMutationSql(sql, match[1], target);
 }
 
@@ -261,7 +336,7 @@ async function scanLookup(query, table, stem, label, investmentType) {
 
 /** When the base table uses different column names than the view/API payload. */
 const REQUIRED_TEXT_ALIASES = {
-  name: ['sub_type_category', 'sub_type_name', 'mutual_fund_scheme_name', 'website_app_name', 'label', 'title'],
+  name: ['category', 'sub_type_category', 'sub_type_name', 'mutual_fund_scheme_name', 'website_app_name', 'label', 'title'],
   label: ['name', 'sub_type_category', 'sub_type_name', 'website_app_name'],
   title: ['name', 'sub_type_category', 'sub_type_name', 'website_app_name'],
   scrip_name: ['sub_type_category', 'name', 'mutual_fund_scheme_name'],
@@ -306,7 +381,12 @@ function fillRequiredTextColumns(cols, values, forInsert) {
 async function completeLookupIds(poolOrQuery, table, values, forInsert) {
   const query = asQuery(poolOrQuery);
   const cols = await showColumns(query, table);
+  const colNames = new Set(cols.map((col) => col.Field));
   let next = { ...values };
+  // Lookup tables store the label in `name` while the API calls it `category`.
+  if ((next.name == null || next.name === '') && next.category != null && !colNames.has('category') && colNames.has('name')) {
+    next.name = next.category;
+  }
   for (const col of cols) {
     if (!String(col.Field).endsWith('_id')) continue;
     if (next[col.Field] != null && next[col.Field] !== '') continue;
@@ -344,11 +424,41 @@ async function completeLookupIds(poolOrQuery, table, values, forInsert) {
   return next;
 }
 
+async function findDuplicateId(poolOrQuery, table, prepared, error) {
+  if (!error || error.code !== 'ER_DUP_ENTRY') return null;
+  const match = /for key '([^']+)'/i.exec(error.message || '');
+  if (!match) return null;
+  const indexName = match[1].split('.').pop();
+  const query = asQuery(poolOrQuery);
+  const [stats] = await query(
+    `SELECT COLUMN_NAME AS column_name
+     FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?
+     ORDER BY SEQ_IN_INDEX`,
+    [table, indexName]
+  );
+  if (!stats || !stats.length) return null;
+  const where = [];
+  const params = [];
+  for (const col of stats) {
+    const field = col.column_name;
+    if (prepared[field] === undefined) return null;
+    where.push(`${quoteIdent(field)} = ?`);
+    params.push(prepared[field]);
+  }
+  const [rows] = await query(
+    `SELECT id FROM ${quoteIdent(table)} WHERE ${where.join(' AND ')} LIMIT 1`,
+    params
+  );
+  return rows && rows[0] ? rows[0].id : null;
+}
+
 module.exports = {
   setScopeRegistrar,
   referencedTables,
   retargetMutationSql,
   resolveWritableTable,
   rewriteMutationTarget,
-  completeLookupIds
+  completeLookupIds,
+  findDuplicateId
 };
