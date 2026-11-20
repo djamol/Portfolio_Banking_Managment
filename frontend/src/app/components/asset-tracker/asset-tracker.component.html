@@ -650,7 +650,7 @@
       <div class="table-header">
         <div>
           <h3>Return calendar</h3>
-          <p class="chart-hint">Top line is the period-end book in crores. Under it: return and the move in lakhs, then new first holdings and the change versus the same period last year.</p>
+          <p class="chart-hint">Top line is period-end book (crores). Return is previous period-end → this period-end (so day-1 moves count). Then new first holdings, and vs the same period last year.</p>
         </div>
         <div class="heatmap-legend">
           <span class="hm-legend-neg">Loss</span>
@@ -709,7 +709,7 @@
       <div class="table-header">
         <div>
           <h3>Monthly Performance Report</h3>
-          <p class="chart-hint">Month-start vs month-end snapshot values</p>
+          <p class="chart-hint">Previous month-end vs this month-end book</p>
         </div>
         <button type="button" class="sort-btn" (click)="exportMonthlyCsv()">Export monthly CSV</button>
       </div>
@@ -756,7 +756,7 @@
       <div class="table-header">
         <div>
           <h3>Yearly Performance Report</h3>
-          <p class="chart-hint">First vs last snapshot in each calendar year</p>
+          <p class="chart-hint">Prior Dec 31 book vs this year-end book</p>
         </div>
         <button type="button" class="sort-btn" (click)="exportYearlyCsv()">Export yearly CSV</button>
       </div>

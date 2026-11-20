@@ -1298,69 +1298,129 @@ export class AssetTrackerComponent implements OnInit {
     return { healthScore: score, healthLabel, healthHints: hints.slice(0, 3) };
   }
 
+  /** Inclusive YYYY-MM list from first snapshot month through last. */
+  private enumerateMonthKeys(fromMonth: string, toMonth: string): string[] {
+    const keys: string[] = [];
+    let [y, m] = fromMonth.split('-').map(Number);
+    const [ty, tm] = toMonth.split('-').map(Number);
+    while (y < ty || (y === ty && m <= tm)) {
+      keys.push(`${y}-${String(m).padStart(2, '0')}`);
+      m += 1;
+      if (m > 12) {
+        m = 1;
+        y += 1;
+      }
+    }
+    return keys;
+  }
+
+  /** Calendar last day of YYYY-MM, or the latest snapshot day when that month is still open. */
+  private periodEndAsOf(monthKey: string, latestDate: string): string {
+    const [y, m] = monthKey.split('-').map(Number);
+    const last = new Date(y, m, 0);
+    const end = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
+    return end > latestDate ? latestDate : end;
+  }
+
+  private amountOnOrBefore(dateKey: string): number | null {
+    const snap = this.findSnapshotOnOrBefore(this.allSortedDates, dateKey);
+    if (!snap) return null;
+    return this.allByDate.get(snap) ?? null;
+  }
+
+  /**
+   * Month return = previous month-end book → this month-end book.
+   * Using first→last snapshot inside the month hides cliffs on day 1
+   * (e.g. FD maturity / bulk restates dated the 1st).
+   */
   private buildMonthlyReport() {
-    if (this.rows.length === 0) {
+    if (this.allSortedDates.length === 0) {
       this.monthlyReport = [];
       return;
     }
 
-    const byMonth = new Map<string, AssetTrackerRow[]>();
+    const dates = this.allSortedDates;
+    const latestDate = dates[dates.length - 1];
+    const monthKeys = this.enumerateMonthKeys(dates[0].slice(0, 7), latestDate.slice(0, 7));
+    const snapsByMonth = new Map<string, AssetTrackerRow[]>();
     for (const row of this.rows) {
       const key = row.date.slice(0, 7);
-      const list = byMonth.get(key) ?? [];
+      const list = snapsByMonth.get(key) ?? [];
       list.push(row);
-      byMonth.set(key, list);
+      snapsByMonth.set(key, list);
     }
 
-    const keys = [...byMonth.keys()].sort();
-    this.monthlyReport = keys.map((monthKey) => {
-      const monthRows = byMonth.get(monthKey)!;
-      const startAmount = monthRows[0].amount;
-      const endAmount = monthRows[monthRows.length - 1].amount;
-      const change = endAmount - startAmount;
-      const changePercent = startAmount !== 0 ? (change / startAmount) * 100 : 0;
+    this.monthlyReport = monthKeys.map((monthKey) => {
+      const asOf = this.periodEndAsOf(monthKey, latestDate);
+      const endAmount = this.amountOnOrBefore(asOf);
+      const [y, m] = monthKey.split('-').map(Number);
+      const prevMonthEnd = this.periodEndAsOf(
+        m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`,
+        latestDate
+      );
+      // Only use prior month-end when it is strictly before this month.
+      const priorAsOf = prevMonthEnd < `${monthKey}-01` ? prevMonthEnd : null;
+      const monthRows = snapsByMonth.get(monthKey) || [];
+      let startAmount = priorAsOf != null ? this.amountOnOrBefore(priorAsOf) : null;
+      // First month in history: fall back to the first snapshot inside the month.
+      if (startAmount == null) {
+        startAmount = monthRows[0]?.amount ?? endAmount;
+      }
+      const safeStart = startAmount ?? 0;
+      const safeEnd = endAmount ?? 0;
+      const change = safeEnd - safeStart;
+      const changePercent = safeStart !== 0 ? (change / safeStart) * 100 : 0;
       const periodPercents = monthRows
         .filter((r) => r.diffPreviousPercent !== 0 || r.daysSincePrevious !== null)
         .map((r) => r.diffPreviousPercent);
-      const bestPercent = periodPercents.length ? Math.max(...periodPercents) : 0;
-      const worstPercent = periodPercents.length ? Math.min(...periodPercents) : 0;
-      const [year, month] = monthKey.split('-').map(Number);
-      const labelDate = new Date(year, month - 1, 1);
+      const labelDate = new Date(y, m - 1, 1);
       const monthLabel = labelDate.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
 
       return {
         monthKey,
         monthLabel,
-        startAmount,
-        endAmount,
+        startAmount: safeStart,
+        endAmount: safeEnd,
         change,
         changePercent,
         snapshotCount: monthRows.length,
-        bestPercent,
-        worstPercent
+        bestPercent: periodPercents.length ? Math.max(...periodPercents) : changePercent,
+        worstPercent: periodPercents.length ? Math.min(...periodPercents) : changePercent
       };
     }).reverse();
   }
 
+  /** Year return = prior Dec 31 book → this year-end book (latest day if year is open). */
   private buildYearlyReport() {
-    if (this.rows.length === 0) {
+    if (this.allSortedDates.length === 0) {
       this.yearlyReport = [];
       return;
     }
 
-    const byYear = new Map<string, AssetTrackerRow[]>();
+    const dates = this.allSortedDates;
+    const latestDate = dates[dates.length - 1];
+    const firstYear = Number(dates[0].slice(0, 4));
+    const lastYear = Number(latestDate.slice(0, 4));
+    const snapsByYear = new Map<string, AssetTrackerRow[]>();
     for (const row of this.rows) {
       const key = row.date.slice(0, 4);
-      const list = byYear.get(key) ?? [];
+      const list = snapsByYear.get(key) ?? [];
       list.push(row);
-      byYear.set(key, list);
+      snapsByYear.set(key, list);
     }
 
-    const keys = [...byYear.keys()].sort();
-    this.yearlyReport = keys.map((year) => {
-      const yearRows = byYear.get(year)!;
-      const startAmount = yearRows[0].amount;
-      const endAmount = yearRows[yearRows.length - 1].amount;
+    const years: string[] = [];
+    for (let y = firstYear; y <= lastYear; y++) years.push(String(y));
+
+    this.yearlyReport = years.map((year) => {
+      const yearEnd = `${year}-12-31`;
+      const asOf = yearEnd > latestDate ? latestDate : yearEnd;
+      const endAmount = this.amountOnOrBefore(asOf) ?? 0;
+      const priorEnd = this.amountOnOrBefore(`${Number(year) - 1}-12-31`);
+      const yearRows = snapsByYear.get(year) || [];
+      const startAmount = priorEnd != null
+        ? priorEnd
+        : (yearRows[0]?.amount ?? endAmount);
       const change = endAmount - startAmount;
       const changePercent = startAmount !== 0 ? (change / startAmount) * 100 : 0;
       const periodPercents = yearRows
@@ -1373,8 +1433,8 @@ export class AssetTrackerComponent implements OnInit {
         change,
         changePercent,
         snapshotCount: yearRows.length,
-        bestPercent: periodPercents.length ? Math.max(...periodPercents) : 0,
-        worstPercent: periodPercents.length ? Math.min(...periodPercents) : 0
+        bestPercent: periodPercents.length ? Math.max(...periodPercents) : changePercent,
+        worstPercent: periodPercents.length ? Math.min(...periodPercents) : changePercent
       };
     }).reverse();
   }

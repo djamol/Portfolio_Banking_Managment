@@ -4,7 +4,7 @@ import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../services/auth.service';
-import { normalizeApiDomain } from '../../utils/api-url.util';
+import { defaultApiDomain, normalizeApiDomain } from '../../utils/api-url.util';
 import { decryptJson, encryptJson } from '../../utils/storage-crypto.util';
 import { firstValueFrom } from 'rxjs';
 
@@ -29,7 +29,7 @@ export class LoginComponent implements OnInit {
   username: string = '';
   password: string = '';
   rememberMe: boolean = false;
-  apiDomain: string = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3080';
+  apiDomain: string = defaultApiDomain();
   errorMessage: string = '';
   loading: boolean = false;
 
