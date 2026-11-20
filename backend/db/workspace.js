@@ -1,6 +1,10 @@
 const logger = require('../utils/logger');
 const { isMongoDb, getPool, getMongoDb } = require('../config/index');
 const { SCOPED, runUnrestricted, getWritePortfolioId } = require('../utils/portfolio-scope');
+const {
+  appendIgnorePlatformClause,
+  isIgnoredPlatform
+} = require('../utils/ignore-platform');
 
 const COLORS = ['#2563eb', '#059669', '#d97706', '#7c3aed', '#db2777', '#0891b2'];
 
@@ -453,16 +457,20 @@ async function mysqlSummary(user) {
     ? ''
     : 'WHERE p.owner_user_id = ? OR p.id IN (SELECT portfolio_id FROM portfolio_members WHERE user_id = ?)';
   const params = user.role === 'admin' ? [] : [user.id, user.id];
+  const ignoreClauses = [];
+  const ignoreParams = [];
+  appendIgnorePlatformClause(ignoreClauses, ignoreParams, 'i.website_app_name');
+  const ignoreSql = ignoreClauses.length ? ` AND ${ignoreClauses.join(' AND ')}` : '';
   const [rows] = await pool.query(
     `SELECT p.*, u.display_name AS owner_name, u.username AS owner_username,
-       (SELECT COUNT(*) FROM investments i WHERE i.portfolio_id = p.id) AS investment_count,
-       (SELECT COALESCE(SUM(i.amount), 0) FROM investments i WHERE i.portfolio_id = p.id) AS investment_total,
+       (SELECT COUNT(*) FROM investments i WHERE i.portfolio_id = p.id${ignoreSql}) AS investment_count,
+       (SELECT COALESCE(SUM(i.amount), 0) FROM investments i WHERE i.portfolio_id = p.id${ignoreSql}) AS investment_total,
        (SELECT COUNT(*) FROM bank_accounts a WHERE a.portfolio_id = p.id) AS account_count
      FROM portfolios p
      JOIN app_users u ON u.id = p.owner_user_id
      ${where}
      ORDER BY u.display_name, p.name`,
-    params
+    [...ignoreParams, ...ignoreParams, ...params]
   );
   return rows.map((row) => ({
     ...publicPortfolio(row),
@@ -477,17 +485,22 @@ async function mongoSummary(user) {
   const db = getMongoDb();
   const ids = portfolios.map((row) => row.id);
   const match = { portfolio_id: { $in: ids.length ? ids : [-1] } };
-  const [investments, accounts] = await Promise.all([
-    db.collection('investments').aggregate([
-      { $match: match },
-      { $group: { _id: '$portfolio_id', investment_count: { $sum: 1 }, investment_total: { $sum: '$amount' } } }
-    ]).toArray(),
+  const [investmentRows, accounts] = await Promise.all([
+    db.collection('investments').find(match).project({ portfolio_id: 1, amount: 1, website_app_name: 1 }).toArray(),
     db.collection('bank_accounts').aggregate([
       { $match: match },
       { $group: { _id: '$portfolio_id', account_count: { $sum: 1 } } }
     ]).toArray()
   ]);
-  const inv = new Map(investments.map((row) => [Number(row._id), row]));
+  const inv = new Map();
+  for (const row of investmentRows) {
+    if (isIgnoredPlatform(row.website_app_name)) continue;
+    const pid = Number(row.portfolio_id);
+    const cur = inv.get(pid) || { investment_count: 0, investment_total: 0 };
+    cur.investment_count += 1;
+    cur.investment_total += Number(row.amount) || 0;
+    inv.set(pid, cur);
+  }
   const acct = new Map(accounts.map((row) => [Number(row._id), row]));
   return portfolios.map((row) => ({
     ...row,

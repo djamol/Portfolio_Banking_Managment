@@ -87,5 +87,11 @@ export const routes: Routes = [
         (m) => m.ImportExportComponent
       ),
     canActivate: [authGuard]
+  },
+  {
+    path: 'workspace',
+    loadComponent: () =>
+      import('./components/workspace/workspace.component').then((m) => m.WorkspaceComponent),
+    canActivate: [authGuard]
   }
 ];

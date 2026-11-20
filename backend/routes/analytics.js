@@ -770,11 +770,14 @@ router.get('/by-sub-type-category', async (req, res) => {
 router.get('/summary-table', async (req, res) => {
   try {
     if (isMongoDb()) {
-      return res.json({ success: true, data: await mongoAnalytics.getSummaryTable() });
+      return res.json({ success: true, data: await mongoAnalytics.getSummaryTable(req.query) });
     }
 
     const pool = getPool();
-    const [rows] = await pool.query(`
+    const ignore = defaultIgnoreWhere('i', req.query);
+    const whereSql = ignore.sql || '';
+    const [rows] = await pool.query(
+      `
       SELECT 
         i.id,
         i.website_app_name,
@@ -816,8 +819,11 @@ router.get('/summary-table', async (req, res) => {
         FROM investment_history
         GROUP BY investment_id
       ) h ON i.id = h.investment_id
+      ${whereSql}
       ORDER BY amount DESC
-    `);
+    `,
+      ignore.params
+    );
     res.json({ success: true, data: rows });
   } catch (error) {
     console.error('Error fetching summary table:', error);

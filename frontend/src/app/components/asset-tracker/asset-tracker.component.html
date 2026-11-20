@@ -110,10 +110,22 @@
         <app-multi-select-filter
           label="Platform"
           [options]="filterPlatformsOptions"
-          placeholder="All Platforms"
-          allLabel="All Platforms"
+          placeholder="Default (hides ignored)"
+          allLabel="Every listed platform"
           [(selected)]="filterPlatforms">
         </app-multi-select-filter>
+
+        <div class="advanced-filter-group checkbox-group" *ngIf="ignorePlatformNames.length">
+          <label
+            class="checkbox-label"
+            [title]="'Adds ' + ignorePlatformNames.join(', ') + ' into the book/calendar'">
+            <input
+              type="checkbox"
+              [(ngModel)]="filterIncludeIgnored"
+              (ngModelChange)="onIncludeIgnoredChange()">
+            Include ignored platforms ({{ ignorePlatformNames.join(', ') }})
+          </label>
+        </div>
 
         <div class="advanced-filter-group">
           <label>Price Range (₹)</label>
@@ -650,7 +662,7 @@
       <div class="table-header">
         <div>
           <h3>Return calendar</h3>
-          <p class="chart-hint">Top line is period-end book (crores). Platforms in IGNORE_PLATFORM are excluded. Return is previous period-end → this period-end (so day-1 moves count). Then new first holdings, and vs the same period last year.</p>
+          <p class="chart-hint">Top line is period-end book (crores). Default view excludes IGNORE_PLATFORM — use “Include ignored platforms” (or tick them under Platform) to add them. Return is previous period-end → this period-end. Then new first holdings, and vs the same period last year.</p>
         </div>
         <div class="heatmap-legend">
           <span class="hm-legend-neg">Loss</span>

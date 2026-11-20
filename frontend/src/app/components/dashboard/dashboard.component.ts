@@ -1,8 +1,10 @@
 import { Component, OnInit } from '@angular/core';
 import { AnalyticsService, DeltaRow, InsightsResponse, ValueSeriesResponse } from '../../services/analytics.service';
 import { BankAnalyticsService } from '../../services/banking/bank-analytics.service';
+import { ConfigService } from '../../services/config.service';
 import { ChartConfiguration, ChartOptions } from 'chart.js';
 import { getIndianAmountBreakdown, IndianAmountBreakdown } from '../../utils/indian-number.util';
+import { isIgnoredPlatform } from '../../utils/ignore-platform.util';
 import { MATURITY_HELPER_TYPES, parseMaturityDateObject } from '../../utils/maturity-notes.util';
 import {
   computeBucketsFromHoldings,
@@ -195,13 +197,19 @@ export class DashboardComponent implements OnInit {
     }
   };
 
+  private ignorePlatforms: string[] = [];
+
   constructor(
     private analyticsService: AnalyticsService,
-    private bankAnalytics: BankAnalyticsService
+    private bankAnalytics: BankAnalyticsService,
+    private configService: ConfigService
   ) {}
 
   ngOnInit() {
-    this.refresh();
+    this.configService.ensureLoaded().subscribe((platforms) => {
+      this.ignorePlatforms = platforms || [];
+      this.refresh();
+    });
   }
 
   refresh() {
@@ -280,16 +288,18 @@ export class DashboardComponent implements OnInit {
 
     this.analyticsService.getSummaryTable().subscribe({
       next: (res) => {
-        this.summaryRows = (res.data || []).map((item: any) => ({
-          id: Number(item.id),
-          website_app_name: item.website_app_name,
-          investment_type: item.investment_type,
-          sub_type_name: item.sub_type_name,
-          sub_type_category: item.sub_type_category,
-          amount: this.toNumber(item.amount),
-          investment_date: new Date(item.investment_date),
-          notes: item.notes ?? null
-        }));
+        this.summaryRows = (res.data || [])
+          .map((item: any) => ({
+            id: Number(item.id),
+            website_app_name: item.website_app_name,
+            investment_type: item.investment_type,
+            sub_type_name: item.sub_type_name,
+            sub_type_category: item.sub_type_category,
+            amount: this.toNumber(item.amount),
+            investment_date: new Date(item.investment_date),
+            notes: item.notes ?? null
+          }))
+          .filter((row) => !isIgnoredPlatform(row.website_app_name, this.ignorePlatforms));
         this.fundedCount = this.summaryRows.filter((r) => isFunded(r.amount)).length;
         this.zeroCount = this.summaryRows.length - this.fundedCount;
         this.recomputeBuckets();

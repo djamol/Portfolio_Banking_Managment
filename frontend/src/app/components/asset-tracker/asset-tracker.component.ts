@@ -3,10 +3,12 @@ import { forkJoin, of } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { AnalyticsFilters, AnalyticsService } from '../../services/analytics.service';
 import { BankTransactionsService } from '../../services/banking/bank-transactions.service';
+import { ConfigService } from '../../services/config.service';
 import { ChartConfiguration, ChartOptions } from 'chart.js';
 import { INVESTMENT_TYPES } from '../../constants/investment-types.constants';
 import { hasMultiSelectFilter, pruneSelections } from '../../utils/advanced-filter.util';
 import { getIndianAmountBreakdown, IndianAmountBreakdown, formatIndianFull } from '../../utils/indian-number.util';
+import { isIgnoredPlatform } from '../../utils/ignore-platform.util';
 
 export interface AssetTrackerRow {
   date: string;
@@ -221,6 +223,9 @@ export class AssetTrackerComponent implements OnInit {
   filterMinAmount: number | null = null;
   filterMaxAmount: number | null = null;
   filterIgnoreZero = false;
+  /** Include IGNORE_PLATFORM holdings (PLOT / Real Estate) in book and calendar. */
+  filterIncludeIgnored = false;
+  ignorePlatformNames: string[] = [];
   /** When true (default), hide Period % / Growth vs Current points above 400% (impossible outliers). */
   filterIgnoreExtremePercent = true;
   /** When true (default), hide Period % / Growth vs Current points at or below -100%. */
@@ -435,7 +440,8 @@ export class AssetTrackerComponent implements OnInit {
 
   constructor(
     private analyticsService: AnalyticsService,
-    private bankTransactionsService: BankTransactionsService
+    private bankTransactionsService: BankTransactionsService,
+    private configService: ConfigService
   ) {}
 
   ngOnInit() {
@@ -709,9 +715,22 @@ export class AssetTrackerComponent implements OnInit {
       minAmount: this.filterMinAmount,
       maxAmount: this.filterMaxAmount,
       ignoreZero: this.filterIgnoreZero,
+      includeIgnored: this.filterIncludeIgnored || undefined,
       // Keep one portfolio total; auto platform breakdown undercounts CR cells.
       breakdown: 'none'
     };
+  }
+
+  onIncludeIgnoredChange() {
+    if (this.filterIncludeIgnored && this.ignorePlatformNames.length) {
+      this.filterPlatforms = [...new Set([...this.filterPlatforms, ...this.ignorePlatformNames])];
+    } else if (!this.filterIncludeIgnored && this.ignorePlatformNames.length) {
+      this.filterPlatforms = this.filterPlatforms.filter(
+        (p) => !isIgnoredPlatform(p, this.ignorePlatformNames)
+      );
+    }
+    this.applyingFilters = true;
+    this.loadData();
   }
 
   applyFilters() {
@@ -730,6 +749,7 @@ export class AssetTrackerComponent implements OnInit {
     this.filterMinAmount = null;
     this.filterMaxAmount = null;
     this.filterIgnoreZero = false;
+    this.filterIncludeIgnored = false;
     this.filterIgnoreExtremePercent = true;
     this.filterIgnoreFloorPercent = true;
     this.filterEmptyMessage = '';
@@ -743,14 +763,20 @@ export class AssetTrackerComponent implements OnInit {
   }
 
   loadFilterOptions() {
-    this.analyticsService.getSummaryTable().subscribe({
-      next: (response) => {
-        if (response.data) {
-          this.filterSummaryData = response.data;
-          this.filterPlatformsOptions = [...new Set(response.data.map((item: any) => item.website_app_name))]
-            .filter(Boolean)
-            .sort();
-        }
+    forkJoin({
+      summary: this.analyticsService.getSummaryTable(),
+      ignored: this.configService.ensureLoaded()
+    }).subscribe({
+      next: ({ summary, ignored }) => {
+        this.ignorePlatformNames = ignored || [];
+        const fromSummary = (summary.data || [])
+          .map((item: any) => item.website_app_name)
+          .filter(Boolean);
+        // Ignored platforms must stay selectable so users can opt them back in.
+        this.filterSummaryData = summary.data || [];
+        this.filterPlatformsOptions = [...new Set([...fromSummary, ...this.ignorePlatformNames])]
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b));
       },
       error: (error) => console.error('Error loading filter options:', error)
     });

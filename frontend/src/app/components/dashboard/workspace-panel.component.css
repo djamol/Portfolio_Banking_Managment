@@ -13,10 +13,20 @@
   align-items: flex-start;
 }
 
-.workspace-head h3,
-.mini-form h4,
-.user-table h4 {
+.workspace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.workspace-head h3 {
   margin: 0 0 6px;
+}
+
+.workspace-head a {
+  color: var(--app-accent);
+  font-weight: 600;
 }
 
 .workspace-head p {
@@ -26,10 +36,7 @@
   max-width: 760px;
 }
 
-.text-btn,
-.pf-edit button,
-.mini-form button,
-.user-table button {
+.text-btn {
   border: none;
   background: var(--app-bg, var(--app-surface));
   color: var(--app-accent);
@@ -38,6 +45,12 @@
   padding: 6px 10px;
   font-weight: 600;
   cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+
+a.link-btn {
+  line-height: 1.2;
 }
 
 .workspace-error,
@@ -110,70 +123,6 @@
   color: var(--app-muted);
   font-size: 0.78rem;
   margin-top: 4px;
-}
-
-.pf-edit {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.pf-edit input,
-.mini-form input,
-.mini-form select,
-.user-table select {
-  border: none;
-  border-radius: var(--app-radius-sm);
-  box-shadow: var(--app-shadow-in-sm);
-  background: var(--app-surface);
-  color: var(--app-ink);
-  padding: 6px 8px;
-  font: inherit;
-  min-width: 0;
-}
-
-.pf-edit input { flex: 1; }
-
-.pf-edit button.danger,
-.user-table button { color: #b42318; }
-
-.workspace-forms {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
-  margin-top: 16px;
-}
-
-.mini-form,
-.user-table {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.mini-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 0.8rem;
-  color: var(--app-muted);
-  font-weight: 600;
-}
-
-.user-table { margin-top: 16px; }
-
-.user-table table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
-}
-
-.user-table th,
-.user-table td {
-  text-align: left;
-  padding: 8px 6px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 @media (max-width: 720px) {

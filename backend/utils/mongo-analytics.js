@@ -374,8 +374,9 @@ async function getInvestmentHistory(investmentId) {
   }));
 }
 
-async function getSummaryTable() {
+async function getSummaryTable(query = {}) {
   const { investments, history } = await loadCoreData();
+  const visible = wantsIncludeIgnored(query) ? investments : withoutIgnoredPlatforms(investments);
   const historyByInvestment = new Map();
   for (const h of history) {
     if (!historyByInvestment.has(h.investment_id)) {
@@ -384,7 +385,7 @@ async function getSummaryTable() {
     historyByInvestment.get(h.investment_id).push(h);
   }
 
-  return investments.map((i) => {
+  return visible.map((i) => {
     const items = historyByInvestment.get(i.id) || [];
     const latest = items.sort((a, b) => {
       const d = toDateString(b.change_date).localeCompare(toDateString(a.change_date));
