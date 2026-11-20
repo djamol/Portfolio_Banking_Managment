@@ -19,7 +19,7 @@ function asQuery(poolOrQuery) {
 
 function referencedTables(definition) {
   const names = [];
-  const re = /\b(?:from|join)\s+\(?\s*(?:`([^`]+)`|([A-Za-z_][\w]*))(?:\s*\.\s*(?:`([^`]+)`|([A-Za-z_][\w]*)))?/gi;
+  const re = /\b(?:from|join)\s+\(*\s*(?:`([^`]+)`|([A-Za-z_][\w]*))(?:\s*\.\s*(?:`([^`]+)`|([A-Za-z_][\w]*)))?/gi;
   let match = re.exec(definition);
   while (match) {
     const raw = match[3] || match[4] || match[1] || match[2];
@@ -101,6 +101,9 @@ async function resolveWritableTable(poolOrQuery, table) {
         if (!cols.has('id')) continue;
         if (!candidateMatchesRole(key, cols)) continue;
         let score = scoreWritableCandidate(key, viewCols, cols);
+        if (wantsLookupTable(key) && candidates[0] && candidate.toLowerCase() === String(candidates[0]).toLowerCase()) {
+          score += 200;
+        }
         if (score > bestScore) {
           bestScore = score;
           best = { name: candidate, cols };
@@ -143,7 +146,10 @@ function wantsLookupTable(name) {
 }
 
 function isHoldingTable(cols) {
-  return cols.has('id') && cols.has('amount') && cols.has('investment_date') && cols.has('website_app_name');
+  return cols.has('id')
+    && cols.has('amount')
+    && cols.has('investment_date')
+    && (cols.has('website_app_name') || cols.has('platform_id'));
 }
 
 function candidateMatchesRole(viewName, cols) {
@@ -171,13 +177,14 @@ async function findHoldingTables(query) {
      INNER JOIN information_schema.TABLES t
        ON t.TABLE_SCHEMA = c.TABLE_SCHEMA AND t.TABLE_NAME = c.TABLE_NAME AND t.TABLE_TYPE = 'BASE TABLE'
      WHERE c.TABLE_SCHEMA = DATABASE()
-       AND c.COLUMN_NAME IN ('id', 'amount', 'investment_date', 'website_app_name')
+       AND c.COLUMN_NAME IN ('id', 'amount', 'investment_date', 'website_app_name', 'platform_id')
      GROUP BY c.TABLE_NAME
-     HAVING COUNT(DISTINCT c.COLUMN_NAME) = 4`
+     HAVING SUM(c.COLUMN_NAME IN ('id', 'amount', 'investment_date')) = 3
+        AND SUM(c.COLUMN_NAME IN ('website_app_name', 'platform_id')) >= 1`
   );
   return (rows || [])
     .map((row) => row.table_name)
-    .filter((name) => !/history|backup|temp|_log/i.test(String(name)));
+    .filter((name) => !/history|backup|legacy|temp|_log/i.test(String(name)));
 }
 
 function mutationColumns(sql) {
@@ -208,8 +215,32 @@ async function rewriteMutationTarget(poolOrQuery, sql) {
 const LABEL_COLUMNS = new Set([
   'name', 'label', 'title', 'category', 'type', 'type_name',
   'investment_type', 'sub_type_name', 'sub_type_category',
-  'website_app_name', 'platform', 'platform_name'
+  'website_app_name', 'platform', 'platform_name',
+  'scheme_code', 'scheme_name'
 ]);
+
+/** View/API names that fill a base-table id column. */
+const ID_LABELS = {
+  platform_id: ['website_app_name', 'platform', 'platform_name'],
+  investment_type_id: ['investment_type'],
+  sub_type_id: ['sub_type_name', 'sub_type'],
+  sub_type_name_id: ['sub_type_name'],
+  category_id: ['sub_type_category', 'category'],
+  scheme_id: ['mutual_fund_scheme_code', 'scheme_code', 'mutual_fund_scheme_name', 'scheme_name']
+};
+
+const CREATE_MISSING_IDS = new Set(['platform_id', 'sub_type_id', 'sub_type_name_id', 'category_id']);
+const ID_ORDER = ['investment_type_id', 'platform_id', 'sub_type_id', 'sub_type_name_id', 'category_id', 'scheme_id'];
+
+function labelForIdColumn(field, values) {
+  const keys = ID_LABELS[field] || [String(field).slice(0, -3)];
+  for (const key of keys) {
+    if (values[key] != null && String(values[key]).trim() !== '') {
+      return { key, label: String(values[key]).trim() };
+    }
+  }
+  return null;
+}
 
 const lookupIdCache = new Map();
 const columnMetaCache = new Map();
@@ -255,7 +286,15 @@ function rankLookup(table, column, stem) {
   return rank;
 }
 
-async function selectLookupId(query, table, idCol, labelCol, label, investmentType, cols) {
+async function selectLookupId(query, table, idCol, labelCol, label, investmentType, cols, typeId) {
+  const hasTypeId = (cols || []).some((col) => col.Field === 'investment_type_id');
+  if (hasTypeId && typeId != null && labelCol !== 'investment_type_id') {
+    const [narrow] = await query(
+      `SELECT ${quoteIdent(idCol)} AS id FROM ${quoteIdent(table)} WHERE ${quoteIdent(labelCol)} = ? AND investment_type_id = ? LIMIT 3`,
+      [label, typeId]
+    );
+    return (narrow || []).map((row) => row.id);
+  }
   const hasType = (cols || []).some((col) => col.Field === 'investment_type');
   if (hasType && investmentType && labelCol !== 'investment_type') {
     const [narrow] = await query(
@@ -269,6 +308,34 @@ async function selectLookupId(query, table, idCol, labelCol, label, investmentTy
     [label]
   );
   return (rows || []).map((row) => row.id);
+}
+
+function preferredLabelColumn(sourceKey) {
+  if (sourceKey === 'mutual_fund_scheme_code' || sourceKey === 'scheme_code') return 'scheme_code';
+  if (sourceKey === 'mutual_fund_scheme_name' || sourceKey === 'scheme_name') return 'scheme_name';
+  return 'name';
+}
+
+async function createLookupRow(query, refTable, labelColumn, label, typeId, cols) {
+  const row = { [labelColumn]: label };
+  if ((cols || []).some((col) => col.Field === 'investment_type_id') && typeId != null) {
+    row.investment_type_id = typeId;
+  }
+  if ((cols || []).some((col) => col.Field === 'is_listed')) row.is_listed = 1;
+  const fields = Object.keys(row).filter((field) => (cols || []).some((col) => col.Field === field));
+  try {
+    const [result] = await query(
+      `INSERT INTO ${quoteIdent(refTable)} (${fields.map(quoteIdent).join(', ')}) VALUES (${fields.map(() => '?').join(', ')})`,
+      fields.map((field) => row[field])
+    );
+    return result.insertId;
+  } catch (error) {
+    if (error && error.code === 'ER_DUP_ENTRY') {
+      const ids = await selectLookupId(query, refTable, 'id', labelColumn, label, null, cols, typeId);
+      if (ids.length >= 1) return ids[0];
+    }
+    throw error;
+  }
 }
 
 /** undefined = no foreign key; null = foreign key exists but the label is not in it. */
@@ -349,8 +416,8 @@ function fillRequiredTextColumns(cols, values, forInsert) {
   const next = { ...values };
   for (const col of cols) {
     const field = String(col.Field);
-    if (field.endsWith('_id')) continue;
-    if (isGenerated(col.Extra)) continue;
+    if (field === 'id' || field.endsWith('_id')) continue;
+    if (isGenerated(col.Extra) || /auto_increment/i.test(String(col.Extra || ''))) continue;
     if (!isRequiredColumn(col)) continue;
     if (next[field] != null && String(next[field]).trim() !== '') continue;
 
@@ -372,6 +439,40 @@ function fillRequiredTextColumns(cols, values, forInsert) {
   return next;
 }
 
+async function lookupOrCreateId(query, ownerTable, idField, source, investmentType, typeId, forInsert) {
+  let fkRows;
+  try {
+    [fkRows] = await query(
+      `SELECT REFERENCED_TABLE_NAME AS ref_table, REFERENCED_COLUMN_NAME AS ref_col
+       FROM information_schema.KEY_COLUMN_USAGE
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
+         AND REFERENCED_TABLE_NAME IS NOT NULL
+       LIMIT 1`,
+      [ownerTable, idField]
+    );
+  } catch (err) {
+    fkRows = [];
+  }
+  const fk = fkRows && fkRows[0];
+  if (fk && fk.ref_table) {
+    const refCols = await showColumns(query, fk.ref_table);
+    const preferred = preferredLabelColumn(source.key);
+    const labelColumn = refCols.some((col) => col.Field === preferred)
+      ? preferred
+      : (refCols.some((col) => col.Field === 'name') ? 'name' : null);
+    if (!labelColumn) return null;
+    const ids = await selectLookupId(
+      query, fk.ref_table, fk.ref_col || 'id', labelColumn, source.label, investmentType, refCols, typeId
+    );
+    if (ids.length === 1) return ids[0];
+    if (forInsert && CREATE_MISSING_IDS.has(idField)) {
+      return createLookupRow(query, fk.ref_table, labelColumn, source.label, typeId, refCols);
+    }
+    return null;
+  }
+  return scanLookup(query, ownerTable, String(idField).replace(/_id$/, ''), source.label, investmentType);
+}
+
 /**
  * The writable base table behind the investments view stores lookup ids
  * (investment_type_id and similar) that the view exposes as names.
@@ -387,31 +488,34 @@ async function completeLookupIds(poolOrQuery, table, values, forInsert) {
   if ((next.name == null || next.name === '') && next.category != null && !colNames.has('category') && colNames.has('name')) {
     next.name = next.category;
   }
-  for (const col of cols) {
-    if (!String(col.Field).endsWith('_id')) continue;
+  const idColumns = cols
+    .filter((col) => String(col.Field).endsWith('_id') && !/auto_increment/i.test(String(col.Extra || '')))
+    .sort((a, b) => {
+      const ai = ID_ORDER.indexOf(a.Field);
+      const bi = ID_ORDER.indexOf(b.Field);
+      return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+    });
+  for (const col of idColumns) {
     if (next[col.Field] != null && next[col.Field] !== '') continue;
-    if (/auto_increment/i.test(String(col.Extra || ''))) continue;
     const stem = String(col.Field).slice(0, -3);
-    const label = next[stem];
+    const source = labelForIdColumn(col.Field, next);
     const required = isRequiredColumn(col);
-    if (label == null || label === '') {
+    if (!source) {
       if (forInsert && required) {
         throw new Error(`Cannot save investment: ${col.Field} is required`);
       }
       continue;
     }
-    const cacheKey = `${table}\0${col.Field}\0${label}\0${next.investment_type || ''}`;
+    const typeId = next.investment_type_id != null ? Number(next.investment_type_id) : null;
+    const cacheKey = `${table}\0${col.Field}\0${source.label}\0${typeId || next.investment_type || ''}`;
     let id = lookupIdCache.has(cacheKey) ? lookupIdCache.get(cacheKey) : undefined;
     if (id === undefined) {
-      const fromFk = await foreignLookup(query, table, col.Field, label, next.investment_type);
-      id = fromFk === undefined
-        ? await scanLookup(query, table, stem, label, next.investment_type)
-        : fromFk;
+      id = await lookupOrCreateId(query, table, col.Field, source, next.investment_type, typeId, forInsert);
       if (id != null) lookupIdCache.set(cacheKey, id);
     }
     if (id == null) {
       if (forInsert && required) {
-        throw new Error(`Cannot save investment: no ${stem.replace(/_/g, ' ')} match for "${label}"`);
+        throw new Error(`Cannot save investment: no ${stem.replace(/_/g, ' ')} match for "${source.label}"`);
       }
       continue;
     }

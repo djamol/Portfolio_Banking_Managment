@@ -549,6 +549,7 @@ async function syncAmountsFromLatestHistory() {
     ) h ON h.investment_id = i.id
     SET i.amount = h.amount
     WHERE ABS(i.amount - h.amount) > 0.009
+      AND NOT (h.amount = 0 AND i.amount <> 0)
   `);
   return result.affectedRows || 0;
 }
