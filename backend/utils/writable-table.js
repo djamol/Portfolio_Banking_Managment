@@ -130,10 +130,185 @@ async function rewriteMutationTarget(poolOrQuery, sql) {
   return retargetMutationSql(sql, match[1], target);
 }
 
+const LABEL_COLUMNS = new Set([
+  'name', 'label', 'title', 'category', 'type', 'type_name',
+  'investment_type', 'sub_type_name', 'sub_type_category',
+  'website_app_name', 'platform', 'platform_name'
+]);
+
+const lookupIdCache = new Map();
+const columnMetaCache = new Map();
+let textColumnCache = null;
+
+function quoteIdent(name) {
+  const clean = String(name || '');
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(clean)) {
+    throw new Error(`Invalid SQL identifier: ${clean}`);
+  }
+  return `\`${clean}\``;
+}
+
+function isGenerated(extra) {
+  return /generated/i.test(String(extra || ''));
+}
+
+function isRequiredColumn(col) {
+  return String(col.Null).toUpperCase() === 'NO'
+    && (col.Default === null || col.Default === undefined)
+    && !/auto_increment/i.test(String(col.Extra || ''));
+}
+
+async function showColumns(query, table) {
+  const key = String(table).toLowerCase();
+  if (columnMetaCache.has(key)) return columnMetaCache.get(key);
+  const [rows] = await query(`SHOW COLUMNS FROM ${quoteIdent(table)}`);
+  const cols = rows || [];
+  columnMetaCache.set(key, cols);
+  return cols;
+}
+
+function rankLookup(table, column, stem) {
+  const t = String(table).toLowerCase().replace(/_/g, '');
+  const c = String(column).toLowerCase();
+  const s = String(stem).toLowerCase().replace(/_/g, '');
+  let rank = 0;
+  if (t === s || t === `${s}s` || t === `${s}es`) rank += 100;
+  else if (s && t.includes(s)) rank += 40;
+  if (c === String(stem).toLowerCase()) rank += 30;
+  else if (c === 'name' || c === 'label' || c === 'title') rank += 20;
+  else if (c === 'category' || c === 'type' || c === 'type_name') rank += 10;
+  return rank;
+}
+
+async function selectLookupId(query, table, idCol, labelCol, label, investmentType, cols) {
+  const hasType = (cols || []).some((col) => col.Field === 'investment_type');
+  if (hasType && investmentType && labelCol !== 'investment_type') {
+    const [narrow] = await query(
+      `SELECT ${quoteIdent(idCol)} AS id FROM ${quoteIdent(table)} WHERE ${quoteIdent(labelCol)} = ? AND investment_type = ? LIMIT 3`,
+      [label, investmentType]
+    );
+    if (narrow && narrow.length) return narrow.map((row) => row.id);
+  }
+  const [rows] = await query(
+    `SELECT ${quoteIdent(idCol)} AS id FROM ${quoteIdent(table)} WHERE ${quoteIdent(labelCol)} = ? LIMIT 3`,
+    [label]
+  );
+  return (rows || []).map((row) => row.id);
+}
+
+/** undefined = no foreign key; null = foreign key exists but the label is not in it. */
+async function foreignLookup(query, table, column, label, investmentType) {
+  let rows;
+  try {
+    [rows] = await query(
+      `SELECT REFERENCED_TABLE_NAME AS ref_table, REFERENCED_COLUMN_NAME AS ref_col
+       FROM information_schema.KEY_COLUMN_USAGE
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
+         AND REFERENCED_TABLE_NAME IS NOT NULL
+       LIMIT 1`,
+      [table, column]
+    );
+  } catch (err) {
+    return undefined;
+  }
+  const fk = rows && rows[0];
+  if (!fk || !fk.ref_table) return undefined;
+  const stem = String(column).replace(/_id$/, '');
+  const cols = await showColumns(query, fk.ref_table);
+  const textCols = cols
+    .filter((col) => /char|text|enum/i.test(String(col.Type || '')) && LABEL_COLUMNS.has(String(col.Field).toLowerCase()))
+    .sort((a, b) => rankLookup(fk.ref_table, b.Field, stem) - rankLookup(fk.ref_table, a.Field, stem));
+  for (const col of textCols) {
+    const found = await selectLookupId(query, fk.ref_table, fk.ref_col || 'id', col.Field, label, investmentType, cols);
+    if (found.length === 1) return found[0];
+  }
+  return null;
+}
+
+async function textColumns(query) {
+  if (textColumnCache) return textColumnCache;
+  const [rows] = await query(
+    `SELECT c.TABLE_NAME AS table_name, c.COLUMN_NAME AS column_name
+     FROM information_schema.COLUMNS c
+     INNER JOIN information_schema.COLUMNS i
+       ON i.TABLE_SCHEMA = c.TABLE_SCHEMA AND i.TABLE_NAME = c.TABLE_NAME AND i.COLUMN_NAME = 'id'
+     INNER JOIN information_schema.TABLES t
+       ON t.TABLE_SCHEMA = c.TABLE_SCHEMA AND t.TABLE_NAME = c.TABLE_NAME AND t.TABLE_TYPE = 'BASE TABLE'
+     WHERE c.TABLE_SCHEMA = DATABASE()
+       AND c.DATA_TYPE IN ('varchar', 'char', 'enum', 'text', 'tinytext')`
+  );
+  textColumnCache = rows || [];
+  return textColumnCache;
+}
+
+async function scanLookup(query, table, stem, label, investmentType) {
+  const cols = await textColumns(query);
+  const ranked = [];
+  for (const col of cols) {
+    if (String(col.table_name).toLowerCase() === String(table).toLowerCase()) continue;
+    if (!LABEL_COLUMNS.has(String(col.column_name).toLowerCase())) continue;
+    const rank = rankLookup(col.table_name, col.column_name, stem);
+    if (rank >= 30) ranked.push({ ...col, rank });
+  }
+  ranked.sort((a, b) => b.rank - a.rank);
+  for (const col of ranked) {
+    const meta = await showColumns(query, col.table_name);
+    const ids = await selectLookupId(query, col.table_name, 'id', col.column_name, label, investmentType, meta);
+    if (ids.length === 1) return ids[0];
+  }
+  return null;
+}
+
+/**
+ * The writable base table behind the investments view stores lookup ids
+ * (investment_type_id and similar) that the view exposes as names.
+ * Fill those ids from the name fields before INSERT/UPDATE.
+ */
+async function completeLookupIds(poolOrQuery, table, values, forInsert) {
+  const query = asQuery(poolOrQuery);
+  const cols = await showColumns(query, table);
+  const next = { ...values };
+  for (const col of cols) {
+    if (!String(col.Field).endsWith('_id')) continue;
+    if (next[col.Field] != null && next[col.Field] !== '') continue;
+    if (/auto_increment/i.test(String(col.Extra || ''))) continue;
+    const stem = String(col.Field).slice(0, -3);
+    const label = next[stem];
+    const required = isRequiredColumn(col);
+    if (label == null || label === '') {
+      if (forInsert && required) {
+        throw new Error(`Cannot save investment: ${col.Field} is required`);
+      }
+      continue;
+    }
+    const cacheKey = `${table}\0${col.Field}\0${label}\0${next.investment_type || ''}`;
+    let id = lookupIdCache.has(cacheKey) ? lookupIdCache.get(cacheKey) : undefined;
+    if (id === undefined) {
+      const fromFk = await foreignLookup(query, table, col.Field, label, next.investment_type);
+      id = fromFk === undefined
+        ? await scanLookup(query, table, stem, label, next.investment_type)
+        : fromFk;
+      if (id != null) lookupIdCache.set(cacheKey, id);
+    }
+    if (id == null) {
+      if (forInsert && required) {
+        throw new Error(`Cannot save investment: no ${stem.replace(/_/g, ' ')} match for "${label}"`);
+      }
+      continue;
+    }
+    next[col.Field] = id;
+  }
+  for (const col of cols) {
+    if (isGenerated(col.Extra)) delete next[col.Field];
+  }
+  return next;
+}
+
 module.exports = {
   setScopeRegistrar,
   referencedTables,
   retargetMutationSql,
   resolveWritableTable,
-  rewriteMutationTarget
+  rewriteMutationTarget,
+  completeLookupIds
 };

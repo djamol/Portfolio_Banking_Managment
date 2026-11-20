@@ -16,7 +16,8 @@ const INVESTMENT_FIELDS = [
   'website_app_name', 'investment_type', 'sub_type_name', 'sub_type_category', 'amount', 'units',
   'nav_price', 'nav_source', 'avg_buy_price', 'invested_amount', 'profit_loss', 'investment_date',
   'notes', 'mutual_fund_scheme_code', 'mutual_fund_scheme_name',
-  'interest_rate', 'maturity_date', 'maturity_amount', 'payout_frequency', 'compounding', 'external_ref'
+  'interest_rate', 'maturity_date', 'maturity_amount', 'payout_frequency', 'compounding', 'external_ref',
+  'portfolio_id'
 ];
 const BULK_MAX_IDS = 1000;
 
@@ -466,7 +467,7 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { website_app_name, investment_type, sub_type_name, sub_type_category, amount, units, nav_price, nav_source, avg_buy_price, invested_amount, profit_loss, investment_date, notes, mutual_fund_scheme_code, mutual_fund_scheme_name, interest_rate, maturity_date, maturity_amount, payout_frequency, compounding } = req.body;
+    const { website_app_name, investment_type, sub_type_name, sub_type_category, amount, units, nav_price, nav_source, avg_buy_price, invested_amount, profit_loss, investment_date, notes, mutual_fund_scheme_code, mutual_fund_scheme_name, interest_rate, maturity_date, maturity_amount, payout_frequency, compounding, portfolio_id } = req.body;
 
     if (!website_app_name || !investment_type || !amount || !investment_date) {
       return res.status(400).json({
@@ -503,7 +504,8 @@ router.post('/', async (req, res) => {
       payout_frequency,
       compounding,
       investment_date,
-      notes
+      notes,
+      portfolio_id
     });
 
     res.status(201).json({ success: true, data: newInvestment });

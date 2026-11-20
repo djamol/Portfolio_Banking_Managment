@@ -1461,6 +1461,7 @@ export class ImportDataComponent implements OnInit {
     }
     
     // Process investments
+    const failures: string[] = [];
     for (let i = 0; i < records.length; i++) {
       const record = records[i];
       this.uploadProgress = Math.floor(((i + 1) / records.length) * 100);
@@ -1490,9 +1491,21 @@ export class ImportDataComponent implements OnInit {
           await this.createInvestment(record);
         }
       } catch (error) {
-        console.error(`Error processing record ${record.schemeName}:`, error);
+        const label = record.originalSchemeName || record.schemeName || record.subTypeCategory || 'row';
+        console.error(`Error processing record ${label}:`, error);
+        failures.push(`${label}: ${this.failureText(error)}`);
       }
     }
+    if (failures.length) {
+      throw new Error(failures.join(' '));
+    }
+  }
+
+  private failureText(error: any): string {
+    const body = error?.error;
+    if (body && typeof body.error === 'string' && body.error.trim()) return body.error;
+    if (typeof error?.message === 'string' && error.message.trim()) return error.message;
+    return 'Unknown error';
   }
 
   private async findExistingInvestmentsForRecord(record: any): Promise<any[]> {
@@ -1585,11 +1598,12 @@ export class ImportDataComponent implements OnInit {
   private showMessage(msg: string, type: 'success' | 'error' | 'info') {
     this.message = msg;
     this.messageType = type;
+    const wait = type === 'error' ? 20000 : 5000;
     setTimeout(() => {
       if (this.message === msg) {
         this.message = '';
       }
-    }, 5000);
+    }, wait);
   }
 
   searchImportMutualFunds(row: any) {

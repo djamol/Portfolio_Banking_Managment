@@ -1,6 +1,6 @@
 const { getPool } = require('../config/database');
 const { resolveWritablePortfolioId, runUnrestricted } = require('../utils/portfolio-scope');
-const { resolveWritableTable } = require('../utils/writable-table');
+const { resolveWritableTable, completeLookupIds } = require('../utils/writable-table');
 
 let columnCache = new Map();
 let columnCachePool = null;
@@ -22,12 +22,13 @@ async function tableColumns(table) {
 async function insertRow(table, values) {
   const pool = getPool();
   const target = await resolveWritableTable(pool, table);
+  const prepared = await runUnrestricted(() => completeLookupIds(pool, target, values, true));
   const columns = await tableColumns(target);
-  const fields = Object.keys(values).filter((field) => columns.has(field) && values[field] !== undefined);
+  const fields = Object.keys(prepared).filter((field) => columns.has(field) && prepared[field] !== undefined);
   const [result] = await pool.query(
     `INSERT INTO \`${target}\` (${fields.map((f) => `\`${f}\``).join(', ')})
      VALUES (${fields.map(() => '?').join(', ')})`,
-    fields.map((field) => values[field])
+    fields.map((field) => prepared[field])
   );
   return result;
 }
@@ -35,12 +36,13 @@ async function insertRow(table, values) {
 async function updateRow(table, values, id) {
   const pool = getPool();
   const target = await resolveWritableTable(pool, table);
+  const prepared = await runUnrestricted(() => completeLookupIds(pool, target, values, false));
   const columns = await tableColumns(target);
-  const fields = Object.keys(values).filter((field) => columns.has(field) && values[field] !== undefined);
+  const fields = Object.keys(prepared).filter((field) => columns.has(field) && prepared[field] !== undefined);
   if (!fields.length) return;
   await pool.query(
     `UPDATE \`${target}\` SET ${fields.map((f) => `\`${f}\` = ?`).join(', ')} WHERE id = ?`,
-    [...fields.map((field) => values[field]), id]
+    [...fields.map((field) => prepared[field]), id]
   );
 }
 
@@ -314,58 +316,27 @@ async function findInvestmentByKey(key) {
 }
 
 async function upsertImportedInvestment(investment) {
-  const pool = getPool();
   const existing = await findInvestmentByKey(investment);
+  const row = investmentRow(investment);
+  row.portfolio_id = resolveWritablePortfolioId(investment.portfolio_id);
 
   if (existing) {
-    await pool.query(
-      `UPDATE investments
-       SET amount = ?, investment_date = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?`,
-      [investment.amount, investment.investment_date, investment.notes || null, existing.id]
-    );
-    await pool.query(
-      `INSERT INTO investment_history (investment_id, amount, units, nav_price, invested_amount, change_date, change_type, notes)
-       VALUES (?, ?, ?, ?, ?, ?, 'updated', ?)`,
-      [
-        existing.id,
-        investment.amount,
-        investment.units != null && investment.units !== '' ? Number(investment.units) : null,
-        investment.nav_price != null && investment.nav_price !== '' ? Number(investment.nav_price) : null,
-        investment.invested_amount != null && investment.invested_amount !== '' ? Number(investment.invested_amount) : null,
-        investment.investment_date,
-        investment.notes || null
-      ]
-    );
+    await updateRow('investments', {
+      amount: investment.amount,
+      investment_date: investment.investment_date,
+      notes: investment.notes || null,
+      updated_at: new Date()
+    }, existing.id);
+    const history = historyRow(existing.id, investment, investment.investment_date, 'updated');
+    history.portfolio_id = row.portfolio_id;
+    await insertRow('investment_history', history);
     return { action: 'updated', id: existing.id };
   }
 
-  const [result] = await pool.query(
-    `INSERT INTO investments (website_app_name, investment_type, sub_type_name, sub_type_category, amount, investment_date, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [
-      investment.website_app_name,
-      investment.investment_type,
-      investment.sub_type_name || null,
-      investment.sub_type_category || null,
-      investment.amount,
-      investment.investment_date,
-      investment.notes || null
-    ]
-  );
-  await pool.query(
-    `INSERT INTO investment_history (investment_id, amount, units, nav_price, invested_amount, change_date, change_type, notes)
-     VALUES (?, ?, ?, ?, ?, ?, 'added', ?)`,
-    [
-      result.insertId,
-      investment.amount,
-      investment.units != null && investment.units !== '' ? Number(investment.units) : null,
-      investment.nav_price != null && investment.nav_price !== '' ? Number(investment.nav_price) : null,
-      investment.invested_amount != null && investment.invested_amount !== '' ? Number(investment.invested_amount) : null,
-      investment.investment_date,
-      investment.notes || null
-    ]
-  );
+  const result = await insertRow('investments', row);
+  const history = historyRow(result.insertId, investment, investment.investment_date, 'added');
+  history.portfolio_id = row.portfolio_id;
+  await insertRow('investment_history', history);
   return { action: 'imported', id: result.insertId };
 }
 

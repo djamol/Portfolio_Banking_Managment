@@ -87,13 +87,23 @@ export class InvestmentService {
 
   create(data: any): Observable<any> {
     return this.http.post<ApiResponse<any>>(`${this.getApiUrl()}/investments`, data).pipe(
-      map(response => response.success ? response.data : null)
+      map(response => {
+        if (!response?.success || response.data == null) {
+          throw new Error(response?.error || 'Investment was not saved');
+        }
+        return response.data;
+      })
     );
   }
 
   update(id: number, data: any): Observable<any> {
     return this.http.put<ApiResponse<any>>(`${this.getApiUrl()}/investments/${id}`, data).pipe(
-      map(response => response.success ? response.data : null)
+      map(response => {
+        if (!response?.success || response.data == null) {
+          throw new Error(response?.error || 'Investment was not saved');
+        }
+        return response.data;
+      })
     );
   }
 
