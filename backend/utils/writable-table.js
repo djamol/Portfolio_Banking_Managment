@@ -259,15 +259,54 @@ async function scanLookup(query, table, stem, label, investmentType) {
   return null;
 }
 
+/** When the base table uses different column names than the view/API payload. */
+const REQUIRED_TEXT_ALIASES = {
+  name: ['sub_type_category', 'sub_type_name', 'mutual_fund_scheme_name', 'website_app_name', 'label', 'title'],
+  label: ['name', 'sub_type_category', 'sub_type_name', 'website_app_name'],
+  title: ['name', 'sub_type_category', 'sub_type_name', 'website_app_name'],
+  scrip_name: ['sub_type_category', 'name', 'mutual_fund_scheme_name'],
+  security_name: ['sub_type_category', 'name', 'mutual_fund_scheme_name'],
+  instrument_name: ['sub_type_category', 'name', 'mutual_fund_scheme_name']
+};
+
+function fillRequiredTextColumns(cols, values, forInsert) {
+  if (!forInsert) return values;
+  const next = { ...values };
+  for (const col of cols) {
+    const field = String(col.Field);
+    if (field.endsWith('_id')) continue;
+    if (isGenerated(col.Extra)) continue;
+    if (!isRequiredColumn(col)) continue;
+    if (next[field] != null && String(next[field]).trim() !== '') continue;
+
+    const aliases = REQUIRED_TEXT_ALIASES[field.toLowerCase()] || [];
+    let filled = false;
+    for (const alias of aliases) {
+      if (next[alias] != null && String(next[alias]).trim() !== '') {
+        next[field] = next[alias];
+        filled = true;
+        break;
+      }
+    }
+    if (!filled) {
+      throw new Error(
+        `Cannot save investment: Field '${field}' doesn't have a default value`
+      );
+    }
+  }
+  return next;
+}
+
 /**
  * The writable base table behind the investments view stores lookup ids
  * (investment_type_id and similar) that the view exposes as names.
  * Fill those ids from the name fields before INSERT/UPDATE.
+ * Also copy display names into required text columns (e.g. `name`).
  */
 async function completeLookupIds(poolOrQuery, table, values, forInsert) {
   const query = asQuery(poolOrQuery);
   const cols = await showColumns(query, table);
-  const next = { ...values };
+  let next = { ...values };
   for (const col of cols) {
     if (!String(col.Field).endsWith('_id')) continue;
     if (next[col.Field] != null && next[col.Field] !== '') continue;
@@ -298,6 +337,7 @@ async function completeLookupIds(poolOrQuery, table, values, forInsert) {
     }
     next[col.Field] = id;
   }
+  next = fillRequiredTextColumns(cols, next, forInsert);
   for (const col of cols) {
     if (isGenerated(col.Extra)) delete next[col.Field];
   }
