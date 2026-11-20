@@ -439,6 +439,55 @@
   color: var(--app-muted);
 }
 
+.status-missing {
+  background: rgba(180, 60, 40, 0.12);
+  color: var(--app-danger);
+}
+
+.row-missing {
+  background: rgba(184, 134, 11, 0.08);
+}
+
+.edit-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px;
+  background: rgba(20, 16, 12, 0.45);
+  overflow-y: auto;
+}
+
+.edit-dialog {
+  width: min(720px, 100%);
+  padding: 24px;
+  background: var(--app-surface);
+  border-radius: var(--app-radius);
+  box-shadow: var(--app-shadow-out);
+}
+
+.edit-dialog h3 {
+  margin-top: 0;
+}
+
+.edit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
+}
+
+.edit-notes {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 700px) {
+  .edit-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .empty-row {
   text-align: center;
   color: var(--app-muted);

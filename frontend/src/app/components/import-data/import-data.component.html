@@ -315,7 +315,7 @@
   <!-- Preview Table -->
   <div class="preview-section" *ngIf="showPreview && previewData.length > 0">
     <h3>Data Preview ({{ previewData.length }} records)</h3>
-    <p class="preview-hint">Uncheck rows to skip them on import. Totals below follow the selected rows.</p>
+    <p class="preview-hint">Uncheck rows to skip them on import. Totals below follow the selected rows. Holdings for this platform and type that are missing from the file but still have a value are listed as Not in file. Use Edit to change them.</p>
 
     <div class="preview-summary">
       <div class="summary-card">
@@ -357,6 +357,9 @@
         </button>
         <button type="button" class="filter-chip" [class.active]="previewFilter === 'newLookup'" (click)="setPreviewFilter('newLookup')">
           New AMC/scheme {{ previewNewLookupCount() }}
+        </button>
+        <button type="button" class="filter-chip" [class.active]="previewFilter === 'missing'" (click)="setPreviewFilter('missing')">
+          Not in file {{ previewStatusCount('missing') }}
         </button>
       </div>
       <div class="preview-bulk">
@@ -409,6 +412,7 @@
             <th class="sortable num" (click)="sortPreview('newValue')">New Values{{ sortIndicator('newValue') }}</th>
             <th class="sortable num" (click)="sortPreview('change')">Change{{ sortIndicator('change') }}</th>
             <th class="sortable" (click)="sortPreview('status')">Status{{ sortIndicator('status') }}</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -416,9 +420,14 @@
             *ngFor="let record of displayedPreviewData; trackBy: trackPreviewRow"
             [class.row-skipped]="!record.selected"
             [class.row-new]="record.status === 'new'"
-            [class.row-unchanged]="record.status === 'unchanged'">
+            [class.row-unchanged]="record.status === 'unchanged'"
+            [class.row-missing]="record.missingFromFile">
             <td class="col-check">
-              <input type="checkbox" [(ngModel)]="record.selected" [attr.title]="'Include ' + record.originalSchemeName + ' in import'">
+              <input
+                *ngIf="!record.missingFromFile"
+                type="checkbox"
+                [(ngModel)]="record.selected"
+                [attr.title]="'Include ' + record.originalSchemeName + ' in import'">
             </td>
             <td>{{ record.folioNo || 'N/A' }}</td>
             <td>{{ record.originalSchemeName }}</td>
@@ -461,6 +470,15 @@
             <td>
               <span class="status-badge" [ngClass]="'status-' + record.status">{{ statusLabel(record.status) }}</span>
             </td>
+            <td>
+              <button
+                *ngIf="record.missingFromFile"
+                type="button"
+                class="btn btn-outline btn-sm"
+                (click)="openMissingEdit(record)">
+                Edit
+              </button>
+            </td>
           </tr>
           <tr *ngIf="displayedPreviewData.length === 0">
             <td colspan="9" class="empty-preview">No rows match the current search or filter.</td>
@@ -472,6 +490,7 @@
             <td class="num">{{ formatInr(selectedPreviousTotal) }}</td>
             <td class="num">{{ formatInr(selectedNewTotal) }}</td>
             <td class="num" [ngClass]="changeClass(selectedChangeTotal)">{{ formatSignedInr(selectedChangeTotal) }}</td>
+            <td></td>
             <td></td>
           </tr>
         </tfoot>
@@ -491,6 +510,71 @@
         class="btn btn-primary">
         Confirm & Import {{ selectedPreviewCount }} selected
       </button>
+    </div>
+  </div>
+
+  <div class="edit-backdrop" *ngIf="missingEdit as edit">
+    <div class="edit-dialog" role="dialog" aria-labelledby="missing-edit-title">
+      <h3 id="missing-edit-title">Edit holding not in file</h3>
+      <p class="preview-hint">This holding is saved for the selected platform and type, but it is not in the import file. Changes are saved to the database.</p>
+      <div class="edit-grid">
+        <div class="form-group">
+          <label for="missing-platform">Platform</label>
+          <input id="missing-platform" class="form-control" name="missingPlatform" [(ngModel)]="edit.website_app_name">
+        </div>
+        <div class="form-group">
+          <label for="missing-type">Investment type</label>
+          <select id="missing-type" class="form-control" name="missingType" [(ngModel)]="edit.investment_type">
+            <option *ngFor="let type of investmentTypes" [value]="type">{{ type }}</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="missing-subtype">Sub type</label>
+          <input id="missing-subtype" class="form-control" name="missingSubType" [(ngModel)]="edit.sub_type_name">
+        </div>
+        <div class="form-group">
+          <label for="missing-category">Category</label>
+          <input id="missing-category" class="form-control" name="missingCategory" [(ngModel)]="edit.sub_type_category">
+        </div>
+        <div class="form-group">
+          <label for="missing-units">Units / quantity</label>
+          <input id="missing-units" type="number" class="form-control" name="missingUnits" [(ngModel)]="edit.units">
+        </div>
+        <div class="form-group">
+          <label for="missing-nav">Current NAV / LTP (₹)</label>
+          <input id="missing-nav" type="number" class="form-control" name="missingNav" [(ngModel)]="edit.nav_price">
+        </div>
+        <div class="form-group">
+          <label for="missing-avg">Avg buy price (₹)</label>
+          <input id="missing-avg" type="number" class="form-control" name="missingAvg" [(ngModel)]="edit.avg_buy_price">
+        </div>
+        <div class="form-group">
+          <label for="missing-invested">Invested amount (₹)</label>
+          <input id="missing-invested" type="number" class="form-control" name="missingInvested" [(ngModel)]="edit.invested_amount">
+        </div>
+        <div class="form-group">
+          <label for="missing-pl">P&amp;L (₹)</label>
+          <input id="missing-pl" type="number" class="form-control" name="missingPl" [(ngModel)]="edit.profit_loss">
+        </div>
+        <div class="form-group">
+          <label for="missing-amount">Current value (₹)</label>
+          <input id="missing-amount" type="number" class="form-control" name="missingAmount" [(ngModel)]="edit.amount">
+        </div>
+        <div class="form-group">
+          <label for="missing-date">Investment date</label>
+          <input id="missing-date" type="date" class="form-control" name="missingDate" [(ngModel)]="edit.investment_date">
+        </div>
+        <div class="form-group edit-notes">
+          <label for="missing-notes">Notes</label>
+          <textarea id="missing-notes" class="form-control" name="missingNotes" rows="3" [(ngModel)]="edit.notes"></textarea>
+        </div>
+      </div>
+      <div class="preview-actions">
+        <button type="button" class="btn btn-outline" (click)="closeMissingEdit()" [disabled]="savingMissingEdit">Cancel</button>
+        <button type="button" class="btn btn-primary" (click)="saveMissingEdit()" [disabled]="savingMissingEdit">
+          {{ savingMissingEdit ? 'Saving…' : 'Save changes' }}
+        </button>
+      </div>
     </div>
   </div>
   

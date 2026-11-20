@@ -8,6 +8,7 @@ import { CategoryService, SubTypeName, Category } from '../../services/category.
 import { FdImportService, FdStatementDeposit, FdStatementPreview } from '../../services/fd-import.service';
 import { PayoutFrequency } from '../../services/fd-analytics.service';
 import { ACTIVE_PORTFOLIO_KEY, PortfolioService, WorkspacePortfolio } from '../../services/portfolio.service';
+import { INVESTMENT_TYPES } from '../../constants/investment-types.constants';
 import { formatIndianFull } from '../../utils/indian-number.util';
 
 @Component({
@@ -37,9 +38,26 @@ export class ImportDataComponent implements OnInit {
   hasNewAMC = false; // Flag to indicate if there are new AMCs
   hasNewScheme = false; // Flag to indicate if there are new schemes
   previewSearch = '';
-  previewFilter: 'all' | 'new' | 'update' | 'unchanged' | 'newLookup' = 'all';
+  previewFilter: 'all' | 'new' | 'update' | 'unchanged' | 'newLookup' | 'missing' = 'all';
   previewSortColumn = '';
   previewSortDir: 'asc' | 'desc' = 'asc';
+  readonly investmentTypes = INVESTMENT_TYPES;
+  editingMissing: any = null;
+  missingEdit: {
+    website_app_name: string;
+    investment_type: string;
+    sub_type_name: string;
+    sub_type_category: string;
+    units: number | null;
+    nav_price: number | null;
+    avg_buy_price: number | null;
+    invested_amount: number | null;
+    profit_loss: number | null;
+    amount: number | null;
+    investment_date: string;
+    notes: string;
+  } | null = null;
+  savingMissingEdit = false;
   
   // Optional date selection
   useCustomDate = false;
@@ -441,6 +459,7 @@ export class ImportDataComponent implements OnInit {
           };
         });
 
+        this.appendMissingHoldings(existingInvestments);
         this.resetPreviewControls();
 
         // Set flags for new indicators in headers
@@ -448,7 +467,11 @@ export class ImportDataComponent implements OnInit {
         this.hasNewScheme = this.previewData.some(record => record.isNewScheme);
         
         this.showPreview = true;
-        this.message = `Preview ready. ${this.parsedData.length} unique records found (${this.originalRecordCount} total entries in file). Uncheck rows to skip them on import.`;
+        const missingCount = this.previewData.filter(row => row.missingFromFile).length;
+        const missingNote = missingCount
+          ? ` ${missingCount} database holding${missingCount === 1 ? '' : 's'} with a value ${missingCount === 1 ? 'is' : 'are'} not in this file.`
+          : '';
+        this.message = `Preview ready. ${this.parsedData.length} unique records found (${this.originalRecordCount} total entries in file).${missingNote} Uncheck rows to skip them on import.`;
         this.messageType = 'info';
       } else {
         this.showMessage('No valid investment records found in the file.', 'error');
@@ -571,6 +594,9 @@ export class ImportDataComponent implements OnInit {
     this.hasNewAMC = false;
     this.hasNewScheme = false;
     this.csvPortfolioDate = null;
+    this.editingMissing = null;
+    this.missingEdit = null;
+    this.savingMissingEdit = false;
     this.mfSearchQueries = {};
     this.mfSearchResults = {};
     Object.values(this.mfSearchTimers).forEach(timer => clearTimeout(timer));
@@ -1558,6 +1584,163 @@ export class ImportDataComponent implements OnInit {
     if (record) record.mutualFundSchemeCode = row.mutualFundSchemeCode;
   }
 
+  /** Holdings for this platform and type that the file does not contain, still with a value. */
+  private appendMissingHoldings(existingInvestments: any[] | undefined) {
+    const platform = this.platform.trim().toLowerCase();
+    for (const inv of existingInvestments || []) {
+      if (inv.investment_type !== this.investmentType) continue;
+      if ((inv.website_app_name || '').trim().toLowerCase() !== platform) continue;
+      const amount = Number(inv.amount) || 0;
+      if (Math.abs(amount) < 0.005) continue;
+      if (this.holdingIsInImportFile(inv)) continue;
+      this.previewData.push({
+        key: `db_${inv.id}`,
+        investmentId: inv.id,
+        sourceInvestment: { ...inv },
+        missingFromFile: true,
+        folioNo: '',
+        originalSchemeName: inv.mutual_fund_scheme_name || inv.sub_type_category || inv.sub_type_name || 'Existing holding',
+        extractedAMC: inv.sub_type_name,
+        extractedScheme: inv.sub_type_category,
+        presentValue: amount,
+        units: inv.units,
+        navPrice: inv.nav_price,
+        avgBuyPrice: inv.avg_buy_price,
+        investedAmount: inv.invested_amount,
+        profitLoss: inv.profit_loss,
+        newValue: amount,
+        previousValue: amount,
+        change: 0,
+        mutualFundSchemeCode: inv.mutual_fund_scheme_code || '',
+        status: 'missing',
+        selected: false,
+        isNewAMC: false,
+        isNewScheme: false
+      });
+    }
+  }
+
+  private holdingIsInImportFile(inv: any): boolean {
+    const amc = (inv.sub_type_name || '').trim().toLowerCase();
+    const category = (inv.sub_type_category || '').trim().toLowerCase();
+    return this.parsedData.some(record => {
+      if ((record.subTypeName || '').trim().toLowerCase() !== amc) return false;
+      return this.getCategoryNameVariants(record.subTypeCategory)
+        .some(variant => variant.trim().toLowerCase() === category);
+    });
+  }
+
+  openMissingEdit(row: any) {
+    const source = row.sourceInvestment || {};
+    this.editingMissing = row;
+    this.missingEdit = {
+      website_app_name: source.website_app_name || this.platform,
+      investment_type: source.investment_type || this.investmentType,
+      sub_type_name: source.sub_type_name || '',
+      sub_type_category: source.sub_type_category || '',
+      units: source.units ?? null,
+      nav_price: source.nav_price ?? null,
+      avg_buy_price: source.avg_buy_price ?? null,
+      invested_amount: source.invested_amount ?? null,
+      profit_loss: source.profit_loss ?? null,
+      amount: source.amount ?? row.previousValue ?? 0,
+      investment_date: this.toDateInput(source.investment_date),
+      notes: source.notes || ''
+    };
+  }
+
+  closeMissingEdit() {
+    if (this.savingMissingEdit) return;
+    this.editingMissing = null;
+    this.missingEdit = null;
+  }
+
+  async saveMissingEdit() {
+    const row = this.editingMissing;
+    const form = this.missingEdit;
+    if (!row?.investmentId || !form) return;
+    if (!form.website_app_name.trim() || !form.investment_type || !form.sub_type_name.trim() || !form.sub_type_category.trim()) {
+      this.showMessage('Platform, type, sub type, and category are required.', 'error');
+      return;
+    }
+    if (!form.investment_date) {
+      this.showMessage('Investment date is required.', 'error');
+      return;
+    }
+    const amount = this.optionalNumber(form.amount);
+    if (amount == null) {
+      this.showMessage('Current value is required.', 'error');
+      return;
+    }
+
+    const payload = {
+      ...row.sourceInvestment,
+      website_app_name: form.website_app_name.trim(),
+      investment_type: form.investment_type,
+      sub_type_name: form.sub_type_name.trim(),
+      sub_type_category: form.sub_type_category.trim(),
+      units: this.optionalNumber(form.units),
+      nav_price: this.optionalNumber(form.nav_price),
+      avg_buy_price: this.optionalNumber(form.avg_buy_price),
+      invested_amount: this.optionalNumber(form.invested_amount),
+      profit_loss: this.optionalNumber(form.profit_loss),
+      amount,
+      investment_date: form.investment_date,
+      notes: form.notes
+    };
+
+    this.savingMissingEdit = true;
+    try {
+      const updated = await this.usingSelectedPortfolio(() =>
+        firstValueFrom(this.investmentService.update(row.investmentId, payload)));
+      if (!updated) {
+        this.showMessage('Could not update that holding.', 'error');
+        return;
+      }
+      const savedAmount = Number(updated.amount ?? amount) || 0;
+      row.sourceInvestment = { ...row.sourceInvestment, ...updated };
+      row.originalSchemeName = updated.mutual_fund_scheme_name || updated.sub_type_category || updated.sub_type_name || row.originalSchemeName;
+      row.extractedAMC = updated.sub_type_name;
+      row.extractedScheme = updated.sub_type_category;
+      row.units = updated.units;
+      row.navPrice = updated.nav_price;
+      row.avgBuyPrice = updated.avg_buy_price;
+      row.investedAmount = updated.invested_amount;
+      row.profitLoss = updated.profit_loss;
+      row.previousValue = savedAmount;
+      row.newValue = savedAmount;
+      row.presentValue = savedAmount;
+      row.change = 0;
+      this.editingMissing = null;
+      this.missingEdit = null;
+      this.showMessage('Holding updated.', 'success');
+    } catch (error: any) {
+      this.showMessage('Could not update that holding: ' + (error?.error?.error || error?.message || error), 'error');
+    } finally {
+      this.savingMissingEdit = false;
+    }
+  }
+
+  private optionalNumber(value: any): number | null {
+    if (value === '' || value === null || value === undefined) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private toDateInput(value: any): string {
+    if (!value) return new Date().toISOString().split('T')[0];
+    const text = String(value);
+    const iso = text.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (iso) return iso[1];
+    const dmy = text.match(/^(\d{2})-(\d{2})-(\d{4})/);
+    if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
+    const parsed = new Date(text);
+    if (Number.isNaN(parsed.getTime())) return new Date().toISOString().split('T')[0];
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    return `${parsed.getFullYear()}-${month}-${day}`;
+  }
+
   private getRecordKey(amc: string, scheme: string): string {
     return `${this.platform}_${amc}_${scheme}`;
   }
@@ -1614,6 +1797,8 @@ export class ImportDataComponent implements OnInit {
     this.previewData = [];
     this.hasNewAMC = false;
     this.hasNewScheme = false;
+    this.editingMissing = null;
+    this.missingEdit = null;
     this.resetPreviewControls();
   }
 
@@ -1636,6 +1821,8 @@ export class ImportDataComponent implements OnInit {
       rows = rows.filter(row => row.status === 'unchanged');
     } else if (this.previewFilter === 'newLookup') {
       rows = rows.filter(row => row.isNewAMC || row.isNewScheme);
+    } else if (this.previewFilter === 'missing') {
+      rows = rows.filter(row => row.missingFromFile);
     }
 
     if (this.previewSortColumn) {
@@ -1674,13 +1861,13 @@ export class ImportDataComponent implements OnInit {
   }
 
   get allVisibleSelected(): boolean {
-    const rows = this.displayedPreviewData;
+    const rows = this.displayedPreviewData.filter(row => !row.missingFromFile);
     return rows.length > 0 && rows.every(row => row.selected);
   }
 
   set allVisibleSelected(value: boolean) {
     this.displayedPreviewData.forEach(row => {
-      row.selected = value;
+      if (!row.missingFromFile) row.selected = value;
     });
   }
 
@@ -1689,7 +1876,7 @@ export class ImportDataComponent implements OnInit {
     return rows.some(row => row.selected) && !this.allVisibleSelected;
   }
 
-  previewStatusCount(status: 'new' | 'update' | 'unchanged'): number {
+  previewStatusCount(status: 'new' | 'update' | 'unchanged' | 'missing'): number {
     return this.previewData.filter(row => row.status === status).length;
   }
 
@@ -1697,7 +1884,7 @@ export class ImportDataComponent implements OnInit {
     return this.previewData.filter(row => row.isNewAMC || row.isNewScheme).length;
   }
 
-  setPreviewFilter(filter: 'all' | 'new' | 'update' | 'unchanged' | 'newLookup') {
+  setPreviewFilter(filter: 'all' | 'new' | 'update' | 'unchanged' | 'newLookup' | 'missing') {
     this.previewFilter = filter;
   }
 
@@ -1725,7 +1912,7 @@ export class ImportDataComponent implements OnInit {
 
   selectAllPreview() {
     this.previewData.forEach(row => {
-      row.selected = true;
+      if (!row.missingFromFile) row.selected = true;
     });
   }
 
@@ -1764,6 +1951,7 @@ export class ImportDataComponent implements OnInit {
   statusLabel(status: string): string {
     if (status === 'new') return 'New';
     if (status === 'unchanged') return 'Unchanged';
+    if (status === 'missing') return 'Not in file';
     return 'Update';
   }
 
