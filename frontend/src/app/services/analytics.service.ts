@@ -13,6 +13,8 @@ export type AnalyticsFilters = {
   minAmount?: number | null;
   maxAmount?: number | null;
   ignoreZero?: boolean;
+  /** Include IGNORE_PLATFORM holdings (e.g. PLOT / Real Estate) in totals and series. */
+  includeIgnored?: boolean;
 };
 
 function appendAnalyticsFilters(qs: URLSearchParams, filters: AnalyticsFilters = {}) {
@@ -29,6 +31,7 @@ function appendAnalyticsFilters(qs: URLSearchParams, filters: AnalyticsFilters =
     qs.set('maxAmount', String(filters.maxAmount));
   }
   if (filters.ignoreZero) qs.set('ignoreZero', 'true');
+  if (filters.includeIgnored) qs.set('includeIgnored', 'true');
 }
 
 export type PortfolioValueSeriesPoint = {
@@ -85,8 +88,11 @@ export class AnalyticsService {
   
   constructor(private http: HttpClient) {}
 
-  getTotal(): Observable<{ success: boolean; data: { total_amount: number; total_investments: number } }> {
-    return this.http.get<{ success: boolean; data: { total_amount: number; total_investments: number } }>(`${this.getApiUrl()}/analytics/total`);
+  getTotal(filters: AnalyticsFilters = {}): Observable<{ success: boolean; data: { total_amount: number; total_investments: number } }> {
+    const qs = new URLSearchParams();
+    appendAnalyticsFilters(qs, filters);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return this.http.get<{ success: boolean; data: { total_amount: number; total_investments: number } }>(`${this.getApiUrl()}/analytics/total${suffix}`);
   }
 
   getByType(): Observable<{ success: boolean; data: any[] }> {

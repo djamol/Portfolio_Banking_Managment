@@ -9,14 +9,19 @@ const {
   currentAmountSubquery,
   buildInvestmentFilterClauses,
   buildAmountFilterClauses,
-  resolveSeriesBreakdown
+  resolveSeriesBreakdown,
+  wantsIncludeIgnored,
+  splitReplacementJoin,
+  historyEffectiveDateExpr
 } = require('../utils/snapshot-queries');
 
-function defaultIgnoreWhere(alias = '') {
+function defaultIgnoreWhere(alias = '', query = {}) {
   const clauses = [];
   const params = [];
-  const column = alias ? `${alias}.website_app_name` : 'website_app_name';
-  appendIgnorePlatformClause(clauses, params, column);
+  if (!wantsIncludeIgnored(query)) {
+    const column = alias ? `${alias}.website_app_name` : 'website_app_name';
+    appendIgnorePlatformClause(clauses, params, column);
+  }
   return {
     sql: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '',
     params
@@ -26,10 +31,10 @@ function defaultIgnoreWhere(alias = '') {
 router.get('/total', async (req, res) => {
   try {
     if (isMongoDb()) {
-      return res.json({ success: true, data: await mongoAnalytics.getTotal() });
+      return res.json({ success: true, data: await mongoAnalytics.getTotal(req.query) });
     }
     const pool = getPool();
-    const ignore = defaultIgnoreWhere('curr');
+    const ignore = defaultIgnoreWhere('curr', req.query);
     const [rows] = await pool.query(
       `
       SELECT SUM(curr.amount) as total_amount, COUNT(*) as total_investments
@@ -321,6 +326,10 @@ router.get('/value-series', async (req, res) => {
 
     // Step changes from history. A cross join of every date × every holding
     // ran a correlated lookup ~36M times and took over a minute.
+    // Split replacements (backdated individual FDs) use created_at so they
+    // do not double-count the lumped row they replaced.
+    const effectiveDate = historyEffectiveDateExpr('i', 'ih', 'rep');
+    const replacementJoin = splitReplacementJoin('i', 'rep');
     let sql;
     let params;
     if (!hasAmountBand) {
@@ -339,13 +348,17 @@ router.get('/value-series', async (req, res) => {
             FROM (
               SELECT
                 ${seriesCol}
-                ih.change_date,
+                ${effectiveDate} AS change_date,
                 ih.amount - COALESCE(
-                  LAG(ih.amount) OVER (PARTITION BY ih.investment_id ORDER BY ih.change_date, ih.id),
+                  LAG(ih.amount) OVER (
+                    PARTITION BY ih.investment_id
+                    ORDER BY ${effectiveDate}, ih.id
+                  ),
                   0
                 ) AS delta
               FROM investment_history ih
               JOIN investments i ON i.id = ih.investment_id
+              ${replacementJoin}
               ${investmentSql}
             ) steps
             GROUP BY ${seriesGroup}change_date
@@ -366,19 +379,23 @@ router.get('/value-series', async (req, res) => {
           ${breakdown ? 'o.series_name,' : ''}
           SUM(o.amount) AS total_value
         FROM (
-          SELECT DISTINCT change_date FROM investment_history
+          SELECT DISTINCT ${effectiveDate} AS change_date
+          FROM investment_history ih
+          JOIN investments i ON i.id = ih.investment_id
+          ${replacementJoin}
         ) d
         JOIN (
           SELECT
             ih.investment_id,
-            ih.change_date,
+            ${effectiveDate} AS change_date,
             ih.amount,
             ${seriesCol}
-            LEAD(ih.change_date) OVER (
-              PARTITION BY ih.investment_id ORDER BY ih.change_date, ih.id
+            LEAD(${effectiveDate}) OVER (
+              PARTITION BY ih.investment_id ORDER BY ${effectiveDate}, ih.id
             ) AS next_date
           FROM investment_history ih
           JOIN investments i ON i.id = ih.investment_id
+          ${replacementJoin}
           ${investmentSql}
         ) o
           ON o.change_date <= d.change_date

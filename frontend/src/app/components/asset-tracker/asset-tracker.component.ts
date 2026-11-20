@@ -817,7 +817,7 @@ export class AssetTrackerComponent implements OnInit {
           return;
         }
 
-        this.analyticsService.getTotal().subscribe({
+        this.analyticsService.getTotal(filters).subscribe({
           next: (totalResponse) => {
             const liveTotal = this.toNumber(totalResponse.data?.total_amount);
             this.currentAmount = liveTotal > 0 ? liveTotal : latestSnapshotAmount;

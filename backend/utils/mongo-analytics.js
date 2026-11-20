@@ -2,6 +2,7 @@ const { getDb } = require('../config/mongodb');
 const {
   parseListParam,
   parseNumberParam,
+  wantsIncludeIgnored,
   buildInvestmentFilterClauses: buildSqlInvestmentFilterClauses
 } = require('./snapshot-queries');
 const { isIgnoredPlatform } = require('./ignore-platform');
@@ -32,11 +33,34 @@ function withoutIgnoredPlatforms(investments) {
   return investments.filter((i) => !isIgnoredPlatform(i.website_app_name));
 }
 
+function isSplitNote(notes) {
+  const text = String(notes || '').toLowerCase();
+  return text.includes('separat') || text.includes('added separately') || text.includes('all fd added');
+}
+
+/** Ids of holdings that replaced a same-day zeroed aggregate on the same platform. */
+function buildSplitReplacementIds(investments, historyRows) {
+  const byId = new Map(investments.map((i) => [i.id, i]));
+  const ids = new Set();
+  for (const h of historyRows) {
+    if (Number(h.amount) !== 0 || !isSplitNote(h.notes)) continue;
+    const zeroDate = toDateString(h.change_date);
+    const parent = byId.get(h.investment_id);
+    if (!parent || !zeroDate) continue;
+    for (const child of investments) {
+      if (child.id === parent.id) continue;
+      if (child.website_app_name !== parent.website_app_name) continue;
+      if (toDateString(child.created_at) === zeroDate) ids.add(child.id);
+    }
+  }
+  return ids;
+}
+
 function matchesFilters(investment, query) {
   const platforms = parseListParam(query.platform);
   if (platforms.length) {
     if (!platforms.includes(investment.website_app_name)) return false;
-  } else if (isIgnoredPlatform(investment.website_app_name)) {
+  } else if (!wantsIncludeIgnored(query) && isIgnoredPlatform(investment.website_app_name)) {
     return false;
   }
 
@@ -63,7 +87,13 @@ function matchesFilters(investment, query) {
  * Returns 0 when none — never falls back to live investments.amount
  * (that would project today's holdings onto past snapshot dates).
  */
-function amountAsOf(investmentId, asOfDate, historyRows, _investmentsById) {
+function amountAsOf(investmentId, asOfDate, historyRows, investmentsById, replacementIds) {
+  if (replacementIds && replacementIds.has(investmentId)) {
+    const inv = investmentsById && investmentsById[investmentId];
+    const created = inv ? toDateString(inv.created_at) : null;
+    const asOf = toDateString(asOfDate);
+    if (created && asOf && asOf < created) return 0;
+  }
   return amountAsOfHistoryOnly(investmentId, asOfDate, historyRows);
 }
 
@@ -126,9 +156,12 @@ async function loadCoreData() {
   return { investments, history, transactions, investmentsById };
 }
 
-async function getTotal() {
+async function getTotal(query = {}) {
   const { investments, history } = await loadCoreData();
-  const visible = withoutIgnoredPlatforms(withCurrentAmounts(investments, history));
+  const current = withCurrentAmounts(investments, history);
+  const visible = wantsIncludeIgnored(query)
+    ? current
+    : withoutIgnoredPlatforms(current);
   const total_amount = visible.reduce((sum, i) => sum + Number(i.amount), 0);
   return { total_amount, total_investments: visible.length };
 }
@@ -390,6 +423,7 @@ function resolveSeriesBreakdown(query) {
 async function getValueSeries(query) {
   const { investments, history, investmentsById } = await loadCoreData();
   const filtered = investments.filter((i) => matchesFilters(i, query));
+  const replacementIds = buildSplitReplacementIds(investments, history);
   const snapshotDates = [...new Set(history.map((h) => toDateString(h.change_date)))].sort();
   const from = query.from ? toDateString(query.from) : null;
   const to = query.to ? toDateString(query.to) : null;
@@ -401,7 +435,7 @@ async function getValueSeries(query) {
     if (breakdown) {
       const seriesMap = new Map();
       for (const inv of filtered) {
-        const amount = amountAsOf(inv.id, changeDate, history, investmentsById);
+        const amount = amountAsOf(inv.id, changeDate, history, investmentsById, replacementIds);
         const minAmount = parseNumberParam(query.minAmount);
         const maxAmount = parseNumberParam(query.maxAmount);
         if (minAmount != null && amount < minAmount) continue;
@@ -415,7 +449,7 @@ async function getValueSeries(query) {
     } else {
       let total = 0;
       for (const inv of filtered) {
-        const amount = amountAsOf(inv.id, changeDate, history, investmentsById);
+        const amount = amountAsOf(inv.id, changeDate, history, investmentsById, replacementIds);
         const minAmount = parseNumberParam(query.minAmount);
         const maxAmount = parseNumberParam(query.maxAmount);
         if (minAmount != null && amount < minAmount) continue;

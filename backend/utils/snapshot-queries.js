@@ -72,6 +72,44 @@ function currentAmountSubquery(investmentAlias = 'i') {
   )`;
 }
 
+function wantsIncludeIgnored(query = {}) {
+  return parseBoolParam(query.includeIgnored) || parseBoolParam(query.include_ignored);
+}
+
+/**
+ * Holdings imported as replacements for a same-day zeroed aggregate
+ * (e.g. "Import FD all fd added separately") must not contribute their
+ * backdated history before created_at — that double-counts the old lumped row.
+ */
+function splitReplacementJoin(investmentAlias = 'i', replacementAlias = 'rep') {
+  return `
+    LEFT JOIN (
+      SELECT DISTINCT child.id AS id
+      FROM investments child
+      INNER JOIN investment_history zh
+        ON zh.amount = 0
+       AND DATE(zh.change_date) = DATE(child.created_at)
+       AND (
+         zh.notes LIKE '%separat%'
+         OR zh.notes LIKE '%added separately%'
+         OR zh.notes LIKE '%all fd added%'
+       )
+      INNER JOIN investments parent
+        ON parent.id = zh.investment_id
+       AND parent.id <> child.id
+       AND parent.website_app_name = child.website_app_name
+    ) ${replacementAlias} ON ${replacementAlias}.id = ${investmentAlias}.id
+  `;
+}
+
+function historyEffectiveDateExpr(investmentAlias = 'i', historyAlias = 'ih', replacementAlias = 'rep') {
+  return `CASE
+    WHEN ${replacementAlias}.id IS NOT NULL
+    THEN GREATEST(${historyAlias}.change_date, DATE(${investmentAlias}.created_at))
+    ELSE ${historyAlias}.change_date
+  END`;
+}
+
 function buildInvestmentFilterClauses(query, params, alias = 'i') {
   const clauses = [];
 
@@ -83,7 +121,7 @@ function buildInvestmentFilterClauses(query, params, alias = 'i') {
   } else if (platforms.length > 1) {
     clauses.push(`${alias}.website_app_name IN (${platforms.map(() => '?').join(', ')})`);
     params.push(...platforms);
-  } else {
+  } else if (!wantsIncludeIgnored(query)) {
     // Default: exclude IGNORE_PLATFORM when user has not selected platforms
     appendIgnorePlatformClause(clauses, params, `${alias}.website_app_name`);
   }
@@ -185,5 +223,8 @@ module.exports = {
   amountAsOfHistorySubquery,
   currentAmountSubquery,
   buildInvestmentFilterClauses,
-  buildAmountFilterClauses
+  buildAmountFilterClauses,
+  wantsIncludeIgnored,
+  splitReplacementJoin,
+  historyEffectiveDateExpr
 };
