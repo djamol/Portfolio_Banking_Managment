@@ -103,6 +103,8 @@ router.get('/api/health', (req, res) => {
     status: 'ok',
     dbType: db.getDbType(),
     uptimeSeconds: Math.round(process.uptime()),
+    dbOk: true,
+    dbError: null,
     timestamp: new Date().toISOString()
   });
 });
